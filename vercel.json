@@ -5,18 +5,15 @@
   "functions": {
     "api/ai.ts": {
       "memory": 1024,
-      "maxDuration": 60,
-      "runtime": "nodejs20.x"
+      "maxDuration": 60
     },
     "api/markitdown.ts": {
       "memory": 1024,
-      "maxDuration": 60,
-      "runtime": "nodejs20.x"
+      "maxDuration": 60
     },
     "api/approve-user.ts": {
       "memory": 1024,
-      "maxDuration": 10,
-      "runtime": "nodejs20.x"
+      "maxDuration": 10
     }
   }
-} 
+}
