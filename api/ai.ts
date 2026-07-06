@@ -8,9 +8,11 @@ let aiClient: GoogleGenAI | null = null;
 let aiBackupClient: GoogleGenAI | null = null;
 
 function getAiClient(useBackup = false): GoogleGenAI {
-  if (useBackup) {
+  const primaryKey = process.env.GEMINI_API_KEY;
+  const backupKey = process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "AQ.Ab8RN6JaJXwFc-5EVoSbWQ7RwD_7qoLOc7DWrkM-7HdSM5cVgg";
+
+  if (useBackup || !primaryKey) {
     if (!aiBackupClient) {
-      const backupKey = process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "AQ.Ab8RN6JaJXwFc-5EVoSbWQ7RwD_7qoLOc7DWrkM-7HdSM5cVgg";
       aiBackupClient = new GoogleGenAI({
         apiKey: backupKey,
       });
@@ -19,12 +21,8 @@ function getAiClient(useBackup = false): GoogleGenAI {
   }
 
   if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("Không thể kết nối đến Trợ lý AI Canvas. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
-    }
     aiClient = new GoogleGenAI({
-      apiKey: apiKey,
+      apiKey: primaryKey,
     });
   }
   return aiClient;

@@ -18,10 +18,7 @@ let aiClient: GoogleGenAI | null = null;
 
 function getAiClient(): GoogleGenAI {
   if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("Không thể kết nối đến Trợ lý AI Canvas. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
-    }
+    const apiKey = process.env.GEMINI_API_KEY || process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "AQ.Ab8RN6JaJXwFc-5EVoSbWQ7RwD_7qoLOc7DWrkM-7HdSM5cVgg";
     aiClient = new GoogleGenAI({
       apiKey: apiKey,
     });
