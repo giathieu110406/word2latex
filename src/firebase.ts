@@ -49,3 +49,4 @@ const databaseId = getCleanDatabaseId(import.meta.env.VITE_FIREBASE_DATABASE_ID)
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+ 

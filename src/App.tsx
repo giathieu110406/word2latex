@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, startTransition } from "react";
 import {
   HelpCircle,
   FileText,
+  HardDrive,
   Upload,
   Check,
   X,
@@ -25,13 +26,14 @@ import {
   Diamond,
   Search, Pin, PinOff, Mail,
   Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserPlus, UserCog, User, Info, Save,
+  Paperclip, Layout
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
 import { marked } from "marked";
 import { LatexConverter } from "./components/LatexConverter";
+import { MarkItDown } from "./components/MarkItDown";
 import { QBuilder } from "./components/QBuilder";
-import { DocsManagement } from "./components/DocsManagement";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -354,6 +356,13 @@ function isAdminUser(user: any, userDoc: any): boolean {
   return checkIsOwnerEmail(user) || isAdminByRole(userDoc);
 }
 
+function getTodayStr(): string {
+  const offsetDate = new Date();
+  // Trừ đi 5 tiếng để mốc reset đổi ngày mới rơi vào đúng 5:00 sáng
+  offsetDate.setHours(offsetDate.getHours() - 5);
+  return offsetDate.toLocaleDateString("vi-VN");
+}
+
 export default function App() {
   // --- AUTH & CONTROL STATE ---
   const [user, setUser] = useState<FirebaseUser | null>(() => {
@@ -393,7 +402,9 @@ export default function App() {
   const [aiChatMessages, setAiChatMessages] = useState<{role: 'user'|'model', text: string}[]>([]);
   const [aiChatInput, setAiChatInput] = useState<string>("");
   const [isAiChatLoading, setIsAiChatLoading] = useState<boolean>(false);
+  const [isExtractingText, setIsExtractingText] = useState<boolean>(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   useEffect(() => {
     if (chatMessagesEndRef.current) {
@@ -419,8 +430,6 @@ export default function App() {
   const [newMemberStatus, setNewMemberStatus] = useState<string>("approved");
   const [memberPage, setMemberPage] = useState<number>(1);
   const [allFeedbacks, setAllFeedbacks] = useState<any[]>([]);
-  const [savedDocuments, setSavedDocuments] = useState<any[]>([]);
-  const [isSavingDoc, setIsSavingDoc] = useState<boolean>(false);
   const [feedbackSearchQuery, setFeedbackSearchQuery] = useState<string>("");
   const [feedbackTypeFilter, setFeedbackTypeFilter] = useState<string>("all");
   const [adminSubTab, setAdminSubTab] = useState<"members" | "feedbacks" | "notify">("members");
@@ -2170,10 +2179,7 @@ export default function App() {
   // Listen to current user's profile document dynamically
   useEffect(() => {
     if (!user) return;
-    const offsetDate = new Date();
-    // Trừ đi 5 tiếng để mốc reset đổi ngày mới rơi vào đúng 5:00 sáng
-    offsetDate.setHours(offsetDate.getHours() - 5);
-    const todayStr = offsetDate.toLocaleDateString("vi-VN");
+    const todayStr = getTodayStr();
 
     console.log("[USER AUTH] Đăng nhập:", {
       originalEmail: user.email,
@@ -2458,405 +2464,6 @@ export default function App() {
 
     return unsubscribeNotifications;
   }, [user, userDoc]);
-
-  // Synchronize saved documents for the current user
-  useEffect(() => {
-    if (!user) {
-      setSavedDocuments([]);
-      return;
-    }
-
-    const q = query(
-      collection(db, "saved_documents"),
-      where("userId", "==", user.uid)
-    );
-
-    const unsubscribeDocs = onSnapshot(
-      q,
-      (querySnap) => {
-        const list: any[] = [];
-        querySnap.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...docSnap.data() });
-        });
-        list.sort((a, b) => {
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return dateB - dateA;
-        });
-        setSavedDocuments(list);
-      },
-      (err) => {
-        console.warn("Cảnh báo đồng bộ danh sách tài liệu lưu trữ:", err);
-      }
-    );
-
-    return unsubscribeDocs;
-  }, [user]);
-
-  const saveLatexToDocs = async (type: "word" | "pdf", customTitle?: string) => {
-    if (!user) {
-      triggerToast("Vui lòng đăng nhập để sử dụng tính năng này!", false);
-      return;
-    }
-
-    if (!(isApproved || isAdminUser(user, userDoc))) {
-      triggerToast("Tính năng Lưu trữ tài liệu đám mây chỉ dành cho thành viên PRO PLAN. Vui lòng nâng cấp!", false);
-      return;
-    }
-
-    if (!inputText.trim()) {
-      triggerToast("Không có nội dung để lưu!", false);
-      return;
-    }
-
-    if (!previewRef.current) return;
-
-    setIsSavingDoc(true);
-    try {
-      const clone = previewRef.current.cloneNode(true) as HTMLDivElement;
-      injectMathML(clone);
-      injectInlineStyles(clone);
-      const bodyHtml = clone.innerHTML;
-
-      let fullContent = "";
-      if (type === "word") {
-        fullContent = `<html>
-        <head>
-        <meta charset="UTF-8">
-        <meta name="ProgId" content="Word.Document">
-        <style>
-            @page {
-                size: A4;
-                margin: 2cm;
-            }
-            body {
-                font-family: ${wordFont};
-                font-size: 13pt;
-                line-height: 1.15;
-                color: #000000;
-                margin: 0;
-            }
-            p, li, span, select, tr, td, th {
-                font-family: ${wordFont} !important;
-                font-size: 13pt !important;
-                line-height: 1.15 !important;
-                margin-top: 0 !important;
-                margin-bottom: 0 !important;
-            }
-            div, table {
-                font-family: ${wordFont} !important;
-                font-size: 13pt !important;
-                line-height: 1.15 !important;
-            }
-            div.doc-display-math {
-                margin-top: 6pt !important;
-                margin-bottom: 6pt !important;
-                text-align: center !important;
-            }
-            table.doc-answer-table {
-                margin-top: 16pt !important;
-                margin-bottom: 12pt !important;
-                border: 1px solid #10b981 !important;
-                background-color: #ecfdf5 !important;
-            }
-            table.doc-answer-table th, table.doc-answer-table td {
-                border: none !important;
-                padding: 10pt !important;
-            }
-            table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
-                border: none !important;
-            }
-            table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
-                border: none !important;
-            }
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                margin-top: 12pt !important;
-                margin-bottom: 12pt !important;
-            }
-            table th, table td {
-                border: 1px solid #cbd5e1 !important;
-                padding: 6px !important;
-            }
-            table th {
-                font-weight: bold !important;
-                background-color: #f3f4f6 !important;
-            }
-        </style>
-        </head>
-        <body>
-        ${bodyHtml}
-        </body>
-        </html>`;
-      } else {
-        fullContent = `<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tài liệu - PDF</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-  <style>
-    @page {
-      size: A4;
-      margin: 2cm;
-    }
-    * { box-sizing: border-box; }
-    body {
-      font-family: ${wordFont};
-      font-size: 13pt;
-      line-height: 1.15;
-      color: #000;
-      margin: 0;
-      padding: 0;
-      background: white;
-    }
-    h1, h2, h3, h4, h5, h6, p, li, span, select, tr, td, th {
-      font-family: ${wordFont} !important;
-      font-size: 13pt !important;
-      line-height: 1.15 !important;
-      margin-top: 0 !important;
-      margin-bottom: 0 !important;
-    }
-    div, table {
-      font-family: ${wordFont} !important;
-      font-size: 13pt !important;
-      line-height: 1.15 !important;
-    }
-    div.doc-display-math {
-      margin-top: 6pt !important;
-      margin-bottom: 6pt !important;
-      text-align: center !important;
-    }
-    table.doc-answer-table {
-      margin-top: 16pt !important;
-      margin-bottom: 12pt !important;
-      border: 1px solid #475569 !important;
-      background-color: transparent !important;
-    }
-    table { border-collapse: collapse; width: 100%; margin: 8pt 0; }
-    table th, table td { border: 1px solid #000; padding: 4pt 6pt; font-size: 13pt; }
-    table th { font-weight: bold; background: #f5f5f5; }
-  </style>
-</head>
-<body>
-  ${bodyHtml}
-</body>
-</html>`;
-      }
-
-      const defaultTitle = type === "word" ? "LaTeX_Sang_Word_Equation.doc" : "Tai_Lieu_LaTeX.pdf";
-      const docTitleToSave = (typeof customTitle === "string" && customTitle.trim()) ? customTitle.trim() : defaultTitle;
-
-      await addDoc(collection(db, "saved_documents"), {
-        userId: user.uid,
-        title: docTitleToSave,
-        type: type,
-        source: "latex",
-        htmlContent: fullContent,
-        wordFont: wordFont,
-        fileSize: fullContent.length,
-        createdAt: new Date().toISOString()
-      });
-
-      triggerToast("Đã lưu tài liệu vào quản lý tài liệu đám mây!");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, "saved_documents");
-    } finally {
-      setIsSavingDoc(false);
-    }
-  };
-
-  const saveQBuilderToDocs = async (customTitle?: string) => {
-    if (!user) {
-      triggerToast("Vui lòng đăng nhập để sử dụng tính năng này!", false);
-      return;
-    }
-
-    if (!(isApproved || isAdminUser(user, userDoc))) {
-      triggerToast("Tính năng Lưu trữ tài liệu đám mây chỉ dành cho thành viên PRO PLAN. Vui lòng nâng cấp!", false);
-      return;
-    }
-
-    if (docQuestions.length === 0) {
-      triggerToast("Không có nội dung để lưu!", false);
-      return;
-    }
-
-    if (!docPreviewRef.current) return;
-
-    setIsSavingDoc(true);
-    try {
-      const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement;
-      injectMathML(clone);
-      injectInlineStyles(clone);
-      const bodyHtml = clone.innerHTML;
-
-      const fullContent = `<html>
-      <head>
-      <meta charset="UTF-8">
-      <meta name="ProgId" content="Word.Document">
-      <style>
-          @page {
-              size: A4;
-              margin: 2cm;
-          }
-          body {
-              font-family: ${wordFont};
-              font-size: 13pt;
-              line-height: 1.15;
-              color: #000000;
-              margin: 0;
-          }
-          p, li, span, select, tr, td, th {
-              font-family: ${wordFont} !important;
-              font-size: 13pt !important;
-              line-height: 1.15 !important;
-              margin-top: 0 !important;
-              margin-bottom: 0 !important;
-          }
-          div, table {
-              font-family: ${wordFont} !important;
-              font-size: 13pt !important;
-              line-height: 1.15 !important;
-          }
-          div.doc-display-math {
-              margin-top: 6pt !important;
-              margin-bottom: 6pt !important;
-              text-align: center !important;
-          }
-          table.doc-answer-table {
-              margin-top: 16pt !important;
-              margin-bottom: 12pt !important;
-              border: 1px solid #10b981 !important;
-              background-color: #ecfdf5 !important;
-          }
-          table.doc-answer-table th, table.doc-answer-table td {
-              border: none !important;
-              padding: 10pt !important;
-          }
-          table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
-              border: none !important;
-          }
-          table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
-              border: none !important;
-          }
-          table {
-              border-collapse: collapse;
-              width: 100%;
-              margin-top: 12pt !important;
-              margin-bottom: 12pt !important;
-          }
-          table th, table td {
-              border: 1px solid #475569 !important;
-              padding: 6px !important;
-          }
-          table th {
-              font-weight: bold !important;
-              background-color: transparent !important;
-          }
-      </style>
-      </head>
-      <body>
-      ${bodyHtml}
-      </body>
-      </html>`;
-
-      const defaultTitle = docTitle || "Tai_Lieu_Tu_Luan_Trac_Nghiem.doc";
-      const docTitleToSave = (typeof customTitle === "string" && customTitle.trim()) ? customTitle.trim() : defaultTitle;
-
-      await addDoc(collection(db, "saved_documents"), {
-        userId: user.uid,
-        title: docTitleToSave,
-        type: "word",
-        source: "qbuilder",
-        htmlContent: fullContent,
-        wordFont: wordFont,
-        fileSize: fullContent.length,
-        createdAt: new Date().toISOString()
-      });
-
-      triggerToast("Đã lưu đề thi vào quản lý tài liệu đám mây!");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, "saved_documents");
-    } finally {
-      setIsSavingDoc(false);
-    }
-  };
-
-  const handleDeleteSavedDocument = async (docId: string) => {
-    try {
-      await deleteDoc(doc(db, "saved_documents", docId));
-      triggerToast("Đã xóa tài liệu khỏi kho lưu trữ!");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `saved_documents/${docId}`);
-    }
-  };
-
-  const downloadSavedDoc = (docData: any) => {
-    const blob = new Blob(["\ufeff" + docData.htmlContent], {
-      type: "application/msword;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = docData.title || "Tai_Lieu_Word.doc";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    triggerToast("Đã tải lại tệp Word thành công!");
-  };
-
-  const printSavedPdf = async (docData: any) => {
-    try {
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      iframe.style.visibility = "hidden";
-      document.body.appendChild(iframe);
-
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!iframeDoc) {
-        document.body.removeChild(iframe);
-        triggerToast("Trình duyệt không hỗ trợ xuất PDF. Hãy thử cách khác!", false);
-        return;
-      }
-
-      iframeDoc.open();
-      iframeDoc.write(docData.htmlContent);
-      iframeDoc.close();
-
-      await new Promise<void>((resolve) => {
-        if (iframe.contentWindow) {
-          iframe.contentWindow.onload = () => resolve();
-          setTimeout(resolve, 1200);
-        } else {
-          setTimeout(resolve, 1200);
-        }
-      });
-
-      triggerToast("Đang mở hộp thoại in — chọn 'Save as PDF' để lưu tệp!", true);
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-
-      setTimeout(() => {
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
-        }
-      }, 3000);
-    } catch (error) {
-      console.error("Lỗi khi xuất PDF:", error);
-      triggerToast("Có lỗi xảy ra khi xuất PDF. Vui lòng thử lại!", false);
-    }
-  };
-
   // --- ADMIN PANEL HANDLERS ---
   const handleUpdateUserStatus = async (targetUid: string, status: "approved" | "pending" | "rejected") => {
     try {
@@ -2883,6 +2490,7 @@ export default function App() {
         queryCount: 0,
         examCount: 0,
         promptCount: 0,
+        lastLatexResetDate: getTodayStr(),
       });
       triggerToast("Đã thiết lập lại (reset) số lượt sử dụng của thành viên!");
     } catch (e) {
@@ -2894,6 +2502,7 @@ export default function App() {
     try {
       await updateDoc(doc(db, "users", targetUid), {
         [field]: value,
+        lastLatexResetDate: getTodayStr(),
       });
       triggerToast("Đã điều chỉnh chỉ số sử dụng thành công!");
     } catch (e) {
@@ -3065,7 +2674,7 @@ export default function App() {
         examCount: 0,
         promptCount: 0,
         createdAt: new Date().toISOString(),
-        lastLatexResetDate: new Date().toISOString().split("T")[0],
+        lastLatexResetDate: getTodayStr(),
       };
 
       await setDoc(docRef, newProfile);
@@ -3093,6 +2702,7 @@ export default function App() {
         examCount: Number(editingUser.examCount) || 0,
         promptCount: Number(editingUser.promptCount) || 0,
         queryCount: Number(editingUser.queryCount) || 0,
+        lastLatexResetDate: editingUser.lastLatexResetDate || getTodayStr(),
       });
       triggerToast("Cập nhật thông tin thành viên thành công!");
       setShowEditMemberModal(false);
@@ -5296,6 +4906,86 @@ ${bodyHtml}
     }
   };
 
+  const extractTextFromImage = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      triggerToast("Vui lòng chọn hoặc dán file hình ảnh!", false);
+      return;
+    }
+    
+    setIsExtractingText(true);
+    setIsAiChatLoading(true);
+    triggerToast("Đang trích xuất văn bản từ hình ảnh...", true);
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64Image = (reader.result as string).split(',')[1];
+      try {
+        const res = await fetch("/api/ai?action=extract-text", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: base64Image, mimeType: file.type }),
+        });
+        
+        if (!res.ok) {
+          throw new Error("Lỗi máy chủ khi trích xuất");
+        }
+
+        const data = await res.json();
+        if (data.success && data.text) {
+          setAiChatInput(prev => prev + (prev ? "\n" : "") + data.text);
+          triggerToast("Trích xuất văn bản thành công!", true);
+        } else {
+          triggerToast(data.error || "Không thể trích xuất văn bản từ hình ảnh này", false);
+        }
+      } catch (err: any) {
+        console.error("Lỗi trích xuất văn bản:", err);
+        triggerToast("Lỗi khi kết nối đến dịch vụ trích xuất văn bản!", false);
+      } finally {
+        setIsExtractingText(false);
+        setIsAiChatLoading(false);
+      }
+    };
+    reader.onerror = () => {
+      triggerToast("Không thể đọc file hình ảnh!", false);
+      setIsExtractingText(false);
+      setIsAiChatLoading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await extractTextFromImage(file);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    let hasImage = false;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        hasImage = true;
+        break;
+      }
+    }
+
+    if (hasImage) {
+      e.preventDefault(); // Chặn hoàn toàn hành vi dán văn bản mặc định để tránh dán thừa câu hỏi hoặc text cũ
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            await extractTextFromImage(file);
+          }
+        }
+      }
+    }
+  };
+
   return (
     <div 
       className="h-[100dvh] w-full text-slate-800 antialiased font-sans flex flex-row overflow-hidden relative"
@@ -5386,9 +5076,9 @@ ${bodyHtml}
                   <button onClick={() => handleSidebarNav('qbuilder')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'qbuilder' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <FileText className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Soạn đề thi (AI)</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('docs')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'docs' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('markitdown')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'markitdown' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <div className="flex items-center gap-3 truncate">
-                          <Folder className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">Quản lý tài liệu</span>
+                          <Layout className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">MarkItDown AI</span>
                       </div>
                       <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-md shrink-0">PRO</span>
                   </button>
@@ -5502,8 +5192,16 @@ ${bodyHtml}
               const totalMembers = allUsers.length;
               const activeMembers = allUsers.filter(u => u.status === "approved" || !u.status).length;
               const pendingMembers = allUsers.filter(u => u.status === "pending").length;
-              const totalLatexCount = allUsers.reduce((sum, u) => sum + (Number(u.latexCount) || 0), 0);
-              const totalPromptCount = allUsers.reduce((sum, u) => sum + (Number(u.promptCount) || 0), 0);
+              
+              const currentTodayStr = getTodayStr();
+              const totalLatexCount = allUsers.reduce((sum, u) => {
+                const isReset = u.lastLatexResetDate !== currentTodayStr;
+                return sum + (isReset ? 0 : (Number(u.latexCount) || 0));
+              }, 0);
+              const totalPromptCount = allUsers.reduce((sum, u) => {
+                const isReset = u.lastLatexResetDate !== currentTodayStr;
+                return sum + (isReset ? 0 : (Number(u.promptCount) || 0));
+              }, 0);
 
               const filteredUsers = allUsers.filter((u) => {
                 const name = (u.displayName || "").toLowerCase();
@@ -5723,13 +5421,16 @@ ${bodyHtml}
                                       <span className="text-[#22C55E] font-bold text-sm">Không giới hạn</span>
                                       <div className="text-slate-400 font-medium text-[11px] mt-0.5">Tổng yêu cầu: {u.queryCount || 0}</div>
                                     </div>
-                                  ) : (
-                                    <div className="flex flex-col gap-0.5 text-slate-600 font-semibold text-[11px]">
-                                      <div>LaTeX: <span className="font-extrabold text-[#1E2432]">{u.latexCount || 0} / 30</span></div>
-                                      <div>Đề thi: <span className="font-extrabold text-[#1E2432]">{u.examCount || 0} / 5</span></div>
-                                      <div>Dàn AI: <span className="font-extrabold text-[#1E2432]">{u.promptCount || 0} / 10</span></div>
-                                    </div>
-                                  )}
+                                  ) : (() => {
+                                    const isReset = u.lastLatexResetDate !== getTodayStr();
+                                    return (
+                                      <div className="flex flex-col gap-0.5 text-slate-600 font-semibold text-[11px]">
+                                        <div>LaTeX: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.latexCount || 0)} / 30</span></div>
+                                        <div>Đề thi: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.examCount || 0)} / 5</span></div>
+                                        <div>Dàn AI: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.promptCount || 0)} / 10</span></div>
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="py-4 px-6 w-[18%] min-w-[160px]">
                                   <div className="flex items-center justify-end gap-2">
@@ -5757,7 +5458,18 @@ ${bodyHtml}
                                     {(isApproved || u.status === "rejected") && (
                                       <button
                                         type="button"
-                                        onClick={(e) => { e.stopPropagation(); setEditingUser(u); setShowEditMemberModal(true); }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const isReset = u.lastLatexResetDate !== getTodayStr();
+                                          setEditingUser({
+                                            ...u,
+                                            latexCount: isReset ? 0 : (u.latexCount || 0),
+                                            examCount: isReset ? 0 : (u.examCount || 0),
+                                            promptCount: isReset ? 0 : (u.promptCount || 0),
+                                            lastLatexResetDate: getTodayStr()
+                                          });
+                                          setShowEditMemberModal(true);
+                                        }}
                                         className="w-8 h-8 rounded-full flex items-center justify-center bg-white text-slate-500 hover:text-slate-700 hover:bg-[#F9F9FF] border border-[#E8EBF3] transition-all duration-200 shadow-xs cursor-pointer"
                                         title="Chỉnh sửa"
                                       >
@@ -5807,6 +5519,77 @@ ${bodyHtml}
                       </table>
                     </div>
 
+                    {/* Pagination Footer */}
+                    {totalPages > 1 && (
+                      <div className="px-6 py-4 border-t border-[#EEF2F7] flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/50">
+                        <div className="text-xs font-semibold text-slate-500">
+                          Hiển thị <span className="text-[#1E2432] font-bold">{(currentPage - 1) * itemsPerPage + 1}</span> - <span className="text-[#1E2432] font-bold">{Math.min(currentPage * itemsPerPage, filteredUsers.length)}</span> trong tổng số <span className="text-[#1E2432] font-bold">{filteredUsers.length}</span> thành viên
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setMemberPage(Math.max(1, currentPage - 1))}
+                            disabled={currentPage === 1}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center border border-[#E8EBF3] transition-all duration-200 ${
+                              currentPage === 1
+                                ? "text-slate-300 bg-slate-50/50 cursor-not-allowed"
+                                : "text-slate-600 bg-white hover:bg-[#F9F9FF] hover:border-[#6B5CFF]/30 active:scale-95 cursor-pointer"
+                            }`}
+                            title="Trang trước"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
+                            if (
+                              p === 1 ||
+                              p === totalPages ||
+                              Math.abs(p - currentPage) <= 1
+                            ) {
+                              return (
+                                <button
+                                  key={p}
+                                  type="button"
+                                  onClick={() => setMemberPage(p)}
+                                  className={`w-8 h-8 rounded-full text-xs font-bold transition-all duration-200 cursor-pointer ${
+                                    currentPage === p
+                                      ? "bg-gradient-to-r from-[#7B5CFF] to-[#6A6CFF] text-white shadow-md shadow-[#6B5CFF]/20"
+                                      : "bg-white text-slate-600 border border-[#E8EBF3] hover:bg-[#F9F9FF] hover:border-[#6B5CFF]/30 active:scale-95"
+                                  }`}
+                                >
+                                  {p}
+                                </button>
+                              );
+                            }
+                            if (
+                              (p === 2 && currentPage > 3) ||
+                              (p === totalPages - 1 && currentPage < totalPages - 2)
+                            ) {
+                              return (
+                                <span key={p} className="text-slate-400 text-xs px-1 font-bold">
+                                  ...
+                                </span>
+                              );
+                            }
+                            return null;
+                          })}
+
+                          <button
+                            type="button"
+                            onClick={() => setMemberPage(Math.min(totalPages, currentPage + 1))}
+                            disabled={currentPage === totalPages}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center border border-[#E8EBF3] transition-all duration-200 ${
+                              currentPage === totalPages
+                                ? "text-slate-300 bg-slate-50/50 cursor-not-allowed"
+                                : "text-slate-600 bg-white hover:bg-[#F9F9FF] hover:border-[#6B5CFF]/30 active:scale-95 cursor-pointer"
+                            }`}
+                            title="Trang sau"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                   </div>
 
@@ -6517,10 +6300,10 @@ ${bodyHtml}
                 }
               });
 
-              // Filter out groups with only 1 user or all admin
-              const flaggedGroups = Array.from(suspiciousGroups.entries()).filter(([key, group]) => {
-                return group.length > 1 && group.some(u => u.role !== "admin");
-              });
+              // Filter out groups with only 1 user or all admin/pro
+              const flaggedGroups = Array.from(suspiciousGroups.entries())
+                .map(([key, group]) => [key, group.filter(u => u.role !== "admin" && u.status !== "approved")] as [string, any[]])
+                .filter(([key, group]) => group.length > 1);
 
               return (
                 <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] p-4 md:p-6 lg:p-8 flex-1 flex flex-col">
@@ -6694,11 +6477,6 @@ ${bodyHtml}
                       </div>
                     )}
                   </div>
-
-                  <div className="mt-4 p-3 rounded-xl bg-amber-50/70 border border-amber-100/50 text-[11px] text-amber-700 font-medium flex items-start gap-1.5 leading-relaxed">
-                    <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <span>Các hạn mức sử dụng (LaTeX, Soạn đề, Dàn AI) sẽ tự động reset về 0 sau 5h sáng mỗi ngày.</span>
-                  </div>
                 </div>
               </div>
 
@@ -6870,14 +6648,6 @@ ${bodyHtml}
 
 
 
-            {/* Info alert about limits reset */}
-            <div className="bg-amber-50/60 border border-amber-100/40 rounded-xl px-4 py-3 flex items-center justify-between text-xs text-amber-700 font-semibold shadow-2xs">
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-amber-500 shrink-0" />
-                <span>Các hạn mức sử dụng (LaTeX, Soạn đề, Dàn AI) sẽ tự động reset về 0 sau 5h sáng mỗi ngày.</span>
-              </div>
-            </div>
-
             {/* Quick Stats Grid based on Live User Doc Limits */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
               {/* Stat 1: LaTeX conversions */}
@@ -7017,27 +6787,27 @@ ${bodyHtml}
                 </button>
               </div>
 
-              {/* Module 3: Document Cloud Management */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-sky-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
+              {/* Module 3: MarkItDown AI */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-emerald-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
                 <div className="space-y-4">
-                  <div className="p-3 bg-sky-50 text-sky-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
-                    <Folder className="w-6 h-6" />
+                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
+                    <Layout className="w-6 h-6" />
                   </div>
                   <div>
                     <h3 className="text-base font-extrabold text-slate-800 font-sans">
-                      Quản lý Tài liệu Đám mây
+                      MarkItDown AI (PRO)
                     </h3>
                     <p className="text-xs text-slate-500 font-medium mt-1.5 leading-relaxed">
-                      Hệ thống tự động đồng bộ hóa lịch sử chuyển đổi tài liệu và đề thi của bạn. Lưu trữ dữ liệu an toàn trên Firestore, cho phép tra cứu và tải xuống mọi lúc.
+                      Chuyển đổi mọi loại tài liệu (PDF, Word, Excel, PowerPoint, HTML, Audio, Hình ảnh, YouTube) sang định dạng Markdown chuẩn xác bằng trí tuệ nhân tạo.
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSidebarView('latex')}
-                  className="mt-6 w-full py-2.5 border border-sky-100 hover:bg-sky-50/50 text-sky-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer group-hover:border-sky-300 animate-none"
+                  onClick={() => setSidebarView('markitdown')}
+                  className="mt-6 w-full py-2.5 border border-emerald-100 hover:bg-emerald-50/50 text-emerald-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer group-hover:border-emerald-300 animate-none"
                 >
-                  Xem lịch sử tệp <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                  Bắt đầu chuyển đổi <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
             </div>
@@ -7058,7 +6828,7 @@ ${bodyHtml}
             aiCanvasPrompt={aiCanvasPrompt}
             setAiCanvasPrompt={setAiCanvasPrompt}
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={(tab: string) => setActiveTab(tab as any)}
             copyToWord={copyToWord}
             downloadAsWord={downloadAsWord}
             copyRawLaTeX={copyRawLaTeX}
@@ -7071,8 +6841,6 @@ ${bodyHtml}
             handlePasteGeneric={handlePasteGeneric}
             handleClear={handleClear}
             isPro={isApproved || isAdminUser(user, userDoc)}
-            saveLatexToDocs={saveLatexToDocs}
-            isSavingDoc={isSavingDoc}
           />
         )}
         {sidebarView === 'qbuilder' && (
@@ -7123,7 +6891,7 @@ ${bodyHtml}
             setNewTracNghiemColumns={setNewTracNghiemColumns}
             handleAddQuestion={handleAddQuestion}
             savedQuestionTab={savedQuestionTab}
-            setSavedQuestionTab={setSavedQuestionTab}
+            setSavedQuestionTab={(tab: string) => setSavedQuestionTab(tab as any)}
             tracNghiemList={tracNghiemList}
             dungSaiList={dungSaiList}
             traLoiNganList={traLoiNganList}
@@ -7150,19 +6918,14 @@ ${bodyHtml}
             renderContentWithMath={renderContentWithMath}
             triggerToast={triggerToast}
             handlePasteGeneric={handlePasteGeneric}
-            saveQBuilderToDocs={saveQBuilderToDocs}
-            isSavingDoc={isSavingDoc}
           />
         )}
 
-        {sidebarView === 'docs' && (
-          <DocsManagement
-            savedDocuments={savedDocuments}
-            onDeleteDoc={handleDeleteSavedDocument}
-            onDownloadDoc={downloadSavedDoc}
-            onPrintPdf={printSavedPdf}
+        
+        {sidebarView === 'markitdown' && (
+          <MarkItDown 
+            triggerToast={triggerToast} 
             isPro={isApproved || isAdminUser(user, userDoc)}
-            onNavigate={(view) => setSidebarView(view)}
           />
         )}
 
@@ -7203,7 +6966,7 @@ ${bodyHtml}
                         value={smartPasteText}
                         onChange={(e) => setSmartPasteText(e.target.value)}
                         onPaste={(e) => handlePasteGeneric(e, setSmartPasteText, true)}
-                        placeholder="Dán (Ctrl+V) toàn bộ nội dung câu hỏi và đáp án từ ChatGPT/Gemini vào đây..."
+                        placeholder="Dán (Ctrl+V) toàn bộ nội dung câu hỏi và đáp án từ ChatGPT/AI vào đây..."
                         className="w-full h-64 p-4 text-sm rounded-xl border border-slate-200 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed"
                         disabled={isSmartPasteParsing}
                       />
@@ -7751,7 +7514,7 @@ ${bodyHtml}
                       <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[13px] ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'}`}>
                           <div className={msg.role === 'user' ? "" : "markdown-body text-xs"}>
-                            {msg.role === 'user' ? msg.text : <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.text) }} />}
+                            {msg.role === 'user' ? msg.text : <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.text) as string }} />}
                           </div>
                         </div>
                       </div>
@@ -7775,12 +7538,27 @@ ${bodyHtml}
                     type="text"
                     value={aiChatInput}
                     onChange={(e) => setAiChatInput(e.target.value)}
-                    placeholder="Hỏi về hệ thống Word2LaTeX..."
-                    className="flex-1 bg-slate-100 border-none outline-none rounded-xl px-4 py-2.5 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-100 transition-shadow"
+                    onPaste={handlePaste}
+                    placeholder={isExtractingText ? "Đang trích xuất văn bản từ hình ảnh..." : "Hỏi về hệ thống Word2LaTeX..."}
+                    disabled={isExtractingText}
+                    className="flex-1 bg-slate-100 border-none outline-none rounded-xl px-4 py-2.5 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-100 transition-shadow disabled:opacity-70"
                   />
+                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+                  <button 
+                    type="button" 
+                    disabled={isExtractingText || isAiChatLoading}
+                    onClick={() => fileInputRef.current?.click()} 
+                    className="text-slate-400 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed p-2 flex items-center justify-center"
+                  >
+                    {isExtractingText ? (
+                      <span className="w-5 h-5 block border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
+                    ) : (
+                      <Paperclip className="w-5 h-5" />
+                    )}
+                  </button>
                   <button
                     type="submit"
-                    disabled={!aiChatInput.trim() || isAiChatLoading}
+                    disabled={!aiChatInput.trim() || isAiChatLoading || isExtractingText}
                     className="w-10 h-10 flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-colors shrink-0 shadow-sm"
                   >
                     <ArrowRight className="w-4 h-4" />
@@ -7914,4 +7692,4 @@ ${bodyHtml}
     </div>
   </div>
   );
-}
+} 

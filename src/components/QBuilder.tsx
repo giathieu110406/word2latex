@@ -167,6 +167,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
   isSavingDoc = false,
 }) => {
   const [isHeaderOpen, setIsHeaderOpen] = React.useState(true);
+  const [mobileView, setMobileView] = React.useState<"edit" | "preview">("edit");
   
   return (
     <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-[500px] md:min-h-[calc(100vh-160px)]">
@@ -227,9 +228,35 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
       {/* Workspace with inner padding and subtle background */}
       <div className="p-4 md:p-6 bg-white/30 flex-1 flex flex-col min-h-0">
+        {/* Mobile View Selector */}
+        <div className="lg:hidden flex bg-slate-100 p-1 rounded-xl mb-4 shrink-0 select-none">
+          <button
+            type="button"
+            onClick={() => setMobileView("edit")}
+            className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all ${
+              mobileView === "edit"
+                ? "bg-white text-indigo-700 shadow-3xs"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Soạn câu hỏi & Đề thi
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileView("preview")}
+            className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all ${
+              mobileView === "preview"
+                ? "bg-white text-indigo-700 shadow-3xs"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Xem trước đề thi
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 flex-1 min-h-0">
           {/* Panel 1: EDITOR / COMPILER FORM (Trái) */}
-          <div className="bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1">
+          <div className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1 ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
             {/* Sub-Header: Settings */}
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -242,14 +269,14 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 {/* Style toggle */}
                 <div className="flex bg-slate-200/60 p-1 rounded-xl text-xs font-bold gap-1 w-full sm:w-auto overflow-x-auto hide-scrollbar">
                   <button
-                    type="button"
+                    
                     onClick={() => setDocHeaderStyle("centered")}
                     className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${docHeaderStyle === "centered" ? "bg-white text-slate-900 shadow-3xs font-extrabold" : "text-slate-600 hover:text-slate-805"}`}
                   >
                     Căn giữa (Đơn)
                   </button>
                   <button
-                    type="button"
+                    
                     onClick={() => setDocHeaderStyle("split")}
                     className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${docHeaderStyle === "split" ? "bg-white text-slate-900 shadow-3xs font-extrabold" : "text-slate-600 hover:text-slate-805"}`}
                   >
@@ -418,7 +445,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         </span>
                       </div>
                       <button
-                        type="button"
+                        
                         onClick={() => {
                           setEditingQuestionId(null);
                           setTracNghiemText("");
@@ -447,7 +474,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                     <span className="xs:hidden">Loại câu hỏi</span>
                   </label>
                   <button
-                    type="button"
+                    
                     onClick={() => setShowSmartPasteModal(true)}
                     className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-3xs active:scale-95"
                     title="Dán câu hỏi và đáp án từ AI để tự động phân tách"
@@ -471,7 +498,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   ].map((btn) => (
                     <button
                       key={btn.id}
-                      type="button"
+                      
                       onClick={() => setNewQuestionType(btn.id as any)}
                       className={`py-2 px-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer text-center ${
                         newQuestionType === btn.id
@@ -545,7 +572,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       {[1, 2, 4].map((cols) => (
                         <button
                           key={cols}
-                          type="button"
+                          
                           onClick={() => setNewTracNghiemColumns(cols)}
                           className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                             newTracNghiemColumns === cols
@@ -631,7 +658,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
               <div className="flex justify-end items-center gap-2 pt-1 select-none">
                 {editingQuestionId && (
                   <button
-                    type="button"
+                    
                     onClick={() => {
                       setEditingQuestionId(null);
                       setTracNghiemText("");
@@ -650,7 +677,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   </button>
                 )}
                 <button
-                  type="button"
+                  
                   onClick={handleAddQuestion}
                   className={`px-5 py-2.5 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
                     editingQuestionId
@@ -683,7 +710,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 {docQuestions.length > 0 && (
                   <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold select-none">
                     <button
-                      type="button"
+                      
                       onClick={() => setSavedQuestionTab("all")}
                       className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
                         savedQuestionTab === "all"
@@ -694,7 +721,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       Tất cả ({docQuestions.length})
                     </button>
                     <button
-                      type="button"
+                      
                       onClick={() => setSavedQuestionTab("trac_nghiem")}
                       className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1 ${
                         savedQuestionTab === "trac_nghiem"
@@ -707,7 +734,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       <span className="xs:hidden">4 LC</span> ({tracNghiemList.length})
                     </button>
                     <button
-                      type="button"
+                      
                       onClick={() => setSavedQuestionTab("trac_nghiem_dung_sai")}
                       className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1 ${
                         savedQuestionTab === "trac_nghiem_dung_sai"
@@ -720,7 +747,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       <span className="xs:hidden">Đ/S</span> ({dungSaiList.length})
                     </button>
                     <button
-                      type="button"
+                      
                       onClick={() => setSavedQuestionTab("trac_nghiem_tra_loi_ngan")}
                       className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1 ${
                         savedQuestionTab === "trac_nghiem_tra_loi_ngan"
@@ -733,7 +760,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       <span className="xs:hidden">Ngắn</span> ({traLoiNganList.length})
                     </button>
                     <button
-                      type="button"
+                      
                       onClick={() => setSavedQuestionTab("tu_luan")}
                       className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1 ${
                         savedQuestionTab === "tu_luan"
@@ -801,7 +828,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                   }`}
                                 >
                                   <td
-                                    type="button"
+                                    
                                     onClick={() =>
                                       handleStartEditQuestion(q)
                                     }
@@ -833,7 +860,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                     })()}
                                   </td>
                                   <td
-                                    type="button"
+                                    
                                     onClick={() =>
                                       handleStartEditQuestion(q)
                                     }
@@ -866,7 +893,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                         {[1, 2, 4].map((c) => (
                                           <button
                                             key={c}
-                                            type="button"
+                                            
                                             onClick={() =>
                                               handleUpdateQuestionColumns(
                                                 q.id,
@@ -890,7 +917,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                     )}
                                   </td>
                                   <td
-                                    type="button"
+                                    
                                     onClick={() =>
                                       handleStartEditQuestion(q)
                                     }
@@ -902,7 +929,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                   <td className="p-3 text-center">
                                     <div className="inline-flex items-center gap-1.5">
                                       <button
-                                        type="button"
+                                        
                                         onClick={() =>
                                           handleMoveQuestion(origIdx, "up")
                                         }
@@ -913,7 +940,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                         ▲
                                       </button>
                                       <button
-                                        type="button"
+                                        
                                         onClick={() =>
                                           handleMoveQuestion(origIdx, "down")
                                         }
@@ -926,7 +953,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                         ▼
                                       </button>
                                       <button
-                                        type="button"
+                                        
                                         onClick={() =>
                                           handleStartEditQuestion(q)
                                         }
@@ -940,7 +967,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                         Sửa
                                       </button>
                                       <button
-                                        type="button"
+                                        
                                         onClick={() =>
                                           handleDeleteQuestion(q.id)
                                         }
@@ -965,7 +992,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
           </div>
 
           {/* Panel 2: EXPORT PREVIEW (Phải) */}
-          <div className="bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1">
+          <div className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1 ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
               {/* Actions Area */}
               <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col gap-4 select-none">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -978,7 +1005,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   <div className="flex flex-row flex-wrap items-center gap-1.5 sm:gap-2.5 w-full sm:w-auto justify-stretch sm:justify-end mt-2 sm:mt-0">
                     {/* Shuffle button */}
                     <button
-                      type="button"
+                      
                       onClick={() => {
                         if (docQuestions.length === 0) {
                           triggerToast("Không có câu hỏi nào để trộn đề thi!", false);
@@ -1010,7 +1037,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
                     {/* Download button */}
                     <button
-                      type="button"
+                      
                       onClick={downloadDocAsWord}
                       disabled={docQuestions.length === 0}
                       className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white h-9 px-2 sm:px-4 rounded-xl font-bold text-xs transition-all shadow-md flex-1 sm:flex-none flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none active:scale-95 whitespace-nowrap"
@@ -1021,20 +1048,6 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       <span className="hidden xs:inline">Tải Word (.doc)</span>
                       <span className="xs:hidden">Tải Word</span>
                     </button>
-
-                    {saveQBuilderToDocs && (
-                      <button
-                        type="button"
-                        onClick={saveQBuilderToDocs}
-                        disabled={docQuestions.length === 0 || isSavingDoc}
-                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 h-9 px-2 sm:px-3.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex-1 sm:flex-none flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none active:scale-95 whitespace-nowrap gap-1.5"
-                        title="Lưu đề thi vào Quản lý tài liệu (PRO)"
-                      >
-                        {isSavingDoc ? <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" /> : <Folder className="w-3.5 h-3.5 text-indigo-500" />}
-                        <span className="hidden xs:inline">Lưu đám mây</span>
-                        <span className="xs:hidden">Lưu</span>
-                      </button>
-                    )}
                   </div>
                 </div>
 
@@ -1074,7 +1087,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
                       <div className="flex gap-2">
                         <button
-                          type="button"
+                          
                           onClick={async () => {
                             await handleShuffleExam();
                             setShowShuffleConfirm(false);
@@ -1084,7 +1097,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                           Xác nhận
                         </button>
                         <button
-                          type="button"
+                          
                           onClick={() => setShowShuffleConfirm(false)}
                           className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3.5 py-1.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer"
                         >
@@ -1488,3 +1501,4 @@ export const QBuilder: React.FC<QBuilderProps> = ({
       </div>
   );
 };
+ 
