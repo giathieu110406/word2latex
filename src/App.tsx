@@ -204,16 +204,76 @@ function restoreUrls(
 function applySmartFormatting(text: string): string {
   if (!text) return "";
 
-  let formatted = text;
+  // 1. Mask math blocks and code blocks first to protect them from being modified
+  const placeholders: string[] = [];
+  const PROTECT_RE = /```[\s\S]*?```|`[^`\n]+`|\$\{[\s\S]*?\}|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\\ref\{[^}]+\}|\\label\{[^}]+\}|\$(?!\$)[\s\S]*?(?<!\\)\$/g;
 
-  // 1. Nhận dạng in đậm thiếu dấu sao ở đầu: *Đáp án đúng:** -> **Đáp án đúng**
-  // (ví dụ: * *Đáp án đúng:** sẽ thành * **Đáp án đúng**)
-  formatted = formatted.replace(/(?<!\*)\*(?!\s)([^\*\n]+?)\*\*/g, '**$1**');
+  let protectedText = text.replace(PROTECT_RE, (match) => {
+    const ph = `___SMART_FORMAT_PLACEHOLDER_${placeholders.length}___`;
+    placeholders.push(match);
+    return ph;
+  });
 
-  // 2. Nhận dạng in nghiêng thiếu dấu sao ở đầu cho mục danh sách: * Nội dung*: -> * *Nội dung*:
-  formatted = formatted.replace(/^(\s*\*\s+)([^\*\n]+?)\*(?!\*)/gm, '$1*$2*');
+  // 2. Original formatting rules:
+  // - Nhận dạng in đậm thiếu dấu sao ở đầu: *Đáp án đúng:** -> **Đáp án đúng**
+  protectedText = protectedText.replace(/(?<!\*)\*(?!\s)([^\*\n]+?)\*\*/g, '**$1**');
 
-  return formatted;
+  // - Nhận dạng in nghiêng thiếu dấu sao ở đầu cho mục danh sách: * Nội dung*: -> * *Nội dung*:
+  protectedText = protectedText.replace(/^(\s*\*\s+)([^\*\n]+?)\*(?!\*)/gm, '$1*$2*');
+
+  // 3. AUTO-RECOGNIZE EXPONENTS (SUPERSCRIPTS) AND SUBSCRIPTS ON NORMAL LETTERS:
+  
+  // A. Unicode superscript characters on single letters (or simple variable names):
+  // Superscript characters: ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ
+  const supMap: { [key: string]: string } = {
+    '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '⁺': '+', '⁻': '-', 'ⁿ': 'n'
+  };
+  protectedText = protectedText.replace(/([a-zA-Z])([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ]+)/g, (match, letter, sups) => {
+    let power = '';
+    for (let i = 0; i < sups.length; i++) {
+      power += supMap[sups[i]] || sups[i];
+    }
+    const formattedPower = power.length > 1 ? `{${power}}` : power;
+    return `$${letter}^${formattedPower}$`;
+  });
+
+  // B. Unicode subscript characters on single letters (or simple variable names):
+  // Subscript characters: ₀₁₂₃₄₅₆₇₈₉₊₋ₐₑₒₓᵢⱼᵤᵥ
+  const subMap: { [key: string]: string } = {
+    '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+    '₊': '+', '₋': '-', 'ₐ': 'a', 'ₑ': 'e', 'ₒ': 'o', 'ₓ': 'x', 'ᵢ': 'i', 'ⱼ': 'j', 'ᵤ': 'u', 'ᵥ': 'v'
+  };
+  protectedText = protectedText.replace(/([a-zA-Z])([₀₁₂₃₄₅₆₇₈₉₊₋ₐₑₒₓᵢⱼᵤᵥ]+)/g, (match, letter, subs) => {
+    let index = '';
+    for (let i = 0; i < subs.length; i++) {
+      index += subMap[subs[i]] || subs[i];
+    }
+    const formattedIndex = index.length > 1 ? `{${index}}` : index;
+    return `$${letter}_${formattedIndex}$`;
+  });
+
+  // C. Plain text caret/underscore notation: e.g. x^2, x_1, y_n, a_{i+1}, a^x, etc.
+  protectedText = protectedText.replace(/\b([a-zA-Z])\^([0-9a-zA-Z+\-]+|\{[^}]+\})/g, (match, letter, power) => {
+    return `$${letter}^${power}$`;
+  });
+
+  protectedText = protectedText.replace(/\b([a-zA-Z])_([0-9a-zA-Z+\-]+|\{[^}]+\})/g, (match, letter, index) => {
+    return `$${letter}_${index}$`;
+  });
+
+  // D. Very common plain combinations (single math letters followed immediately by a digit, e.g. x1, x2, y1, y2, u1, v2, a1, b2, c0...)
+  // We strictly target typical math variables (x, y, z, t, u, v, a, b, c, s, n, m) to avoid false positives.
+  protectedText = protectedText.replace(/\b([xyztuvabcnsm])([0-9])\b/gi, (match, letter, digit) => {
+    return `$${letter}_${digit}$`;
+  });
+
+  // 4. Restore the masked math/code blocks
+  let restoredText = protectedText;
+  for (let i = 0; i < placeholders.length; i++) {
+    restoredText = restoredText.replace(`___SMART_FORMAT_PLACEHOLDER_${i}___`, placeholders[i]);
+  }
+
+  return restoredText;
 }
 
 // Bộ lọc tối ưu hóa kiểm tra xem một cụm có thực sự là công thức toán học cần LaTeX không

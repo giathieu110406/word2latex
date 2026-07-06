@@ -318,7 +318,7 @@ HÃY ÁP DỤNG NGHIÊM NGẶT CÁC QUY TẮC SAU:
 3. CÔNG THỨC TOÁN HỌC (LATEX):
    - Công thức nội dòng (inline) đặt trong dấu $...$ (ví dụ: $a^2 + b^2 = c^2$). 
    - Công thức khối (display) phải đặt trên dòng riêng biệt và bọc bởi $$...$$ TRÊN CÙNG MỘT DÒNG hoặc tách dòng chuẩn (ví dụ: $$\\int_{a}^{b} f(x) dx = F(b) - F(a)$$).
-   - Sửa các ký hiệu unicode (như ², ³, α, β) thành mã LaTeX tương ứng ($^2$, $^3$, $\\alpha$, $\\beta$).
+   - Sửa các ký hiệu unicode (như ², ³, α, β) thành mã LaTeX tương ứng ($^2$, $^3$, $\\alpha$, $\\beta$). Nhận diện cực kỳ chính xác các số mũ và chỉ số dưới viết liền chữ cái thường (ví dụ: x2, y1, x_1, x^2, a_n, u_n, x², x₃) và bắt buộc bọc chúng trong dấu $ để tạo thành công thức LaTeX hợp lệ (ví dụ: $x^2$, $y_1$, $x_1$, $x^2$, $a_n$, $u_n$, $x^2$, $x_3$).
    - Đảm bảo các phân số, căn bậc hai, giới hạn, tích phân... viết bằng mã LaTeX chuẩn (ví dụ: \\frac{a}{b}, \\sqrt{x}, \\lim, \\int).
 
 4. TRÌNH BÀY IN ĐẬM VÀ CẤU TRÚC CÂU HỎI:
