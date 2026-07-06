@@ -69,4 +69,4 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (resource.data.userId == currentUid() || isAdmin());
     }
   }
-}
+} 

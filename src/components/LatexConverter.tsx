@@ -613,3 +613,4 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
     </div>
   );
 };
+ 

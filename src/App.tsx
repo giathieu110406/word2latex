@@ -33,7 +33,6 @@ import katex from "katex";
 import { marked } from "marked";
 import { LatexConverter } from "./components/LatexConverter";
 import { MarkItDown } from "./components/MarkItDown";
-import GoogleDriveManager from "./components/GoogleDriveManager";
 import { QBuilder } from "./components/QBuilder";
 
 // Firebase integrations
@@ -5083,12 +5082,6 @@ ${bodyHtml}
                       </div>
                       <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-md shrink-0">PRO</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('drive')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'drive' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
-                    <div className="flex items-center gap-3">
-                      <HardDrive className={`w-5 h-5 ${sidebarView === 'drive' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                      Google Drive
-                    </div>
-                  </button>
               </div>
 
               <div className="w-full shrink-0 flex flex-col gap-1">
@@ -7699,4 +7692,4 @@ ${bodyHtml}
     </div>
   </div>
   );
-}
+} 
