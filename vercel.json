@@ -11,12 +11,12 @@
   },
   "functions": {
     "api/ai.ts": {
-      "memory": 3008,
+      "memory": 1024,
       "maxDuration": 60,
       "runtime": "nodejs20.x"
     },
     "api/markitdown.ts": {
-      "memory": 3008,
+      "memory": 1024,
       "maxDuration": 60,
       "runtime": "nodejs20.x"
     },
