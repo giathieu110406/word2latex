@@ -2,13 +2,6 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "env": {
-    "GEMINI_API_KEY": "@GEMINI_API_KEY",
-    "GEMINI_API_KEY_BACKUP": "@GEMINI_API_KEY_BACKUP",
-    "keyduphongrk1104": "@keyduphongrk1104",
-    "FIREBASE_API_KEY": "@FIREBASE_API_KEY",
-    "FIREBASE_PROJECT_ID": "@FIREBASE_PROJECT_ID"
-  },
   "functions": {
     "api/ai.ts": {
       "memory": 1024,
@@ -26,5 +19,4 @@
       "runtime": "nodejs20.x"
     }
   }
-}
- 
+} 
