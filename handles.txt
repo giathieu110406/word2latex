@@ -1,0 +1,271 @@
+736-  const tuLuanList = docQuestions.filter((q) => q.type === "tu_luan");
+737-  const hasTracNghiem = tracNghiemList.length > 0;
+738-  const labelTracNghiem = "I. PHẦN TRẮC NGHIỆM";
+739-  const labelTuLuan = hasTracNghiem ? "II. PHẦN TỰ LUẬN" : "I. PHẦN TỰ LUẬN";
+740-
+741:  const handleUpdateQuestionColumns = (id: string, columns: number) => {
+742-    setDocQuestions((prev) =>
+743-      prev.map((q) => (q.id === id ? { ...q, columns } : q)),
+744-    );
+745-  };
+746-
+747:  const handleStartEditQuestion = (q: any) => {
+748-    setEditingQuestionId(q.id);
+749-    setNewQuestionType(q.type);
+750-
+751-    // Auto strip the "Câu X." pattern for clean insertion into textarea
+752-    const cleanText = getCleanQuestionBody(q.questionText);
+--
+766-      formSection.scrollIntoView({ behavior: "smooth", block: "start" });
+767-    }
+768-    triggerToast("Đã tải câu hỏi vào khung nhập để chỉnh sửa!", true);
+769-  };
+770-
+771:  const handleAddQuestion = () => {
+772-    if (newQuestionType === "trac_nghiem") {
+773-      if (!tracNghiemText.trim()) {
+774-        triggerToast(
+775-          "Nội dung câu hỏi trắc nghiệm không được để trống!",
+776-          false,
+--
+922-        triggerToast("Đã thêm câu tự luận thành công!", true);
+923-      }
+924-    }
+925-  };
+926-
+927:  const handleMoveQuestion = (index: number, direction: "up" | "down") => {
+928-    if (direction === "up" && index === 0) return;
+929-    if (direction === "down" && index === docQuestions.length - 1) return;
+930-    const targetIdx = direction === "up" ? index - 1 : index + 1;
+931-    setDocQuestions((prev) => {
+932-      const updated = [...prev];
+--
+954-        }
+955-      });
+956-    });
+957-  };
+958-
+959:  const handleDeleteQuestion = (id: string) => {
+960-    setDocQuestions((prev) => {
+961-      const filtered = prev.filter((q) => q.id !== id);
+962-      // Re-index remaining questions by type
+963-      let tnCount = 0;
+964-      let tlCount = 0;
+--
+987-      setTuLuanAnswerText("");
+988-    }
+989-    triggerToast("Đã xóa câu hỏi.");
+990-  };
+991-
+992:  const handleClearDocQuestions = () => {
+993-    if (
+994-      window.confirm(
+995-        "Bạn có chắc chắn muốn xóa tất cả câu hỏi trong tài liệu hiện tại không?",
+996-      )
+997-    ) {
+--
+1777-
+1778-    return unsubscribeFeedbacks;
+1779-  }, [user, userDoc]);
+1780-
+1781-  // --- ADMIN PANEL HANDLERS ---
+1782:  const handleUpdateUserStatus = async (targetUid: string, status: "approved" | "pending" | "rejected") => {
+1783-    try {
+1784-      await updateDoc(doc(db, "users", targetUid), { status });
+1785-      triggerToast(`Đã chuyển đổi trạng thái thành ${status === "approved" ? "Đã duyệt" : status === "pending" ? "Chờ duyệt" : "Khóa"}!`);
+1786-    } catch (e) {
+1787-      triggerToast("Lỗi thay đổi trạng thái thành viên.", false);
+1788-    }
+1789-  };
+1790-
+1791:  const handleUpdateUserRole = async (targetUid: string, role: "admin" | "user") => {
+1792-    try {
+1793-      await updateDoc(doc(db, "users", targetUid), { role });
+1794-      triggerToast(`Đã chuyển đổi vai trò thành ${role === "admin" ? "Quản trị viên" : "Thành viên"}!`);
+1795-    } catch (e) {
+1796-      triggerToast("Lỗi thay đổi vai trò thành viên.", false);
+1797-    }
+1798-  };
+1799-
+1800:  const handleResetUserUsage = async (targetUid: string) => {
+1801-    try {
+1802-      await updateDoc(doc(db, "users", targetUid), {
+1803-        latexCount: 0,
+1804-        queryCount: 0,
+1805-        examCount: 0,
+--
+1808-    } catch (e) {
+1809-      triggerToast("Lỗi thiết lập lại số lượt sử dụng.", false);
+1810-    }
+1811-  };
+1812-
+1813:  const handleAdjustUserLimit = async (targetUid: string, field: "latexCount" | "queryCount" | "examCount", value: number) => {
+1814-    try {
+1815-      await updateDoc(doc(db, "users", targetUid), {
+1816-        [field]: value,
+1817-      });
+1818-      triggerToast("Đã điều chỉnh chỉ số sử dụng thành công!");
+1819-    } catch (e) {
+1820-      triggerToast("Lỗi điều chỉnh chỉ số sử dụng.", false);
+1821-    }
+1822-  };
+1823-
+1824:  const handleSendFeedbackReply = async (fbId: string, targetUid: string, targetEmail: string) => {
+1825-    if (!feedbackReplyText.trim()) {
+1826-      triggerToast("Vui lòng nhập nội dung phản hồi.", false);
+1827-      return;
+1828-    }
+1829-    setIsSendingReply(true);
+--
+1852-    } finally {
+1853-      setIsSendingReply(false);
+1854-    }
+1855-  };
+1856-
+1857:  const handleSendGeneralNotification = async () => {
+1858-    if (!generalNoticeTitle.trim() || !generalNoticeContent.trim()) {
+1859-      triggerToast("Vui lòng nhập đầy đủ tiêu đề và nội dung.", false);
+1860-      return;
+1861-    }
+1862-    setIsSendingGeneralNotice(true);
+--
+1887-    } finally {
+1888-      setIsSendingGeneralNotice(false);
+1889-    }
+1890-  };
+1891-
+1892:  const handleDeleteFeedback = async (feedbackId: string) => {
+1893-    if (!confirm("Bạn có chắc chắn muốn xóa phản hồi này?")) return;
+1894-    try {
+1895-      await deleteDoc(doc(db, "feedbacks", feedbackId));
+1896-      triggerToast("Xóa phản hồi thành công.");
+1897-    } catch (e) {
+1898-      triggerToast("Lỗi khi xóa phản hồi.", false);
+1899-    }
+1900-  };
+1901-
+1902:  const handleDeleteUserRecord = async (targetUid: string) => {
+1903-    if (!confirm("Bạn có chắc muốn xóa bản ghi thành viên này khỏi cơ sở dữ liệu? (Hành động này không xóa tài khoản Google Auth)")) return;
+1904-    try {
+1905-      await deleteDoc(doc(db, "users", targetUid));
+1906-      triggerToast("Đã xóa bản ghi thành viên.");
+1907-    } catch (e) {
+1908-      triggerToast("Lỗi khi xóa bản ghi.", false);
+1909-    }
+1910-  };
+1911-
+1912-  // Auth Operations
+1913:  const handleGoogleLogin = async () => {
+1914-    setAuthError(null);
+1915-    const provider = new GoogleAuthProvider();
+1916-    provider.addScope('email');
+1917-    provider.addScope('profile');
+1918-    provider.setCustomParameters({
+--
+1935-        setAuthError(err.message || "Đăng nhập bằng Google thất bại.");
+1936-      }
+1937-    }
+1938-  };
+1939-
+1940:  const handleLogout = async () => {
+1941-    try {
+1942-      setAdminTab("tool");
+1943-      await signOut(auth);
+1944-      triggerToast("Đã đăng xuất tài khoản!");
+1945-    } catch (err) {
+1946-      console.error("Đăng xuất lỗi:", err);
+1947-    }
+1948-  };
+1949-
+1950-  // --- FEEDBACK SUBMISSION & DELETION ---
+1951:  const handleSubmitFeedback = async (e: React.FormEvent) => {
+1952-    e.preventDefault();
+1953-    if (!user) {
+1954-      triggerToast("Vui lòng đăng nhập để gửi phản hồi.", false);
+1955-      return;
+1956-    }
+--
+1986-    } finally {
+1987-      setIsSubmittingFeedback(false);
+1988-    }
+1989-  };
+1990-
+1991:  const handleFeedbackDeleteAction = async (fbId: string) => {
+1992-    try {
+1993-      await deleteDoc(doc(db, "feedbacks", fbId));
+1994-      triggerToast("Đã xóa phản hồi thành công.");
+1995-    } catch (err) {
+1996-      console.error(err);
+--
+2623-
+2624-  const triggerToast = (msg: string, success: boolean = true) => {
+2625-    setToast({ show: true, msg, success });
+2626-  };
+2627-
+2628:  const handleManualAutoFix = async () => {
+2629-    if (!inputText.trim()) {
+2630-      triggerToast("Vui lòng nhập văn bản trước để sửa dính chữ!", false);
+2631-      return;
+2632-    }
+2633-    const currentLatexCount = userDoc?.latexCount || 0;
+--
+2670-        start + prefix.length + selected.length,
+2671-      );
+2672-    }, 0);
+2673-  };
+2674-
+2675:  const handleBold = () => {
+2676-    insertTextAroundSelection("**", "**");
+2677-  };
+2678-
+2679:  const handleItalic = () => {
+2680-    insertTextAroundSelection("*", "*");
+2681-  };
+2682-
+2683:  const handlePasteGeneric = (
+2684-    e: React.ClipboardEvent<HTMLTextAreaElement>,
+2685-    setter: (val: string) => void,
+2686-  ) => {
+2687-    const htmlData = e.clipboardData.getData("text/html");
+2688-    let markdown = "";
+--
+2753-      "Đã tự động chuyển đổi và tối ưu hóa nội dung dán từ Word/AI!",
+2754-      true,
+2755-    );
+2756-  };
+2757-
+2758:  const handlePasteChange = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+2759-    handlePasteGeneric(e, setInputText);
+2760-  };
+2761-
+2762-  // Copy code handler
+2763:  const handleCopyAction = async () => {
+2764-    if (activeTab === "word") {
+2765-      await copyToWord();
+2766-    } else {
+2767-      await copyRawLaTeX();
+2768-    }
+--
+3662-    URL.revokeObjectURL(url);
+3663-    triggerToast("Đã tạo và tải file Word (.doc) thành công!");
+3664-    await incrementLatexCount();
+3665-  };
+3666-
+3667:  const handleFixLogic = () => {
+3668-    const textarea = textareaRef.current;
+3669-    if (!textarea) return;
+3670-
+3671-    const start = textarea.selectionStart;
+3672-    const end = textarea.selectionEnd;
+--
+3702-      setInputText(fixedText);
+3703-      triggerToast("Đã tự động sửa các lỗi khoảng trắng trong Markdown!", true);
+3704-    }
+3705-  };
+3706-
+3707:  const handleClear = () => {
+3708-    setInputText("");
+3709-    triggerToast("Đã xóa trắng trình soạn thảo.");
+3710-  };
+3711-
+3712-  // --- CONDITIONAL STATE SCREENS ---

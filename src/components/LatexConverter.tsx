@@ -1,5 +1,5 @@
-import React, { useState, useRef } from "react";
-import { Sparkles, ArrowRight, Loader2, HelpCircle, Folder, Paperclip } from "lucide-react";
+import React from "react";
+import { Sparkles, ArrowRight, Loader2, HelpCircle, Folder } from "lucide-react";
 
 interface LatexConverterProps {
   wordFont: string;
@@ -64,87 +64,6 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
   saveLatexToDocs,
   isSavingDoc = false,
 }) => {
-  const [isExtractingText, setIsExtractingText] = useState<boolean>(false);
-  const [mobileView, setMobileView] = useState<"edit" | "preview">("edit");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const extractTextFromImage = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      triggerToast("Vui lòng chọn hoặc dán file hình ảnh!", false);
-      return;
-    }
-    
-    setIsExtractingText(true);
-    triggerToast("Đang trích xuất văn bản từ hình ảnh...", true);
-
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64Image = (reader.result as string).split(',')[1];
-      try {
-        const res = await fetch("/api/ai?action=extract-text", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: base64Image, mimeType: file.type }),
-        });
-        
-        if (!res.ok) {
-          throw new Error("Lỗi máy chủ khi trích xuất");
-        }
-
-        const data = await res.json();
-        if (data.success && data.text) {
-          setAiCanvasPrompt(aiCanvasPrompt + (aiCanvasPrompt ? "\n" : "") + data.text);
-          triggerToast("Trích xuất văn bản thành công!", true);
-        } else {
-          triggerToast(data.error || "Không thể trích xuất văn bản từ hình ảnh này", false);
-        }
-      } catch (err: any) {
-        console.error("Lỗi trích xuất văn bản:", err);
-        triggerToast("Lỗi khi kết nối đến dịch vụ trích xuất văn bản!", false);
-      } finally {
-        setIsExtractingText(false);
-      }
-    };
-    reader.onerror = () => {
-      triggerToast("Không thể đọc file hình ảnh!", false);
-      setIsExtractingText(false);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await extractTextFromImage(file);
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    let hasImage = false;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.startsWith('image/')) {
-        hasImage = true;
-        break;
-      }
-    }
-
-    if (hasImage) {
-      e.preventDefault(); // Chặn hoàn toàn hành vi dán văn bản mặc định để tránh dán thừa câu hỏi hoặc text cũ
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.startsWith('image/')) {
-          const file = items[i].getAsFile();
-          if (file) {
-            await extractTextFromImage(file);
-          }
-        }
-      }
-    }
-  };
-
   return (
     <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-[500px] md:min-h-[calc(100vh-160px)]">
       {/* Top Control Settings Panel */}
@@ -250,35 +169,9 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
 
       {/* Workspace with inner padding and subtle background */}
       <div className="p-4 md:p-6 bg-white/30 flex-1 flex flex-col min-h-0">
-        {/* Mobile View Selector */}
-        <div className="lg:hidden flex bg-slate-100 p-1 rounded-xl mb-4 shrink-0 select-none">
-          <button
-            type="button"
-            onClick={() => setMobileView("edit")}
-            className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all ${
-              mobileView === "edit"
-                ? "bg-white text-indigo-700 shadow-3xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Biên soạn nguồn
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobileView("preview")}
-            className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all ${
-              mobileView === "preview"
-                ? "bg-white text-indigo-700 shadow-3xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Xem kết quả dịch
-          </button>
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 flex-1 min-h-0">
           {/* Left panel: Input Area */}
-          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden min-h-[450px] flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
+          <div className="flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden min-h-[450px] flex-1 w-full transition-all">
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -389,30 +282,13 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                     type="text"
                     value={aiCanvasPrompt}
                     onChange={(e) => setAiCanvasPrompt(e.target.value)}
-                    onPaste={handlePaste}
-                    disabled={isProcessingCanvas || isExtractingText}
-                    placeholder={isExtractingText ? "Đang trích xuất văn bản từ hình ảnh..." : "Yêu cầu AI chỉnh sửa văn bản này (vd: 'Tìm lỗi sai', 'Thêm ví dụ minh họa'...)"}
-                    className="w-full pl-4 pr-24 py-2.5 text-xs md:text-sm bg-transparent outline-none border-none text-slate-800 placeholder:text-slate-400 focus:ring-0 focus:outline-none"
+                    disabled={isProcessingCanvas}
+                    placeholder="Yêu cầu AI chỉnh sửa văn bản này (vd: 'Tìm lỗi sai', 'Thêm ví dụ minh họa'...)"
+                    className="w-full pl-4 pr-12 py-2.5 text-xs md:text-sm bg-transparent outline-none border-none text-slate-800 placeholder:text-slate-400 focus:ring-0 focus:outline-none"
                   />
-                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
-                  <div className="absolute right-12 flex items-center gap-1">
-                    <button 
-                      type="button" 
-                      disabled={isExtractingText || isProcessingCanvas}
-                      onClick={() => fileInputRef.current?.click()} 
-                      className="text-slate-400 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed p-1.5 flex items-center justify-center rounded-lg hover:bg-slate-50 transition-colors"
-                      title="Tải ảnh lên"
-                    >
-                      {isExtractingText ? (
-                        <span className="w-4 h-4 block border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
-                      ) : (
-                        <Paperclip className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
                   <button
                     type="submit"
-                    disabled={isProcessingCanvas || isExtractingText || !aiCanvasPrompt.trim()}
+                    disabled={isProcessingCanvas || !aiCanvasPrompt.trim()}
                     className="absolute right-2 p-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 text-white disabled:text-slate-400 rounded-lg transition-all cursor-pointer flex items-center justify-center shadow-xs active:scale-95"
                   >
                     {isProcessingCanvas ? (
@@ -436,7 +312,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
           </div>
 
           {/* Right panel: Preview & Advanced Copy Area */}
-          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden min-h-[450px] flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
+          <div className="flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden min-h-[450px] flex-1 w-full transition-all">
             {/* Header with Switch output tabs */}
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
               {/* Left Group: Tab selector with visual divider */}
@@ -488,6 +364,19 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                       <span className="hidden xs:inline">Tải Word</span>
                       <span className="xs:hidden">Word</span>
                     </button>
+                    {saveLatexToDocs && (
+                      <button
+                        type="button"
+                        onClick={() => saveLatexToDocs("word")}
+                        disabled={isSavingDoc}
+                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 h-9 px-2 sm:px-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex-1 sm:flex-none flex items-center justify-center whitespace-nowrap active:scale-95 gap-1.5 disabled:opacity-50"
+                        title="Lưu file Word vào Quản lý tài liệu (PRO)"
+                      >
+                        {isSavingDoc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Folder className="w-3.5 h-3.5" />}
+                        <span className="hidden xs:inline">Lưu đám mây</span>
+                        <span className="xs:hidden">Lưu</span>
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -508,6 +397,19 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                       <span className="hidden xs:inline">Tải PDF</span>
                       <span className="xs:hidden">PDF</span>
                     </button>
+                    {saveLatexToDocs && (
+                      <button
+                        type="button"
+                        onClick={() => saveLatexToDocs("pdf")}
+                        disabled={!overleafCode || isSavingDoc}
+                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 h-9 px-2 sm:px-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex-1 sm:flex-none flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap active:scale-95 gap-1.5"
+                        title="Lưu file PDF vào Quản lý tài liệu (PRO)"
+                      >
+                        {isSavingDoc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Folder className="w-3.5 h-3.5" />}
+                        <span className="hidden xs:inline">Lưu đám mây</span>
+                        <span className="xs:hidden">Lưu</span>
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -613,4 +515,3 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
     </div>
   );
 };
- 

@@ -63,10 +63,10 @@ service cloud.firestore {
     }
 
     match /saved_documents/{documentId} {
-      allow create: if isSignedIn() && (request.resource.data.userId == currentUid() || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == currentUid();
       allow read:   if isSignedIn() && (resource.data.userId == currentUid() || isAdmin());
       allow update: if isSignedIn() && resource.data.userId == currentUid() && request.resource.data.userId == currentUid();
       allow delete: if isSignedIn() && (resource.data.userId == currentUid() || isAdmin());
     }
   }
-} 
+}
