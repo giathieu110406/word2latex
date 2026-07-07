@@ -2,7 +2,8 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 import * as mammoth from "mammoth";
 
-// Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
+
+// Dynamic import of Google Gen AI SDK to prevent boot-time ESM/CJS compile issues in Vercel
 let GoogleGenAISDK: any = null;
 let Type: any = null;
 let aiClient: any = null;
@@ -48,7 +49,9 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
   let firstImportantError: any = null;
   
   const modelsToTry = overrideModelsToTry || [
-    params.model || "gemini-2.5-flash-lite",
+    params.model || "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
     "gemini-2.0-flash-lite",
@@ -142,7 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Call Gemini API using retry logic to parse the text with strict guidelines
     const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash-lite", // Use the fastest and lightest model by default
+      model: "gemini-3.1-flash-lite", // Use the fastest and lightest model by default
       contents: `Hãy phân tích văn bản đề thi dưới đây:\n\n${rawText}`,
       config: {
         systemInstruction: `Bạn là chuyên gia phân tích đề thi và bài tập học thuật. Hãy bóc tách văn bản đề bài thành các câu hỏi/bài tập hoàn chỉnh và trả về định dạng JSON theo các quy tắc nghiêm ngặt sau:
@@ -235,10 +238,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Nội dung văn bản trống" });
     }
 
-    console.log("[Gemini API] Đang xử lý bóc tách và phân loại câu hỏi thô bằng model gemini-2.5-flash-lite...");
+    console.log("[Gemini API] Đang xử lý bóc tách và phân loại câu hỏi thô bằng model gemini-3.1-flash-lite...");
 
     const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash-lite", // The fastest and lightest AI model
+      model: "gemini-3.1-flash-lite", // The fastest and lightest AI model
       contents: `Hãy phân tích, phân nhóm và bóc tách các câu hỏi từ văn bản dưới đây:\n\n${text}`,
       config: {
         systemInstruction: `Bạn là trợ lý AI chuyên môn cao đóng vai trò là bộ bóc tách cấu trúc câu hỏi thô (raw extractor) và phân loại câu hỏi cực kỳ chính xác.
@@ -307,7 +310,7 @@ HƯỚNG DẪN CỰC KỲ QUAN TRỌNG:
 
     // Call Gemini API using retry logic to fix the text with strict presentation guidelines
     const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash-lite", // Use the fastest and lightest model by default
+      model: "gemini-3.1-flash-lite", // Use the fastest and lightest model by default
       contents: `Hãy tối ưu hóa hiển thị và sửa toàn bộ các lỗi trình bày, lỗi logic định dạng cho văn bản tiếng Việt sau đây:\n\n${text}`,
       config: {
         systemInstruction: `Bạn là chuyên gia định dạng tài liệu học thuật (Markdown, LaTeX và bảng biểu).
@@ -383,7 +386,7 @@ HÃY ÁP DỤNG NGHIÊM NGẶT CÁC QUY TẮC SAU:
 
     // Call Gemini API using retry logic to process text with user prompt
     const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash-lite", // standard highly-available fast model
+      model: "gemini-3.1-flash-lite", // standard highly-available fast model
       contents: `Nội dung Canvas hiện tại:\n${text || ""}\n\nYêu cầu thực hiện:\n${prompt}`,
       config: {
         systemInstruction: `Bạn là trợ lý AI Canvas chuyên nghiệp. Nhiệm vụ của bạn là thực hiện chỉnh sửa, dịch thuật, thêm lời giải chi tiết, in đậm từ khóa hoặc tạo câu hỏi tương tự từ văn bản hiện tại được cung cấp bởi người dùng.
@@ -432,7 +435,7 @@ HÃY TUÂN THỦ CÁC QUY TẮC CHẶT CHẼ SAU:
     console.log("[Gemini API] Đang gửi yêu cầu thay thế số liệu đề thi bằng AI...");
 
     const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash-lite", // Use the fastest and lightest model by default
+      model: "gemini-3.1-flash-lite", // Use the fastest and lightest model by default
       contents: `Dưới đây là danh sách câu hỏi trong đề thi. Với mỗi câu hỏi, hãy THAY ĐỔI CÁC SỐ LIỆU (số tự nhiên, số thực, phân số, tọa độ...), biến số hoặc ngữ cảnh nhỏ trong câu hỏi sao cho vẫn GIỮ NGUYÊN cấu trúc toán học/logic và phương pháp giải bài toán đó. Tuyệt đối không thay đổi phương pháp giải hoặc bản chất câu hỏi.
 Nếu là câu hỏi trắc nghiệm có các phương án lựa chọn A, B, C, D, hãy đảm bảo tính toán lại các phương án nhiễu và phương án đúng một cách chính xác theo số liệu mới đã thay thế.
 Trả về dữ liệu dưới dạng JSON với định dạng là một mảng đối tượng giống hệt đầu vào, chứa "id", "type", và "questionText" đã được thay đổi số liệu. Đặt mảng này trong thuộc tính "questions" của đối tượng JSON trả về.
@@ -548,12 +551,12 @@ HƯỚNG DẪN XỬ LÝ SỰ CỐ (TROUBLESHOOTING):
 Hãy trả lời bằng tiếng Việt, giọng điệu thân thiện, chuyên nghiệp, súc tích, dễ hiểu. Sử dụng định dạng Markdown (tiêu đề, danh sách, in đậm) để câu trả lời rõ ràng, trực quan.`;
 
     const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash-lite", 
+      model: "gemini-3.1-flash-lite", 
       contents: contents,
       config: {
         systemInstruction: systemPrompt,
       }
-    }, 2, 500, ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"]);
+    }, 2, 500, ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.5-pro"]);
 
     return res.json({ success: true, text: response.text });
   } catch (error: any) {
@@ -618,9 +621,9 @@ Lưu ý:
     }
 
     const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash",
       contents: contents
-    }, 3, 1500, ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]);
+    }, 3, 1500, ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.5-pro"]);
 
     return res.json({ success: true, markdown: response.text });
 
@@ -643,7 +646,7 @@ Lưu ý:
       console.log("[Gemini API] Đang trích xuất văn bản từ hình ảnh...");
   
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-3.1-flash-lite",
         contents: {
           parts: [
             {
