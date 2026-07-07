@@ -1,13 +1,13 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from '@google/genai';
-import { parseFile, parseUrl } from "../markitdown.ts";
+import { parseFile, parseUrl } from "../markitdown";
 
 let aiClient: GoogleGenAI | null = null;
 let aiBackupClient: GoogleGenAI | null = null;
 
 function getAiClient(useBackup = false): GoogleGenAI {
   const primaryKey = process.env.GEMINI_API_KEY;
-  const backupKey = process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "AQ.Ab8RN6JaJXwFc-5EVoSbWQ7RwD_7qoLOc7DWrkM-7HdSM5cVgg";
+  const backupKey = process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "";
 
   if (useBackup || !primaryKey) {
     if (!aiBackupClient) {

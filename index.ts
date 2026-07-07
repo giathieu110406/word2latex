@@ -18,7 +18,7 @@ let aiClient: GoogleGenAI | null = null;
 
 function getAiClient(): GoogleGenAI {
   if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "AQ.Ab8RN6JaJXwFc-5EVoSbWQ7RwD_7qoLOc7DWrkM-7HdSM5cVgg";
+    const apiKey = process.env.GEMINI_API_KEY || process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "";
     aiClient = new GoogleGenAI({
       apiKey: apiKey,
     });
@@ -102,7 +102,7 @@ app.get("/api/approve-user", async (req, res) => {
   if (!uid || !token) {
     return res.status(400).send(`
       <div style="font-family: 'Segoe UI', system-ui, sans-serif; text-align: center; padding: 50px; background: #fafafa; min-height: 100vh; display: flex; align-items: center; justify-content: center;">
-        <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); max-width: 500px; border: 1px id='error-card' style='border-color: #fca5a5;'>
+        <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); max-width: 500px; border: 1px solid #fca5a5;">
           <h2 style="color: #ef4444; margin-top: 0;">Lỗi Phê Duyệt</h2>
           <p style="color: #64748b; font-size: 15px; line-height: 1.6;">Yêu cầu phê duyệt không hợp lệ. Vui lòng kiểm tra lại liên kết trong email.</p>
         </div>
