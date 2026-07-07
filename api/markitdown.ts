@@ -1,7 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 
-// Dynamic import of Google Gen AI SDK to prevent boot-time ESM/CJS compile issues in Vercel
+// Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
 let GoogleGenAISDK: any = null;
 let aiClient: any = null;
 
@@ -45,9 +45,7 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
   let firstImportantError: any = null;
   
   const modelsToTry = overrideModelsToTry || [
-    params.model || "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
+    params.model || "gemini-2.5-flash-lite",
     "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
     "gemini-2.0-flash-lite",
@@ -153,9 +151,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: contents
-    }, 3, 1500, ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.5-pro"]);
+    }, 3, 1500, ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]);
 
     return res.json({ success: true, markdown: response.text });
 
