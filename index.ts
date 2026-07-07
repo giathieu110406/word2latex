@@ -16,9 +16,18 @@ dotenv.config();
 // Initialize Google GenAI client lazily to avoid crashing on startup if key is missing
 let aiClient: GoogleGenAI | null = null;
 
+function cleanApiKey(key: string | undefined): string {
+  if (!key) return "";
+  let cleaned = key.trim();
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
+
 function getAiClient(): GoogleGenAI {
   if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "";
+    const apiKey = cleanApiKey(process.env.GEMINI_API_KEY);
     aiClient = new GoogleGenAI({
       apiKey: apiKey,
     });
@@ -33,14 +42,14 @@ const getFallbackApiKey = () => {
 
 // Firebase config matching standard client config
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8",
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN || "word2latex-prod-fde7b.firebaseapp.com",
-  databaseURL: process.env.FIREBASE_DATABASE_URL || "https://word2latex-prod-fde7b-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: process.env.FIREBASE_PROJECT_ID || "word2latex-prod-fde7b",
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "word2latex-prod-fde7b.firebasestorage.app",
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "341505323323",
-  appId: process.env.FIREBASE_APP_ID || "1:341505323323:web:8ba2fc4bb7e14a6fa6871e",
-  measurementId: process.env.FIREBASE_MEASUREMENT_ID || "G-2BF1P0L333"
+  apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8",
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN || "word2latex-prod-fde7b.firebaseapp.com",
+  databaseURL: process.env.FIREBASE_DATABASE_URL || process.env.VITE_FIREBASE_DATABASE_URL || "https://word2latex-prod-fde7b-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "word2latex-prod-fde7b",
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || "word2latex-prod-fde7b.firebasestorage.app",
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "341505323323",
+  appId: process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || "1:341505323323:web:8ba2fc4bb7e14a6fa6871e",
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID || process.env.VITE_FIREBASE_MEASUREMENT_ID || "G-2BF1P0L333"
 };
 // Use the databaseId provisioned for this project, sanitizing URLs or malformed values if present
 const getCleanDatabaseId = (rawId: string | undefined): string | undefined => {
@@ -67,7 +76,7 @@ const getCleanDatabaseId = (rawId: string | undefined): string | undefined => {
   return clean;
 };
 
-const databaseId = getCleanDatabaseId(process.env.FIREBASE_DATABASE_ID);
+const databaseId = getCleanDatabaseId(process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID);
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);

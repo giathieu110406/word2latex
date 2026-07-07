@@ -10,12 +10,12 @@ function generateApprovalToken(uid: string): string {
 }
 
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8",
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN || "word2latex-prod-fde7b.firebaseapp.com",
-  projectId: process.env.FIREBASE_PROJECT_ID || "word2latex-prod-fde7b",
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "word2latex-prod-fde7b.firebasestorage.app",
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "341505323323",
-  appId: process.env.FIREBASE_APP_ID || "1:341505323323:web:8ba2fc4bb7e14a6fa6871e",
+  apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8",
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN || "word2latex-prod-fde7b.firebaseapp.com",
+  projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "word2latex-prod-fde7b",
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || "word2latex-prod-fde7b.firebasestorage.app",
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "341505323323",
+  appId: process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || "1:341505323323:web:8ba2fc4bb7e14a6fa6871e",
 };
 
 const firebaseApp = initializeApp(firebaseConfig);

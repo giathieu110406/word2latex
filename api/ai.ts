@@ -1,27 +1,38 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { GoogleGenAI, Type } from '@google/genai';
 import { parseFile, parseUrl } from "../markitdown";
 import * as mammoth from "mammoth";
 
+// Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
+let GoogleGenAISDK: any = null;
+let Type: any = null;
+let aiClient: any = null;
 
-let aiClient: GoogleGenAI | null = null;
-let aiBackupClient: GoogleGenAI | null = null;
+async function loadGenAISDK() {
+  if (!GoogleGenAISDK) {
+    const sdk = await import('@google/genai');
+    GoogleGenAISDK = sdk.GoogleGenAI;
+    Type = sdk.Type;
+  }
+}
 
-function getAiClient(useBackup = false): GoogleGenAI {
-  const primaryKey = process.env.GEMINI_API_KEY;
-  const backupKey = process.env.keyduphongrk1104 || process.env.GEMINI_API_KEY_BACKUP || "";
+function cleanApiKey(key: string | undefined): string {
+  if (!key) return "";
+  let cleaned = key.trim();
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
 
-  if (useBackup || !primaryKey) {
-    if (!aiBackupClient) {
-      aiBackupClient = new GoogleGenAI({
-        apiKey: backupKey,
-      });
-    }
-    return aiBackupClient;
+function getAiClient(): any {
+  const primaryKey = cleanApiKey(process.env.GEMINI_API_KEY);
+
+  if (!primaryKey) {
+    throw new Error("Không thể kết nối đến Trợ lý AI. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
   }
 
   if (!aiClient) {
-    aiClient = new GoogleGenAI({
+    aiClient = new GoogleGenAISDK({
       apiKey: primaryKey,
     });
   }
@@ -29,8 +40,8 @@ function getAiClient(useBackup = false): GoogleGenAI {
 }
 
 async function generateContentWithRetry(params: any, retries = 3, delay = 1500, overrideModelsToTry?: string[]) {
-  if (!process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY_BACKUP && !process.env.keyduphongrk1104) {
-    throw new Error("Không thể kết nối đến Trợ lý AI Canvas. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Không thể kết nối đến Trợ lý AI. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
   }
 
   let lastError: any = null;
@@ -46,45 +57,41 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
     "gemini-2.5-pro"
   ].filter((value, index, self) => self.indexOf(value) === index && value);
   
-  const keysToTry = [false, true]; 
-  
   for (let attempt = 1; attempt <= retries; attempt++) {
-    for (const useBackup of keysToTry) {
-      for (const model of modelsToTry) {
-        try {
-          console.log(`[Gemini API] Đang gửi yêu cầu bằng model: ${model} (Key dự phòng: ${useBackup ? 'Có' : 'Không'}, Lần thử ${attempt}/${retries})`);
-          const aiInstance = getAiClient(useBackup);
-          const response = await aiInstance.models.generateContent({
-            ...params,
-            model: model
-          });
-          return response;
-        } catch (error: any) {
-          lastError = error;
-          if (!firstImportantError && error.status !== 404) {
-             firstImportantError = error;
-          }
-          console.warn(`[Gemini API] Thử nghiệm model ${model} (Key dự phòng: ${useBackup ? 'Có' : 'Không'}) thất bại:`, error.message || error);
-          
-          if (
-            error.message?.includes("API_KEY_INVALID") ||
-            error.message?.includes("cấu hình GEMINI_API_KEY") ||
-            error.status === 403 ||
-            error.status === 401
-          ) {
-            break; 
-          }
-          
-          if (error.status === 429 || error.status === 503 || (error.message && (error.message.includes("quota") || error.message.includes("Quota") || error.message.includes("high demand") || error.message.includes("overloaded")))) {
-             continue;
-          }
+    for (const model of modelsToTry) {
+      try {
+        console.log(`[Gemini API] Đang gửi yêu cầu bằng model: ${model} (Lần thử ${attempt}/${retries})`);
+        const aiInstance = getAiClient();
+        const response = await aiInstance.models.generateContent({
+          ...params,
+          model: model
+        });
+        return response;
+      } catch (error: any) {
+        lastError = error;
+        if (!firstImportantError && error.status !== 404) {
+          firstImportantError = error;
+        }
+        console.warn(`[Gemini API] Thử nghiệm model ${model} thất bại:`, error.message || error);
+        
+        if (
+          error.message?.includes("API_KEY_INVALID") ||
+          error.message?.includes("cấu hình GEMINI_API_KEY") ||
+          error.status === 403 ||
+          error.status === 401
+        ) {
+          break; 
+        }
+        
+        if (error.status === 429 || error.status === 503 || (error.message && (error.message.includes("quota") || error.message.includes("Quota") || error.message.includes("high demand") || error.message.includes("overloaded")))) {
+          continue;
         }
       }
     }
     
     if (attempt < retries) {
       const waitTime = delay * Math.pow(2, attempt - 1);
-      console.log(`[Gemini API] Tất cả các model và key đều tạm thời không khả dụng ở lần thử ${attempt}. Đang chờ ${waitTime}ms trước khi thử lại...`);
+      console.log(`[Gemini API] Tất cả các model đều tạm thời không khả dụng ở lần thử ${attempt}. Đang chờ ${waitTime}ms trước khi thử lại...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
@@ -108,6 +115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    await loadGenAISDK();
     if (action === 'parse-exam') {
 
   try {
