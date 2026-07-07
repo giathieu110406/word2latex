@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { parseFile, parseUrl } from "../markitdown";
+import { parseFile, parseUrl } from "../markitdown.js";
 
 // Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
 let GoogleGenAISDK: any = null;
