@@ -26,7 +26,7 @@ import {
   Diamond,
   Search, Pin, PinOff, Mail,
   Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserPlus, UserCog, User, Info, Save,
-  Paperclip, Layout
+  Paperclip, Layout, Laptop, Wifi
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
@@ -6350,72 +6350,202 @@ ${bodyHtml}
             )}
             {/* Sub-tab 4: Tracking & Warnings */}
             {sidebarView === "tracking" && (() => {
-              // Group users by deviceFingerprint or lastIp
-              const suspiciousGroups = new Map<string, any[]>();
+              // 1. Group users by Device Fingerprint
+              const deviceFingerprintGroups = new Map<string, any[]>();
+              // 2. Group users by lastIp
+              const ipGroups = new Map<string, any[]>();
+
               allUsers.forEach(u => {
-                if (u.deviceFingerprint || u.lastIp) {
-                  const key = u.deviceFingerprint ? `FP:${u.deviceFingerprint}` : `IP:${u.lastIp}`;
-                  if (!suspiciousGroups.has(key)) suspiciousGroups.set(key, []);
-                  suspiciousGroups.get(key)!.push(u);
+                if (u.deviceFingerprint) {
+                  if (!deviceFingerprintGroups.has(u.deviceFingerprint)) {
+                    deviceFingerprintGroups.set(u.deviceFingerprint, []);
+                  }
+                  deviceFingerprintGroups.get(u.deviceFingerprint)!.push(u);
+                }
+                if (u.lastIp && u.lastIp !== "unknown") {
+                  if (!ipGroups.has(u.lastIp)) {
+                    ipGroups.set(u.lastIp, []);
+                  }
+                  ipGroups.get(u.lastIp)!.push(u);
                 }
               });
 
-              // Filter out groups with only 1 user or all admin/pro
-              const flaggedGroups = Array.from(suspiciousGroups.entries())
-                .map(([key, group]) => [key, group.filter(u => u.role !== "admin" && u.status !== "approved")] as [string, any[]])
-                .filter(([key, group]) => group.length > 1);
+              // Filter out groups with only 1 user or all admin/approved
+              const flaggedDeviceGroups = Array.from(deviceFingerprintGroups.entries())
+                .map(([fp, group]) => [fp, group.filter(u => u.role !== "admin" && u.status !== "approved")] as [string, any[]])
+                .filter(([fp, group]) => group.length > 1);
+
+              // To avoid duplication and confusion, for IP groups we only care about users 
+              // who share the same IP but DO NOT share the same device fingerprint.
+              // That means they are distinct people/devices on the same local network.
+              const flaggedIpGroups = Array.from(ipGroups.entries())
+                .map(([ip, group]) => {
+                  const filteredGroup = group.filter(u => u.role !== "admin" && u.status !== "approved");
+                  // Check if this IP group is just a duplicate of an existing device fingerprint group
+                  // If all users in this IP group have the same device fingerprint, we don't need to show them as a separate IP group
+                  const uniqueFps = new Set(filteredGroup.map(u => u.deviceFingerprint).filter(Boolean));
+                  
+                  // If there is only 1 unique fingerprint but multiple users, it's actually a device-sharing group (already shown above)
+                  if (uniqueFps.size === 1 && filteredGroup.length > 1) {
+                    return [ip, []] as [string, any[]];
+                  }
+                  
+                  return [ip, filteredGroup] as [string, any[]];
+                })
+                .filter(([ip, group]) => group.length > 1);
+
+              const totalAlerts = flaggedDeviceGroups.length + flaggedIpGroups.length;
 
               return (
                 <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] p-4 md:p-6 lg:p-8 flex-1 flex flex-col">
                   {/* Header */}
-                  <div className="flex items-center gap-3.5 mb-6">
-                    <div className="w-11 h-11 bg-amber-50 rounded-xl flex items-center justify-center shrink-0 border border-amber-100">
-                      <ShieldAlert className="w-5 h-5 text-amber-600" />
+                  <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-11 h-11 bg-amber-50 rounded-xl flex items-center justify-center shrink-0 border border-amber-100">
+                        <ShieldAlert className="w-5 h-5 text-amber-600" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-extrabold tracking-tight text-slate-800">Hệ thống theo dõi & cảnh báo</h2>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">Phân biệt và kiểm soát hành vi đăng nhập nhiều tài khoản</p>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="text-xl font-extrabold tracking-tight text-slate-800">Hệ thống theo dõi & cảnh báo</h2>
-                      <p className="text-xs text-slate-500 font-medium mt-0.5">Phát hiện và theo dõi các dấu hiệu lạm dụng hệ thống hoặc sử dụng nhiều tài khoản</p>
+                    {totalAlerts > 0 && (
+                      <span className="text-[11px] font-bold bg-amber-500/10 text-amber-600 px-3 py-1 rounded-full border border-amber-500/20">
+                        Phát hiện {totalAlerts} nhóm trùng khớp
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Clarification Hub Box */}
+                  <div className="mb-6 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 flex gap-3 text-slate-700 text-xs leading-relaxed">
+                    <Info className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                    <div className="space-y-2">
+                      <p className="font-bold text-slate-800 text-sm">Cẩm nang phân biệt dấu hiệu sử dụng hệ thống:</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-rose-50/50 border border-rose-100 p-3 rounded-xl">
+                          <div className="flex items-center gap-1.5 font-bold text-rose-700 mb-1">
+                            <Laptop className="w-3.5 h-3.5" />
+                            <span>1. Dùng chung thiết bị (Fingerprint)</span>
+                          </div>
+                          <p className="text-slate-600 text-[11px]">
+                            Nhiều tài khoản đăng nhập trên <strong>cùng một trình duyệt/thiết bị vật lý</strong>. 
+                            Khả năng rất cao là một người tạo nhiều tài khoản clone để lạm dụng tài nguyên.
+                          </p>
+                        </div>
+                        <div className="bg-amber-50/40 border border-amber-100 p-3 rounded-xl">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-700 mb-1">
+                            <Wifi className="w-3.5 h-3.5" />
+                            <span>2. Dùng chung mạng IP (IP Address)</span>
+                          </div>
+                          <p className="text-slate-600 text-[11px]">
+                            Nhiều thiết bị khác nhau cùng kết nối từ <strong>một mạng Wi-Fi (Trường học, văn phòng, quán cafe...)</strong>. 
+                            Đây là hành vi sử dụng chung mạng bình thường, <strong>không nên vội vã coi là gian lận/lạm dụng</strong>.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    {flaggedGroups.length === 0 ? (
-                      <div className="py-12 text-center flex flex-col items-center">
-                        <CheckCircle2 className="w-10 h-10 text-emerald-400 mb-3" />
-                        <h3 className="text-sm font-bold text-slate-700">Hệ thống an toàn</h3>
-                        <p className="text-xs text-slate-500 mt-1">Không phát hiện dấu hiệu lạm dụng hoặc tạo nhiều tài khoản trên cùng thiết bị.</p>
+                  <div className="space-y-8">
+                    {/* SECTION 1: DEVICE SHARING */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
+                        <Laptop className="w-4.5 h-4.5 text-rose-600" />
+                        <h3 className="text-sm font-bold text-slate-800">Nhóm dùng chung thiết bị ({flaggedDeviceGroups.length})</h3>
+                        <span className="text-[10px] font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full ml-auto">Độ chính xác cao</span>
                       </div>
-                    ) : (
-                      flaggedGroups.map(([key, group], idx) => (
-                        <div key={idx} className="bg-amber-50/50 border border-amber-200/50 rounded-2xl p-4">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4 text-amber-600" />
-                              <span className="text-xs font-bold text-amber-900 uppercase">Cảnh báo: Dùng chung thiết bị / IP</span>
-                            </div>
-                            <span className="text-[10px] font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{key.replace("FP:", "Fingerprint: ").replace("IP:", "IP: ")}</span>
-                          </div>
-                          <div className="space-y-2">
-                            {group.map((u, i) => (
-                              <div key={i} className="flex items-center justify-between bg-white/60 p-2 rounded-lg border border-white/50">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 rounded-full bg-slate-200 overflow-hidden shrink-0">
-                                    <img src={u.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${u.displayName || u.email}&backgroundColor=c7d2fe`} alt="" className="w-full h-full object-cover"/>
-                                  </div>
-                                  <div>
-                                    <div className="text-xs font-bold text-slate-800">{u.displayName} <span className="font-normal text-slate-500">({u.role === "admin" ? "Admin" : "Thành viên"})</span></div>
-                                    <div className="text-[10px] text-slate-500">{u.email}</div>
-                                  </div>
-                                </div>
-                                <div className="text-[10px] text-slate-400 text-right">
-                                  Đăng nhập: {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("vi-VN") : "N/A"}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+
+                      {flaggedDeviceGroups.length === 0 ? (
+                        <div className="py-6 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/30">
+                          <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                          <p className="text-xs font-bold text-slate-600">Hệ thống an toàn</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Không phát hiện nhiều tài khoản đăng nhập chung một thiết bị.</p>
                         </div>
-                      ))
-                    )}
+                      ) : (
+                        <div className="space-y-4">
+                          {flaggedDeviceGroups.map(([fp, group], idx) => (
+                            <div key={idx} className="bg-rose-50/20 border border-rose-100 rounded-2xl p-4">
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                                  <span className="text-xs font-bold text-rose-950 uppercase">Cảnh báo: Trùng dấu vân tay thiết bị</span>
+                                </div>
+                                <span className="text-[9px] font-mono text-rose-700 bg-rose-100/60 px-2 py-0.5 rounded-full font-bold">Fingerprint ID: {fp.substring(0, 16)}...</span>
+                              </div>
+                              <div className="space-y-2">
+                                {group.map((u, i) => (
+                                  <div key={i} className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-rose-100/50 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-7 h-7 rounded-full bg-slate-200 overflow-hidden shrink-0">
+                                        <img src={u.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${u.displayName || u.email}&backgroundColor=c7d2fe`} alt="" className="w-full h-full object-cover"/>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-bold text-slate-800">{u.displayName} <span className="font-normal text-slate-500">({u.role === "admin" ? "Admin" : "Thành viên"})</span></div>
+                                        <div className="text-[10px] text-slate-500 font-medium">{u.email}</div>
+                                      </div>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 text-right">
+                                      <div className="font-semibold text-slate-700">Đăng nhập cuối:</div>
+                                      <div>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("vi-VN") : "N/A"}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SECTION 2: IP SHARING */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
+                        <Wifi className="w-4.5 h-4.5 text-amber-600" />
+                        <h3 className="text-sm font-bold text-slate-800">Nhóm dùng chung mạng IP ({flaggedIpGroups.length})</h3>
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full ml-auto">Trùng mạng Wi-Fi (Bình thường)</span>
+                      </div>
+
+                      {flaggedIpGroups.length === 0 ? (
+                        <div className="py-6 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/30">
+                          <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                          <p className="text-xs font-bold text-slate-600">Không có trùng IP bên ngoài</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Mọi tài khoản truy cập từ các địa chỉ IP độc lập hoặc đã được nhóm thiết bị gom nhóm.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {flaggedIpGroups.map(([ip, group], idx) => (
+                            <div key={idx} className="bg-amber-50/30 border border-amber-200/50 rounded-2xl p-4">
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <Info className="w-4 h-4 text-amber-600" />
+                                  <span className="text-xs font-bold text-amber-950 uppercase">Ghi nhận: Truy cập chung mạng IP</span>
+                                </div>
+                                <span className="text-[10px] font-mono text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full font-bold">IP: {ip}</span>
+                              </div>
+                              <div className="space-y-2">
+                                {group.map((u, i) => (
+                                  <div key={i} className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-amber-100/50 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-7 h-7 rounded-full bg-slate-200 overflow-hidden shrink-0">
+                                        <img src={u.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${u.displayName || u.email}&backgroundColor=c7d2fe`} alt="" className="w-full h-full object-cover"/>
+                                      </div>
+                                      <div>
+                                        <div className="text-xs font-bold text-slate-800">{u.displayName} <span className="font-normal text-slate-500">({u.role === "admin" ? "Admin" : "Thành viên"})</span></div>
+                                        <div className="text-[10px] text-slate-500 font-medium">{u.email}</div>
+                                      </div>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 text-right">
+                                      <div className="font-semibold text-slate-700">Đăng nhập cuối:</div>
+                                      <div>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("vi-VN") : "N/A"}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
