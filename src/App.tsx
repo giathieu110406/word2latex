@@ -478,6 +478,7 @@ export default function App() {
     setIsMenuOpen(false);
   };
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [dismissingAll, setDismissingAll] = useState<boolean>(false);
   const [userSearchQuery, setUserSearchQuery] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showFilterDropdown, setShowFilterDropdown] = useState<boolean>(false);
@@ -2210,7 +2211,18 @@ export default function App() {
         const ipRes = await fetch("https://api.ipify.org?format=json").catch(() => null);
         const ipData = ipRes ? await ipRes.json() : { ip: "unknown" };
         const ip = ipData.ip || "unknown";
-        const fp = `${navigator.userAgent}-${window.screen.width}x${window.screen.height}`;
+        
+        // Sử dụng một ID thiết bị lưu trong localStorage để phân biệt chính xác
+        // Giúp tránh báo động nhầm (false positive) khi nhiều người dùng có cùng loại máy và độ phân giải
+        let deviceId = localStorage.getItem("device_tracking_id");
+        if (!deviceId) {
+          deviceId = "dev_" + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+          localStorage.setItem("device_tracking_id", deviceId);
+        }
+        
+        // Kết hợp ID với một phần user agent và kích thước màn hình
+        const browserHint = navigator.userAgent.split(' ')[0] || "unknown";
+        const fp = `${deviceId}_${browserHint}_${window.screen.width}x${window.screen.height}`;
         
         const userDocRef = doc(db, "users", user.uid);
         await updateDoc(userDocRef, { 
@@ -2269,6 +2281,7 @@ export default function App() {
                 latexCount: 0,
                 examCount: 0,
                 promptCount: 0,
+                markItDownCount: 0,
                 createdAt: new Date().toISOString(),
                 lastLatexResetDate: todayStr,
               };
@@ -2312,6 +2325,7 @@ export default function App() {
             updateData.latexCount = 0;
             updateData.promptCount = 0;
             updateData.examCount = 0;
+            updateData.markItDownCount = 0;
             updateData.lastLatexResetDate = todayStr;
             needsUpdate = true;
           }
@@ -2350,6 +2364,7 @@ export default function App() {
             latexCount: 0,
             examCount: 0,
             promptCount: 0,
+            markItDownCount: 0,
             createdAt: new Date().toISOString(),
             lastLatexResetDate: todayStr,
           };
@@ -2383,6 +2398,7 @@ export default function App() {
           latexCount: 0,
           examCount: 0,
           promptCount: 0,
+          markItDownCount: 0,
           createdAt: new Date().toISOString(),
           lastLatexResetDate: todayStr,
         };
@@ -2550,6 +2566,7 @@ export default function App() {
         queryCount: 0,
         examCount: 0,
         promptCount: 0,
+        markItDownCount: 0,
         lastLatexResetDate: getTodayStr(),
       });
       triggerToast("Đã thiết lập lại (reset) số lượt sử dụng của thành viên!");
@@ -2733,6 +2750,7 @@ export default function App() {
         latexCount: 0,
         examCount: 0,
         promptCount: 0,
+        markItDownCount: 0,
         createdAt: new Date().toISOString(),
         lastLatexResetDate: getTodayStr(),
       };
@@ -2934,6 +2952,20 @@ export default function App() {
         });
       } catch (err) {
         console.error("Lỗi đếm số lượt dán thông minh AI:", err);
+      }
+    }
+  };
+
+  const handleMarkItDownUsage = async () => {
+    if (user && userDoc) {
+      try {
+        await updateDoc(doc(db, "users", user.uid), {
+          markItDownCount: increment(1),
+          promptCount: increment(1),
+          queryCount: increment(1),
+        });
+      } catch (err) {
+        console.error("Lỗi đếm số lượt dùng MarkItDown AI:", err);
       }
     }
   };
@@ -6356,6 +6388,9 @@ ${bodyHtml}
               const ipGroups = new Map<string, any[]>();
 
               allUsers.forEach(u => {
+                // Skip if dismissedAlert is true (user explicitly dismissed)
+                if (u.dismissedAlert) return;
+
                 if (u.deviceFingerprint) {
                   if (!deviceFingerprintGroups.has(u.deviceFingerprint)) {
                     deviceFingerprintGroups.set(u.deviceFingerprint, []);
@@ -6370,22 +6405,20 @@ ${bodyHtml}
                 }
               });
 
-              // Filter out groups with only 1 user or all admin/approved
+              // NÂNG CẤP HỆ THỐNG:
+              // Chỉ coi là trùng khớp thiết bị thực tế nếu vân tay thiết bị có định dạng hiện đại (chứa "dev_")
+              // Các dấu vân tay kiểu cũ (legacy) thiếu mã ngẫu nhiên, dẫn đến tỉ lệ báo động nhầm (false positive) cực kỳ cao
+              // khi nhiều người dùng sử dụng cùng phiên bản trình duyệt và độ phân giải màn hình.
               const flaggedDeviceGroups = Array.from(deviceFingerprintGroups.entries())
                 .map(([fp, group]) => [fp, group.filter(u => u.role !== "admin" && u.status !== "approved")] as [string, any[]])
-                .filter(([fp, group]) => group.length > 1);
+                .filter(([fp, group]) => group.length > 1 && fp.includes("dev_"));
 
-              // To avoid duplication and confusion, for IP groups we only care about users 
-              // who share the same IP but DO NOT share the same device fingerprint.
-              // That means they are distinct people/devices on the same local network.
               const flaggedIpGroups = Array.from(ipGroups.entries())
                 .map(([ip, group]) => {
                   const filteredGroup = group.filter(u => u.role !== "admin" && u.status !== "approved");
-                  // Check if this IP group is just a duplicate of an existing device fingerprint group
-                  // If all users in this IP group have the same device fingerprint, we don't need to show them as a separate IP group
                   const uniqueFps = new Set(filteredGroup.map(u => u.deviceFingerprint).filter(Boolean));
                   
-                  // If there is only 1 unique fingerprint but multiple users, it's actually a device-sharing group (already shown above)
+                  // Nếu tất cả tài khoản có chung một dấu vân tay duy nhất thì đã hiển thị ở nhóm trùng thiết bị rồi
                   if (uniqueFps.size === 1 && filteredGroup.length > 1) {
                     return [ip, []] as [string, any[]];
                   }
@@ -6396,10 +6429,51 @@ ${bodyHtml}
 
               const totalAlerts = flaggedDeviceGroups.length + flaggedIpGroups.length;
 
+              // Đếm số tài khoản có dấu vân tay cũ bị bỏ qua để thông báo rõ ràng cho admin biết việc nâng cấp này
+              let legacyUserCount = 0;
+              deviceFingerprintGroups.forEach((group, fp) => {
+                if (!fp.includes("dev_")) {
+                  const unapproved = group.filter(u => u.role !== "admin" && u.status !== "approved");
+                  if (unapproved.length > 1) {
+                    legacyUserCount += unapproved.length;
+                  }
+                }
+              });
+
+              const handleDismissGroup = async (groupUsers: any[]) => {
+                try {
+                  const promises = groupUsers.map(u => 
+                    updateDoc(doc(db, "users", u.uid), { dismissedAlert: true })
+                  );
+                  await Promise.all(promises);
+                } catch (error) {
+                  console.error("Lỗi khi bỏ qua cảnh báo nhóm:", error);
+                }
+              };
+
+              const handleDismissAll = async () => {
+                setDismissingAll(true);
+                try {
+                  const usersToDismiss = [
+                    ...flaggedDeviceGroups.flatMap(([_, group]) => group),
+                    ...flaggedIpGroups.flatMap(([_, group]) => group)
+                  ];
+                  
+                  const promises = usersToDismiss.map(u => 
+                    updateDoc(doc(db, "users", u.uid), { dismissedAlert: true })
+                  );
+                  await Promise.all(promises);
+                } catch (error) {
+                  console.error("Lỗi khi bỏ qua tất cả cảnh báo:", error);
+                } finally {
+                  setDismissingAll(false);
+                }
+              };
+
               return (
                 <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] p-4 md:p-6 lg:p-8 flex-1 flex flex-col">
                   {/* Header */}
-                  <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
                     <div className="flex items-center gap-3.5">
                       <div className="w-11 h-11 bg-amber-50 rounded-xl flex items-center justify-center shrink-0 border border-amber-100">
                         <ShieldAlert className="w-5 h-5 text-amber-600" />
@@ -6409,12 +6483,34 @@ ${bodyHtml}
                         <p className="text-xs text-slate-500 font-medium mt-0.5">Phân biệt và kiểm soát hành vi đăng nhập nhiều tài khoản</p>
                       </div>
                     </div>
-                    {totalAlerts > 0 && (
-                      <span className="text-[11px] font-bold bg-amber-500/10 text-amber-600 px-3 py-1 rounded-full border border-amber-500/20">
-                        Phát hiện {totalAlerts} nhóm trùng khớp
-                      </span>
-                    )}
+                    
+                    <div className="flex flex-wrap items-center gap-2">
+                      {totalAlerts > 0 && (
+                        <button
+                          onClick={handleDismissAll}
+                          disabled={dismissingAll}
+                          className="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl border border-amber-500 shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-55 cursor-pointer"
+                        >
+                          {dismissingAll ? (
+                            <span>Đang xử lý...</span>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Xóa tất cả cảnh báo hiện tại (Chỉ lần này)</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                      
+                      {totalAlerts > 0 && (
+                        <span className="text-[11px] font-bold bg-amber-500/10 text-amber-600 px-3 py-2 rounded-xl border border-amber-500/20">
+                          Phát hiện {totalAlerts} nhóm trùng khớp
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+
 
                   {/* Clarification Hub Box */}
                   <div className="mb-6 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 flex gap-3 text-slate-700 text-xs leading-relaxed">
@@ -6452,25 +6548,33 @@ ${bodyHtml}
                       <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-2">
                         <Laptop className="w-4.5 h-4.5 text-rose-600" />
                         <h3 className="text-sm font-bold text-slate-800">Nhóm dùng chung thiết bị ({flaggedDeviceGroups.length})</h3>
-                        <span className="text-[10px] font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full ml-auto">Độ chính xác cao</span>
+                        <span className="text-[10px] font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full ml-auto">Độ chính xác cao (v2.0)</span>
                       </div>
 
                       {flaggedDeviceGroups.length === 0 ? (
                         <div className="py-6 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/30">
                           <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
                           <p className="text-xs font-bold text-slate-600">Hệ thống an toàn</p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">Không phát hiện nhiều tài khoản đăng nhập chung một thiết bị.</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Không phát hiện nhiều tài khoản đăng nhập chung một thiết bị thực tế.</p>
                         </div>
                       ) : (
                         <div className="space-y-4">
                           {flaggedDeviceGroups.map(([fp, group], idx) => (
                             <div key={idx} className="bg-rose-50/20 border border-rose-100 rounded-2xl p-4">
-                              <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
                                 <div className="flex items-center gap-2">
                                   <AlertTriangle className="w-4 h-4 text-rose-600" />
                                   <span className="text-xs font-bold text-rose-950 uppercase">Cảnh báo: Trùng dấu vân tay thiết bị</span>
                                 </div>
-                                <span className="text-[9px] font-mono text-rose-700 bg-rose-100/60 px-2 py-0.5 rounded-full font-bold">Fingerprint ID: {fp.substring(0, 16)}...</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-mono text-rose-700 bg-rose-100/60 px-2 py-0.5 rounded-full font-bold">Fingerprint ID: {fp.substring(0, 16)}...</span>
+                                  <button
+                                    onClick={() => handleDismissGroup(group)}
+                                    className="text-[10px] font-bold bg-rose-600/10 hover:bg-rose-600/20 text-rose-700 px-2.5 py-1 rounded-xl transition-all cursor-pointer"
+                                  >
+                                    Bỏ qua cảnh báo nhóm này
+                                  </button>
+                                </div>
                               </div>
                               <div className="space-y-2">
                                 {group.map((u, i) => (
@@ -6515,12 +6619,20 @@ ${bodyHtml}
                         <div className="space-y-4">
                           {flaggedIpGroups.map(([ip, group], idx) => (
                             <div key={idx} className="bg-amber-50/30 border border-amber-200/50 rounded-2xl p-4">
-                              <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
                                 <div className="flex items-center gap-2">
                                   <Info className="w-4 h-4 text-amber-600" />
                                   <span className="text-xs font-bold text-amber-950 uppercase">Ghi nhận: Truy cập chung mạng IP</span>
                                 </div>
-                                <span className="text-[10px] font-mono text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full font-bold">IP: {ip}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-mono text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full font-bold">IP: {ip}</span>
+                                  <button
+                                    onClick={() => handleDismissGroup(group)}
+                                    className="text-[10px] font-bold bg-amber-600/10 hover:bg-amber-600/20 text-amber-700 px-2.5 py-1 rounded-xl transition-all cursor-pointer"
+                                  >
+                                    Bỏ qua cảnh báo IP này
+                                  </button>
+                                </div>
                               </div>
                               <div className="space-y-2">
                                 {group.map((u, i) => (
@@ -7116,6 +7228,8 @@ ${bodyHtml}
           <MarkItDown 
             triggerToast={triggerToast} 
             isPro={isApproved || isAdminUser(user, userDoc)}
+            userDoc={userDoc}
+            onMarkItDownUsage={handleMarkItDownUsage}
           />
         )}
 

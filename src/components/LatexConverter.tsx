@@ -146,7 +146,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
   };
 
   return (
-    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-[500px] md:min-h-[calc(100vh-160px)]">
+    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-[500px] md:h-[calc(100vh-160px)] md:max-h-[calc(100vh-160px)]">
       {/* Top Control Settings Panel */}
       <div className="bg-white px-4 py-4 md:px-6 md:py-5 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
         <div className="flex flex-wrap items-center gap-3 md:gap-4 w-full sm:w-auto">
@@ -278,7 +278,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 flex-1 min-h-0">
           {/* Left panel: Input Area */}
-          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden min-h-[450px] flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
+          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-[calc(100vh-260px)] lg:max-h-[calc(100vh-260px)] lg:min-h-0 min-h-[450px] flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -436,7 +436,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
           </div>
 
           {/* Right panel: Preview & Advanced Copy Area */}
-          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden min-h-[450px] flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
+          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-[calc(100vh-260px)] lg:max-h-[calc(100vh-260px)] lg:min-h-0 min-h-[450px] flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
             {/* Header with Switch output tabs */}
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
               {/* Left Group: Tab selector with visual divider */}

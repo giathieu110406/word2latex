@@ -8,9 +8,11 @@ import remarkGfm from "remark-gfm";
 interface MarkItDownProps {
   triggerToast: (msg: string, success?: boolean) => void;
   isPro: boolean;
+  userDoc?: any;
+  onMarkItDownUsage?: () => Promise<void>;
 }
 
-export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro }) => {
+export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, userDoc, onMarkItDownUsage }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [outputMarkdown, setOutputMarkdown] = useState("");
   const [inputType, setInputType] = useState<"file" | "url">("file");
@@ -19,11 +21,13 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro }) =
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
+  const [hasChargedCurrentFile, setHasChargedCurrentFile] = useState(false);
 
   const processFile = async (file: File) => {
     setIsProcessing(true);
     setFileName(file.name);
     setMobileView("output");
+    setHasChargedCurrentFile(false);
     triggerToast("Đang phân tích tài liệu bằng AI...", true);
 
     const reader = new FileReader();
@@ -70,6 +74,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro }) =
 
     setIsProcessing(true);
     setMobileView("output");
+    setHasChargedCurrentFile(false);
     triggerToast("Đang phân tích URL bằng AI...", true);
     
     try {
@@ -96,14 +101,58 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro }) =
     }
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
+    if (!isPro) {
+      if (!hasChargedCurrentFile) {
+        const markItDownCount = userDoc?.markItDownCount || 0;
+        const promptCount = userDoc?.promptCount || 0;
+
+        if (markItDownCount >= 1) {
+          triggerToast("Bạn đã hết lượt dùng thử MarkItDown AI miễn phí hôm nay (tối đa 1 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để nâng cấp gói PRO!", false);
+          return;
+        }
+
+        if (promptCount >= 10) {
+          triggerToast("Bạn đã hết lượt sử dụng AI hôm nay (tối đa 10 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để nâng cấp gói PRO!", false);
+          return;
+        }
+
+        if (onMarkItDownUsage) {
+          await onMarkItDownUsage();
+        }
+        setHasChargedCurrentFile(true);
+      }
+    }
+
     navigator.clipboard.writeText(outputMarkdown);
     setIsCopied(true);
     triggerToast("Đã sao chép vào bộ nhớ tạm", true);
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
+    if (!isPro) {
+      if (!hasChargedCurrentFile) {
+        const markItDownCount = userDoc?.markItDownCount || 0;
+        const promptCount = userDoc?.promptCount || 0;
+
+        if (markItDownCount >= 1) {
+          triggerToast("Bạn đã hết lượt dùng thử MarkItDown AI miễn phí hôm nay (tối đa 1 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để nâng cấp gói PRO!", false);
+          return;
+        }
+
+        if (promptCount >= 10) {
+          triggerToast("Bạn đã hết lượt sử dụng AI hôm nay (tối đa 10 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để nâng cấp gói PRO!", false);
+          return;
+        }
+
+        if (onMarkItDownUsage) {
+          await onMarkItDownUsage();
+        }
+        setHasChargedCurrentFile(true);
+      }
+    }
+
     const blob = new Blob([outputMarkdown], { type: "text/markdown" });
     const fileUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -116,42 +165,11 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro }) =
     triggerToast("Đang tải file xuống...", true);
   };
 
-  if (!isPro) {
-    return (
-      <div className="max-w-3xl mx-auto py-12 px-6 flex flex-col items-center text-center bg-white rounded-2xl border border-slate-200 shadow-sm mt-8">
-        <div className="relative mb-6">
-          <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center border border-indigo-100 shadow-inner">
-            <Layout className="w-10 h-10 text-indigo-400" />
-          </div>
-          <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center border-4 border-white text-white shadow-md">
-            <Sparkles className="w-3.5 h-3.5" />
-          </div>
-        </div>
-
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight font-sans">
-          MarkItDown AI (PRO PLAN)
-        </h2>
-        <p className="text-slate-500 max-w-md mt-2 text-sm font-medium leading-relaxed">
-          Chuyển đổi mọi loại tài liệu (PDF, Word, Excel, PowerPoint, HTML, Audio, Hình ảnh, YouTube) sang định dạng Markdown chuẩn xác bằng trí tuệ nhân tạo.
-        </p>
-
-        <div className="mt-8 flex justify-center">
-          <button
-            onClick={() => triggerToast("Vui lòng nâng cấp gói PRO để sử dụng tính năng này", false)}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-sm transition-colors text-sm"
-          >
-            Nâng cấp ngay
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 h-full max-h-full">
       <div className="p-6 border-b border-white/50 bg-white/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-slate-800 flex flex-wrap items-center gap-2">
             <Layout className="w-5 h-5 text-indigo-600" />
             MarkItDown AI
           </h2>
