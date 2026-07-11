@@ -416,7 +416,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
             {/* Form input elements */}
             <div
               id="question-input-section"
-              className="p-4 md:p-5 space-y-4 flex-1 overflow-y-auto"
+              className="p-4 md:p-5 pb-10 space-y-4 flex-1 overflow-y-auto min-h-0"
             >
               {editingQuestionId &&
                 (() => {
