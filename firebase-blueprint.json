@@ -67,6 +67,55 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "title", "type", "source", "htmlContent", "createdAt"]
+    },
+    "raw_ai_log": {
+      "title": "Raw AI Interaction Log",
+      "description": "Raw inputs, outputs, and token counts for later analysis",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "service": { "type": "string", "enum": ["latex", "qbuilder"] },
+        "inputPrompt": { "type": "string" },
+        "aiResponse": { "type": "string" },
+        "inputTokens": { "type": "integer" },
+        "outputTokens": { "type": "integer" },
+        "totalTokens": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "analyzed"] }
+      },
+      "required": ["userId", "service", "inputPrompt", "aiResponse", "inputTokens", "outputTokens", "totalTokens", "createdAt", "status"]
+    },
+    "ai_insight": {
+      "title": "AI Insight & Evaluation",
+      "description": "AI-generated critique and prompt rewrite suggestions based on batch analysis",
+      "type": "object",
+      "properties": {
+        "service": { "type": "string", "enum": ["latex", "qbuilder"] },
+        "batchSize": { "type": "integer" },
+        "batchTokens": { "type": "integer" },
+        "critique": { "type": "string" },
+        "score": { "type": "integer" },
+        "proposedPrompt": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending_approval", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "analyzedLogIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["service", "batchSize", "batchTokens", "critique", "score", "proposedPrompt", "status", "createdAt", "analyzedLogIds"]
+    },
+    "system_prompt": {
+      "title": "Dynamic System Prompt",
+      "description": "Active and versioned system prompts for AI services",
+      "type": "object",
+      "properties": {
+        "service": { "type": "string", "enum": ["latex", "qbuilder"] },
+        "action": { "type": "string" },
+        "version": { "type": "integer" },
+        "promptContent": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "insightId": { "type": "string" }
+      },
+      "required": ["service", "action", "version", "promptContent", "isActive", "createdAt"]
     }
   },
   "firestore": {
@@ -85,6 +134,18 @@
     "/saved_documents/{documentId}": {
       "schema": "saved_document",
       "description": "Documents saved manually by PRO users containing compiled HTML content for Word or PDF download"
+    },
+    "/raw_ai_logs/{logId}": {
+      "schema": "raw_ai_log",
+      "description": "Short-lived raw interaction data for AI improvement tracking"
+    },
+    "/ai_insights/{insightId}": {
+      "schema": "ai_insight",
+      "description": "AI evaluations and suggested system prompts"
+    },
+    "/system_prompts/{promptId}": {
+      "schema": "system_prompt",
+      "description": "Current and historical system prompts used for AI generation"
     }
   }
 }

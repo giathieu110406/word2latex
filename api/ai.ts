@@ -1,6 +1,33 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 import * as mammoth from "mammoth";
+import { getApps, initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Initialize firebase admin for backend operations if not already initialized
+let db: FirebaseFirestore.Firestore | null = null;
+if (!getApps().length) {
+  try {
+    const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (serviceAccountStr) {
+      initializeApp({
+        credential: cert(JSON.parse(serviceAccountStr)),
+        databaseURL: process.env.FIREBASE_DATABASE_URL || process.env.VITE_FIREBASE_DATABASE_URL,
+      });
+      db = getFirestore();
+    } else {
+      console.warn("FIREBASE_SERVICE_ACCOUNT is missing. Backend Firestore logging will be disabled.");
+    }
+  } catch (e) {
+    console.warn("Failed to initialize firebase admin", e);
+  }
+} else {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    db = getFirestore();
+  }
+}
 
 // Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
 let GoogleGenAISDK: any = null;
@@ -37,6 +64,59 @@ function getAiClient(): any {
     });
   }
   return aiClient;
+}
+
+async function logAIInteraction(userId: string, service: 'latex' | 'qbuilder', inputPrompt: string, aiResponseText: string, metadata: any) {
+  if (!db) return;
+  try {
+    const inputTokens = metadata?.promptTokenCount || 0;
+    const outputTokens = metadata?.candidatesTokenCount || 0;
+    const totalTokens = metadata?.totalTokenCount || (inputTokens + outputTokens);
+    
+    // Fallback simple token estimation if API didn't return usage
+    const estInput = inputTokens || Math.ceil(inputPrompt.length / 4);
+    const estOutput = outputTokens || Math.ceil(aiResponseText.length / 4);
+    const estTotal = totalTokens || (estInput + estOutput);
+
+    await db.collection('raw_ai_logs').add({
+      userId: userId || "anonymous",
+      service,
+      inputPrompt,
+      aiResponse: aiResponseText,
+      inputTokens: estInput,
+      outputTokens: estOutput,
+      totalTokens: estTotal,
+      createdAt: new Date().toISOString(),
+      status: "pending"
+    });
+
+
+  } catch (err) {
+    console.error("[AI Logger] Failed to log interaction:", err);
+  }
+}
+
+async function getDynamicSystemPrompt(service: string, actionName: string, defaultPrompt: string): Promise<string> {
+  if (!db) return defaultPrompt;
+  try {
+    const snapshot = await db.collection('system_prompts')
+      .where('service', '==', service)
+      .where('action', '==', actionName)
+      .where('isActive', '==', true)
+      .limit(1)
+      .get();
+      
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      if (data.promptContent) {
+        return data.promptContent;
+      }
+    }
+  } catch (err) {
+    console.error("[Dynamic Prompt] Failed to fetch prompt, using default:", err);
+  }
+  return defaultPrompt;
 }
 
 async function generateContentWithRetry(params: any, retries = 3, delay = 1500, overrideModelsToTry?: string[]) {
@@ -108,6 +188,164 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
   throw finalError;
 }
 
+const localFilePath = path.join(process.cwd(), 'api_usage_local.json');
+
+function logUsageLocally(feature: string) {
+  try {
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    let data: any = {};
+    if (fs.existsSync(localFilePath)) {
+      try {
+        data = JSON.parse(fs.readFileSync(localFilePath, 'utf8'));
+      } catch (e) {
+        data = {};
+      }
+    }
+    if (!data[dateStr]) {
+      data[dateStr] = {
+        timestamp: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString(),
+        requests: 0,
+        "AI hỏi đáp": 0,
+        "AI canvas": 0,
+        "Dán AI": 0,
+        "Markitdown": 0,
+        "AI thay thế số liệu": 0,
+        "Trích xuất văn bản": 0
+      };
+    }
+    data[dateStr].requests = (data[dateStr].requests || 0) + 1;
+    data[dateStr][feature] = (data[dateStr][feature] || 0) + 1;
+    fs.writeFileSync(localFilePath, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`[Local Logger] Logged usage for ${feature} to local JSON file`);
+  } catch (err) {
+    console.error("Failed to log usage locally:", err);
+  }
+}
+
+function readUsageLocally(sevenDaysAgoStr: string): any[] {
+  try {
+    if (fs.existsSync(localFilePath)) {
+      const data = JSON.parse(fs.readFileSync(localFilePath, 'utf8'));
+      const list = Object.keys(data)
+        .filter(dateStr => dateStr >= sevenDaysAgoStr)
+        .map(dateStr => ({
+          id: dateStr,
+          ...data[dateStr]
+        }));
+      list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      return list;
+    }
+  } catch (err) {
+    console.error("Failed to read usage locally:", err);
+  }
+  return [];
+}
+
+const insightsFilePath = path.join(process.cwd(), 'ai_insights_local.json');
+const promptsFilePath = path.join(process.cwd(), 'system_prompts_local.json');
+
+function readInsightsLocally(): any[] {
+  try {
+    if (fs.existsSync(insightsFilePath)) {
+      const data = JSON.parse(fs.readFileSync(insightsFilePath, 'utf8'));
+      return Object.keys(data).map(id => ({ id, ...data[id] }))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+  } catch (e) {
+    console.error("Failed to read insights locally", e);
+  }
+  return [];
+}
+
+function deleteInsightLocally(id: string) {
+  try {
+    if (fs.existsSync(insightsFilePath)) {
+      const data = JSON.parse(fs.readFileSync(insightsFilePath, 'utf8'));
+      if (data[id]) {
+        delete data[id];
+        fs.writeFileSync(insightsFilePath, JSON.stringify(data, null, 2), 'utf8');
+      }
+    }
+  } catch (e) {
+    console.error("Failed to delete insight locally", e);
+  }
+}
+
+const rawAiLogsFilePath = path.join(process.cwd(), 'raw_ai_logs_local.json');
+
+function logRawInteractionLocally(userId: string, service: 'latex' | 'qbuilder', input: string, output: string) {
+  try {
+    let data: any[] = [];
+    if (fs.existsSync(rawAiLogsFilePath)) {
+      try {
+        data = JSON.parse(fs.readFileSync(rawAiLogsFilePath, 'utf8'));
+      } catch (e) {
+        data = [];
+      }
+    }
+    const inputTokens = Math.ceil(input.length / 4);
+    const outputTokens = Math.ceil(output.length / 4);
+    
+    data.push({
+      id: "log_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+      userId: userId || "anonymous",
+      service,
+      inputPrompt: input,
+      aiResponse: output,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      createdAt: new Date().toISOString(),
+      status: "pending"
+    });
+    fs.writeFileSync(rawAiLogsFilePath, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`[Local Logger] Logged raw interaction for ${service} to local JSON file`);
+  } catch (err) {
+    console.error("Failed to log raw interaction locally:", err);
+  }
+}
+
+const defaultPromptsLocal: any = {
+  "qbuilder_parse-exam": {
+    content: "Mẫu prompt mặc định cho phân tách đề thi...",
+    updatedAt: new Date().toISOString()
+  },
+  "latex_converter": {
+    content: "Mẫu prompt mặc định cho latex...",
+    updatedAt: new Date().toISOString()
+  }
+};
+
+function readPromptsLocally(): any[] {
+  try {
+    if (!fs.existsSync(promptsFilePath)) {
+      fs.writeFileSync(promptsFilePath, JSON.stringify(defaultPromptsLocal, null, 2), 'utf8');
+    }
+    const data = JSON.parse(fs.readFileSync(promptsFilePath, 'utf8'));
+    return Object.keys(data).map(id => ({ id, ...data[id] }));
+  } catch (e) {
+    console.error("Failed to read prompts locally", e);
+  }
+  return [];
+}
+
+function updatePromptLocally(id: string, content: string) {
+  try {
+    let data: any = {};
+    if (fs.existsSync(promptsFilePath)) {
+      data = JSON.parse(fs.readFileSync(promptsFilePath, 'utf8'));
+    }
+    data[id] = {
+      content: content,
+      updatedAt: new Date().toISOString()
+    };
+    fs.writeFileSync(promptsFilePath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {
+    console.error("Failed to update prompt locally", e);
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { action } = req.query;
 
@@ -117,6 +355,179 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await loadGenAISDK();
+
+    if (action === 'log-usage') {
+      const { feature } = req.body;
+      if (!feature) {
+        return res.status(400).json({ error: "Thiếu dữ liệu feature" });
+      }
+
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+
+      if (db) {
+        try {
+          const docRef = db.collection('api_usage_stats').doc(dateStr);
+          await docRef.set({
+            timestamp: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString(),
+            requests: FieldValue.increment(1),
+            [feature]: FieldValue.increment(1)
+          }, { merge: true });
+          console.log(`[Server Logger] Logged usage for ${feature} to Firestore`);
+        } catch (dbErr) {
+          console.warn("Failed to log to Firestore, falling back to local file:", dbErr);
+          logUsageLocally(feature);
+        }
+      } else {
+        logUsageLocally(feature);
+      }
+
+      return res.json({ success: true });
+    }
+
+    if (action === 'get-usage-stats') {
+      let statsList: any[] = [];
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+
+      if (db) {
+        try {
+          const snapshot = await db.collection('api_usage_stats')
+            .where('timestamp', '>=', sevenDaysAgo.toISOString())
+            .get();
+          statsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          statsList.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        } catch (dbErr) {
+          console.warn("Failed to get usage stats from Firestore, falling back to local file:", dbErr);
+          statsList = readUsageLocally(sevenDaysAgoStr);
+        }
+      } else {
+        statsList = readUsageLocally(sevenDaysAgoStr);
+      }
+
+      return res.json({ success: true, stats: statsList });
+    }
+
+    if (action === 'log-raw-interaction') {
+      const { userId, service, input, output } = req.body;
+      if (!service || !input || !output) {
+        return res.status(400).json({ error: "Thiếu dữ liệu service, input hoặc output" });
+      }
+
+      const inputTokens = Math.ceil(input.length / 4);
+      const outputTokens = Math.ceil(output.length / 4);
+
+      if (db) {
+        try {
+          await db.collection('raw_ai_logs').add({
+            userId: userId || "anonymous",
+            service,
+            inputPrompt: input,
+            aiResponse: output,
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+            createdAt: new Date().toISOString(),
+            status: "pending"
+          });
+          console.log(`[Server Logger] Logged raw interaction for ${service} to Firestore`);
+        } catch (dbErr) {
+          console.warn("Failed to log raw interaction to Firestore, falling back to local file:", dbErr);
+          logRawInteractionLocally(userId, service, input, output);
+        }
+      } else {
+        logRawInteractionLocally(userId, service, input, output);
+      }
+
+      return res.json({ success: true });
+    }
+
+    if (action === 'get-insights') {
+      let insightsList: any[] = [];
+      if (db) {
+        try {
+          const snapshot = await db.collection('ai_insights')
+            .orderBy('createdAt', 'desc')
+            .limit(100)
+            .get();
+          insightsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (dbErr) {
+          console.warn("Failed to get insights from Firestore, falling back to local file:", dbErr);
+          insightsList = readInsightsLocally();
+        }
+      } else {
+        insightsList = readInsightsLocally();
+      }
+      return res.json({ success: true, insights: insightsList });
+    }
+
+    if (action === 'get-prompts') {
+      let promptsList: any[] = [];
+      if (db) {
+        try {
+          const snapshot = await db.collection('system_prompts').get();
+          promptsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (dbErr) {
+          console.warn("Failed to get prompts from Firestore, falling back to local file:", dbErr);
+          promptsList = readPromptsLocally();
+        }
+      } else {
+        promptsList = readPromptsLocally();
+      }
+      return res.json({ success: true, prompts: promptsList });
+    }
+
+    if (action === 'update-prompt') {
+      const { id, content } = req.body;
+      if (!id || !content) {
+        return res.status(400).json({ error: "Thiếu dữ liệu id hoặc content" });
+      }
+      if (db) {
+        try {
+          await db.collection('system_prompts').doc(id).set({
+            content: content,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          console.log(`[Server] Updated prompt ${id} in Firestore`);
+        } catch (dbErr) {
+          console.warn("Failed to update prompt in Firestore, falling back to local file:", dbErr);
+          updatePromptLocally(id, content);
+        }
+      } else {
+        updatePromptLocally(id, content);
+      }
+      return res.json({ success: true });
+    }
+
+    if (action === 'delete-insight') {
+      const { id } = req.body;
+      if (!id) {
+        return res.status(400).json({ error: "Thiếu dữ liệu id" });
+      }
+      
+      let deleted = false;
+      if (id.startsWith("insight_")) {
+        // Definitely a local insight file fallback
+        deleteInsightLocally(id);
+        deleted = true;
+      } else if (db) {
+        try {
+          await db.collection('ai_insights').doc(id).delete();
+          console.log(`[Server] Deleted insight ${id} in Firestore`);
+          deleted = true;
+        } catch (dbErr) {
+          console.warn("Failed to delete insight in Firestore, falling back to local file:", dbErr);
+          deleteInsightLocally(id);
+          deleted = true;
+        }
+      } else {
+        deleteInsightLocally(id);
+        deleted = true;
+      }
+      return res.json({ success: deleted });
+    }
+
     if (action === 'parse-exam') {
 
   try {
@@ -141,12 +552,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Nội dung tài liệu trống hoặc không thể giải mã" });
     }
 
-    // Call Gemini API using retry logic to parse the text with strict guidelines
-    const response = await generateContentWithRetry({
-      model: "gemini-3.1-flash-lite", // Use the fastest and lightest model by default
-      contents: `Hãy phân tích văn bản đề thi dưới đây:\n\n${rawText}`,
-      config: {
-        systemInstruction: `Bạn là chuyên gia phân tích đề thi và bài tập học thuật. Hãy bóc tách văn bản đề bài thành các câu hỏi/bài tập hoàn chỉnh và trả về định dạng JSON theo các quy tắc nghiêm ngặt sau:
+    const defaultPrompt = `Bạn là chuyên gia phân tích đề thi và bài tập học thuật. Hãy bóc tách văn bản đề bài thành các câu hỏi/bài tập hoàn chỉnh và trả về định dạng JSON theo các quy tắc nghiêm ngặt sau:
 
 1. ĐỊNH NGHĨA CÂU HỎI HOẶC BÀI TẬP HOÀN CHỈNH (QUAN TRỌNG NHẤT):
 - Một "câu hỏi" hoặc "bài tập" (question) phải là một đơn vị logic hoàn chỉnh, tự chứa (self-contained).
@@ -168,7 +574,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 4. QUY TẮC XỬ LÝ KHÁC:
 - Xóa các tiền tố dạng "Câu 1.", "Câu 2.", "Bài 1:" ở ngay đầu đề bài lớn nếu có (để hệ thống tự đánh số lại theo thứ tự), nhưng GIỮ NGUYÊN các số thứ tự của các mục nhỏ, ghi chú hoặc bảng biểu bên trong nội dung đề bài.
 - Giữ nguyên các biểu thức toán học hoặc ký hiệu LaTeX dưới dạng $ ... $ nếu có.
-- Trả về JSON chứa mảng "questions" đúng thứ tự xuất hiện gốc từ trên xuống dưới.`,
+- Trả về JSON chứa mảng "questions" đúng thứ tự xuất hiện gốc từ trên xuống dưới.`;
+    
+    const systemInstruction = await getDynamicSystemPrompt("qbuilder", "parse-exam", defaultPrompt);
+    const contentsText = `Hãy phân tích văn bản đề thi dưới đây:\n\n${rawText}`;
+
+    // Call Gemini API using retry logic to parse the text with strict guidelines
+    const response = await generateContentWithRetry({
+      model: "gemini-3.1-flash-lite", // Use the fastest and lightest model by default
+      contents: contentsText,
+      config: {
+        systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -214,9 +630,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     });
 
-    const parsedJson = JSON.parse(response.text?.trim() || "{}");
+    const responseText = response.text?.trim() || "{}";
+    const parsedJson = JSON.parse(responseText);
     const questions = parsedJson.questions || [];
     const summary = parsedJson.summary || {};
+    
+    // Log AI Interaction asynchronously
+    logAIInteraction(req.body.userId || "anonymous", "qbuilder", contentsText, responseText, response.usageMetadata);
+    
     return res.json({ success: true, questions, summary });
 
   } catch (error: any) {
@@ -238,11 +659,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log("[Gemini API] Đang xử lý bóc tách và phân loại câu hỏi thô bằng model gemini-3.1-flash-lite...");
 
-    const response = await generateContentWithRetry({
-      model: "gemini-3.1-flash-lite", // The fastest and lightest AI model
-      contents: `Hãy phân tích, phân nhóm và bóc tách các câu hỏi từ văn bản dưới đây:\n\n${text}`,
-      config: {
-        systemInstruction: `Bạn là trợ lý AI chuyên môn cao đóng vai trò là bộ bóc tách cấu trúc câu hỏi thô (raw extractor) và phân loại câu hỏi cực kỳ chính xác.
+    const defaultPrompt = `Bạn là trợ lý AI chuyên môn cao đóng vai trò là bộ bóc tách cấu trúc câu hỏi thô (raw extractor) và phân loại câu hỏi cực kỳ chính xác.
 
 NHIỆM VỤ CỦA BẠN:
 1. Nhận diện các câu hỏi trong văn bản dán của người dùng, phân tách chúng thành các khối riêng biệt.
@@ -257,7 +674,16 @@ NHIỆM VỤ CỦA BẠN:
 
 HƯỚNG DẪN CỰC KỲ QUAN TRỌNG:
 - TUYỆT ĐỐI GIỮ NGUYÊN BẢN (RAW TEXT): Không tự ý viết lại câu chữ, không sửa đổi ký hiệu, không sửa LaTeX (giữ nguyên $...$ hoặc $$...$$), không tóm tắt, không bổ sung từ ngữ mới. Bạn chỉ được phép cắt các chuỗi ký tự thô từ văn bản gốc của người dùng đưa vào đúng hai trường tương ứng.
-- KHÔNG TRỘN LẪN: Phần đáp án/lời giải/hướng dẫn giải phải được tách riêng hoàn toàn sang "answerRawText", không được để lẫn lộn trong "questionRawText".`,
+- KHÔNG TRỘN LẪN: Phần đáp án/lời giải/hướng dẫn giải phải được tách riêng hoàn toàn sang "answerRawText", không được để lẫn lộn trong "questionRawText".`;
+
+    const systemInstruction = await getDynamicSystemPrompt("qbuilder", "smart-paste-parse", defaultPrompt);
+    const contentsText = `Hãy phân tích, phân nhóm và bóc tách các câu hỏi từ văn bản dưới đây:\n\n${text}`;
+
+    const response = await generateContentWithRetry({
+      model: "gemini-3.1-flash-lite", // The fastest and lightest AI model
+      contents: contentsText,
+      config: {
+        systemInstruction: systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -283,8 +709,13 @@ HƯỚNG DẪN CỰC KỲ QUAN TRỌNG:
       }
     });
 
-    const parsedJson = JSON.parse(response.text?.trim() || "{}");
+    const responseText = response.text?.trim() || "{}";
+    const parsedJson = JSON.parse(responseText);
     const questions = parsedJson.questions || [];
+    
+    // Log AI Interaction asynchronously
+    logAIInteraction(req.body.userId || "anonymous", "qbuilder", contentsText, responseText, response.usageMetadata);
+    
     return res.json({ success: true, questions });
 
   } catch (error: any) {
@@ -306,12 +737,7 @@ HƯỚNG DẪN CỰC KỲ QUAN TRỌNG:
 
     console.log("[Gemini API] Đang gửi yêu cầu Sửa lỗi Logic bằng AI...");
 
-    // Call Gemini API using retry logic to fix the text with strict presentation guidelines
-    const response = await generateContentWithRetry({
-      model: "gemini-3.1-flash-lite", // Use the fastest and lightest model by default
-      contents: `Hãy tối ưu hóa hiển thị và sửa toàn bộ các lỗi trình bày, lỗi logic định dạng cho văn bản tiếng Việt sau đây:\n\n${text}`,
-      config: {
-        systemInstruction: `Bạn là chuyên gia định dạng tài liệu học thuật (Markdown, LaTeX và bảng biểu).
+    const defaultPrompt = `Bạn là chuyên gia định dạng tài liệu học thuật (Markdown, LaTeX và bảng biểu).
 Nhiệm vụ của bạn là phục hồi và chuẩn hóa văn bản tiếng Việt bị lỗi định dạng (do copy từ PDF/Word) về dạng Markdown chuẩn xác theo mẫu sau.
 
 HÃY ÁP DỤNG NGHIÊM NGẶT CÁC QUY TẮC SAU:
@@ -341,11 +767,25 @@ HÃY ÁP DỤNG NGHIÊM NGẶT CÁC QUY TẮC SAU:
    - TUYỆT ĐỐI KHÔNG tự ý thay đổi, tóm tắt, giải mã hay lược bớt bất kỳ nội dung văn bản, số liệu nào. CHỈ CHỈNH SỬA ĐỊNH DẠNG.
 
 6. ĐẦU RA:
-   - TRẢ VỀ TRỰC TIẾP VĂN BẢN ĐÃ SỬA. KHÔNG giải thích, KHÔNG bọc trong khối \`\`\`markdown ... \`\`\`.`,
+   - TRẢ VỀ TRỰC TIẾP VĂN BẢN ĐÃ SỬA. KHÔNG giải thích, KHÔNG bọc trong khối \`\`\`markdown ... \`\`\`.`;
+
+    const systemInstruction = await getDynamicSystemPrompt("latex", "fix-logic", defaultPrompt);
+    const contentsText = `Hãy tối ưu hóa hiển thị và sửa toàn bộ các lỗi trình bày, lỗi logic định dạng cho văn bản tiếng Việt sau đây:\n\n${text}`;
+
+    // Call Gemini API using retry logic to fix the text with strict presentation guidelines
+    const response = await generateContentWithRetry({
+      model: "gemini-3.1-flash-lite", // Use the fastest and lightest model by default
+      contents: contentsText,
+      config: {
+        systemInstruction: systemInstruction,
       }
     });
 
     let fixedText = response.text || "";
+    
+    // Log interaction
+    logAIInteraction(req.body.userId || "anonymous", "latex", contentsText, fixedText, response.usageMetadata);
+
     fixedText = fixedText.trim();
     
     // Clean any outer markdown code block wrapper if the model still returns it
@@ -382,20 +822,29 @@ HÃY ÁP DỤNG NGHIÊM NGẶT CÁC QUY TẮC SAU:
 
     console.log("[Gemini API] Đang gửi yêu cầu Trợ lý AI Canvas...");
 
-    // Call Gemini API using retry logic to process text with user prompt
-    const response = await generateContentWithRetry({
-      model: "gemini-3.1-flash-lite", // standard highly-available fast model
-      contents: `Nội dung Canvas hiện tại:\n${text || ""}\n\nYêu cầu thực hiện:\n${prompt}`,
-      config: {
-        systemInstruction: `Bạn là trợ lý AI Canvas chuyên nghiệp. Nhiệm vụ của bạn là thực hiện chỉnh sửa, dịch thuật, thêm lời giải chi tiết, in đậm từ khóa hoặc tạo câu hỏi tương tự từ văn bản hiện tại được cung cấp bởi người dùng.
+    const defaultPrompt = `Bạn là trợ lý AI Canvas chuyên nghiệp. Nhiệm vụ của bạn là thực hiện chỉnh sửa, dịch thuật, thêm lời giải chi tiết, in đậm từ khóa hoặc tạo câu hỏi tương tự từ văn bản hiện tại được cung cấp bởi người dùng.
 HÃY TUÂN THỦ CÁC QUY TẮC CHẶT CHẼ SAU:
 1. Đảm bảo giữ nguyên các công thức toán học LaTeX dạng $...$ hoặc $$...$$ trừ khi có yêu cầu thay đổi trực tiếp liên quan đến công thức.
 2. Đảm bảo cấu trúc Markdown (bảng biểu, in đậm, tiêu đề, danh sách) được giữ nguyên vẹn và hiển thị chính xác.
-3. Chỉ trả về trực tiếp kết quả văn bản sau khi đã sửa đổi. Tuyệt đối KHÔNG giải thích dông dài, KHÔNG thêm lời chào hay lời cảm ơn, KHÔNG bọc trong khối \`\`\`markdown ... \`\`\`.`,
+3. Chỉ trả về trực tiếp kết quả văn bản sau khi đã sửa đổi. Tuyệt đối KHÔNG giải thích dông dài, KHÔNG thêm lời chào hay lời cảm ơn, KHÔNG bọc trong khối \`\`\`markdown ... \`\`\`.`;
+
+    const systemInstruction = await getDynamicSystemPrompt("latex", "gemini-canvas", defaultPrompt);
+    const contentsText = `Nội dung Canvas hiện tại:\n${text || ""}\n\nYêu cầu thực hiện:\n${prompt}`;
+
+    // Call Gemini API using retry logic to process text with user prompt
+    const response = await generateContentWithRetry({
+      model: "gemini-3.1-flash-lite", // standard highly-available fast model
+      contents: contentsText,
+      config: {
+        systemInstruction: systemInstruction,
       }
     });
 
     let fixedText = response.text || "";
+    
+    // Log interaction
+    logAIInteraction(req.body.userId || "anonymous", "latex", contentsText, fixedText, response.usageMetadata);
+
     fixedText = fixedText.trim();
     
     // Clean any outer markdown code block wrapper if the model still returns it

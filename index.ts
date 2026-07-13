@@ -1,6 +1,10 @@
 import express from "express";
 import aiHandler from "./api/ai";
 import markitdownHandler from "./api/markitdown";
+
+
+
+import aiImprovementHandler from "./api/ai-improvement";
 import * as path from "path";
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, updateDoc, getDoc } from "firebase/firestore";
@@ -101,9 +105,17 @@ app.post("/api/ai", async (req, res) => {
   await aiHandler(req as any, res as any);
 });
 
+app.post("/api/ai-improvement", async (req, res) => {
+  await aiImprovementHandler(req as any, res as any);
+});
+
 app.post("/api/markitdown", async (req, res) => {
   await markitdownHandler(req as any, res as any);
 });
+
+
+
+
 
 app.get("/api/approve-user", async (req, res) => {
   const { uid, token } = req.query;

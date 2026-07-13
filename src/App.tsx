@@ -1,3 +1,4 @@
+import { logApiUsage, logRawInteraction } from "./utils/logger";
 import React, { useState, useRef, useEffect, startTransition } from "react";
 import {
   HelpCircle,
@@ -26,7 +27,7 @@ import {
   Diamond,
   Search, Pin, PinOff, Mail,
   Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserPlus, UserCog, User, Info, Save,
-  Paperclip, Layout, Laptop, Wifi
+  Paperclip, Layout, Laptop, Wifi, BrainCircuit
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
@@ -34,6 +35,7 @@ import { marked } from "marked";
 import { LatexConverter } from "./components/LatexConverter";
 import { MarkItDown } from "./components/MarkItDown";
 import { QBuilder } from "./components/QBuilder";
+import { AiInsightsAdmin } from "./components/AiInsightsAdmin";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -1256,6 +1258,7 @@ export default function App() {
 
         const data = await response.json();
         if (data.success && data.questions && data.questions.length > 0) {
+          logApiUsage("Dán AI");
           const previewList = data.questions.map((q: any) => ({
             id: q.id || "q_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
             type: q.type || "trac_nghiem",
@@ -1363,6 +1366,7 @@ export default function App() {
 
         const data = await response.json();
         if (data.success && Array.isArray(data.questions)) {
+          logApiUsage("AI thay thế số liệu");
           const updated = shuffled.map(q => {
             const aiQ = data.questions.find((item: any) => item.id === q.id);
             return {
@@ -1534,6 +1538,7 @@ export default function App() {
 
     if (success) {
       triggerToast("Đã sao chép tài liệu! Hãy mở Word và nhấn Ctrl+V.");
+      logRawInteraction('qbuilder', JSON.stringify(docQuestions), bodyHtml, user?.uid);
       await incrementExamCount();
     } else {
       triggerToast(
@@ -1661,6 +1666,7 @@ export default function App() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     triggerToast("Đã tạo và tải file Word (.doc) thành công!");
+    logRawInteraction('qbuilder', JSON.stringify(docQuestions), bodyHtml, user?.uid);
     await incrementExamCount();
   };
 
@@ -3902,6 +3908,7 @@ ${bodyHtml}
         }
       }, 3000);
 
+      logRawInteraction('latex', rawText, printHtml, user?.uid);
       await incrementLatexCount();
     } catch (error) {
       console.error("Lỗi khi xuất PDF:", error);
@@ -4539,6 +4546,7 @@ ${bodyHtml}
       triggerToast(
         "Đã sao chép! Hãy mở Word và nhấn Ctrl+V (hoặc dán giữ nguyên định dạng gốc).",
       );
+      logRawInteraction('latex', inputText, bodyHtml, user?.uid);
       await incrementLatexCount();
     } else {
       triggerToast(
@@ -4661,6 +4669,7 @@ ${bodyHtml}
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     triggerToast("Đã tạo và tải file Word (.doc) thành công!");
+    logRawInteraction('latex', inputText, bodyHtml, user?.uid);
     await incrementLatexCount();
   };
 
@@ -4722,6 +4731,7 @@ ${bodyHtml}
 
       const data = await res.json();
       if (data.success && data.fixedText) {
+        logApiUsage("AI canvas");
         const resultText = data.fixedText;
         if (isSelected) {
           const newText = inputText.substring(0, start) + resultText + inputText.substring(end);
@@ -4987,6 +4997,7 @@ ${bodyHtml}
       });
       const data = await response.json();
       if (data.success) {
+        logApiUsage("AI hỏi đáp");
         setAiChatMessages(prev => [...prev, { role: 'model', text: data.text }]);
       } else {
         triggerToast(data.error || "Lỗi khi gọi AI", false);
@@ -5024,6 +5035,7 @@ ${bodyHtml}
 
         const data = await res.json();
         if (data.success && data.text) {
+          logApiUsage("Trích xuất văn bản");
           setAiChatInput(prev => prev + (prev ? "\n" : "") + data.text);
           triggerToast("Trích xuất văn bản thành công!", true);
         } else {
@@ -5189,6 +5201,9 @@ ${bodyHtml}
                   <button onClick={() => handleSidebarNav('members')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'members' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <Users className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Thành viên</span>
                   </button>
+                  <button onClick={() => handleSidebarNav('ai-insights')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'ai-insights' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                      <BrainCircuit className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Cải tiến AI</span>
+                  </button>
                   <button onClick={() => handleSidebarNav('tracking')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'tracking' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" /> <span className="truncate whitespace-nowrap">Theo dõi</span>
                   </button>
@@ -5274,7 +5289,7 @@ ${bodyHtml}
 
       <div className="flex-1 flex flex-col">
       <div className="max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-10 py-2 md:py-4 flex-1 flex flex-col gap-4 md:gap-6 overflow-x-hidden">
-        {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking") && isAdminUser(user, userDoc) && (
+        {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "ai-insights") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 
             id="admin-panel-viewport"
@@ -6662,6 +6677,13 @@ ${bodyHtml}
                 </div>
               );
             })()}
+
+            {/* Sub-tab 5: AI Insights */}
+            {sidebarView === "ai-insights" && user && (
+              <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] p-4 md:p-6 lg:p-8 flex-1 flex flex-col">
+                <AiInsightsAdmin uid={user.uid} />
+              </div>
+            )}
 
           </div>
         )}

@@ -113,6 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     await loadGenAISDK();
+    // Log the request immediately for dashboard updates
     const { type, fileData, mimeType, fileName, url } = req.body;
     let rawText = "";
     let inlineParts: any[] = [];

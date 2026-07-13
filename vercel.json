@@ -14,8 +14,18 @@
     "api/approve-user.ts": {
       "memory": 1024,
       "maxDuration": 10
+    },
+    "api/ai-improvement.ts": {
+      "memory": 1024,
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/ai-improvement",
+      "schedule": "0 */4 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",

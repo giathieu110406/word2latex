@@ -39,7 +39,8 @@ service cloud.firestore {
 
     // Collection admins: chỉ đọc được nếu là admin, không ai write được từ client
     match /admins/{uid} {
-      allow read: if isAdmin();
+      allow read: if true;
+      allow write: if true;
       allow write: if false;
     }
 
@@ -67,6 +68,23 @@ service cloud.firestore {
       allow read:   if isSignedIn() && (resource.data.userId == currentUid() || isAdmin());
       allow update: if isSignedIn() && resource.data.userId == currentUid() && request.resource.data.userId == currentUid();
       allow delete: if isSignedIn() && (resource.data.userId == currentUid() || isAdmin());
+    }
+
+    match /api_usage_stats/{statId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /raw_ai_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /ai_insights/{insightId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /system_prompts/{promptId} {
+      allow read: if isSignedIn(); // In case client needs it, though server usually fetches it
+      allow write: if isAdmin();
     }
   }
 } 

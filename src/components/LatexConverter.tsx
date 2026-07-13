@@ -1,3 +1,4 @@
+import { logApiUsage } from "../utils/logger";
 import React, { useState, useRef } from "react";
 import { Sparkles, ArrowRight, Loader2, HelpCircle, Folder, Paperclip } from "lucide-react";
 
@@ -93,6 +94,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
 
         const data = await res.json();
         if (data.success && data.text) {
+          logApiUsage("Trích xuất văn bản");
           setAiCanvasPrompt(aiCanvasPrompt + (aiCanvasPrompt ? "\n" : "") + data.text);
           triggerToast("Trích xuất văn bản thành công!", true);
         } else {
@@ -278,7 +280,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 flex-1 min-h-0 p-4 md:p-5 lg:p-6">
           {/* Left panel: Input Area */}
-          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-0 flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
+          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[600px] lg:min-h-0 flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -436,7 +438,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
           </div>
 
           {/* Right panel: Preview & Advanced Copy Area */}
-          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[450px] flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
+          <div className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[675px] flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
             {/* Header with Switch output tabs */}
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
               {/* Left Group: Tab selector with visual divider */}

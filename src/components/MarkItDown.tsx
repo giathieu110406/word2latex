@@ -1,3 +1,4 @@
+import { logApiUsage } from "../utils/logger";
 import React, { useState, useRef } from "react";
 import { FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, FileType, FileText, Image as ImageIcon, Music, Youtube, Layout } from "lucide-react";
 import Markdown from 'react-markdown';
@@ -52,6 +53,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
         const data = await res.json();
         if (data.success && data.markdown) {
+          logApiUsage("Markitdown");
           setOutputMarkdown(data.markdown);
           triggerToast("Chuyển đổi thành công!", true);
         } else {
@@ -78,7 +80,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     triggerToast("Đang phân tích URL bằng AI...", true);
     
     try {
-      const res = await fetch("/api/markitdown", {
+        const res = await fetch("/api/markitdown", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "url", url: url }),
@@ -88,6 +90,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
       const data = await res.json();
       if (data.success && data.markdown) {
+        logApiUsage("Markitdown");
         setOutputMarkdown(data.markdown);
         triggerToast("Chuyển đổi thành công!", true);
       } else {
