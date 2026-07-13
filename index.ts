@@ -4,7 +4,6 @@ import markitdownHandler from "./api/markitdown";
 
 
 
-import aiImprovementHandler from "./api/ai-improvement";
 import * as path from "path";
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, updateDoc, getDoc } from "firebase/firestore";
@@ -103,10 +102,6 @@ function generateApprovalToken(uid: string): string {
 // 1. API: Approve user directly from email link (GET)
 app.post("/api/ai", async (req, res) => {
   await aiHandler(req as any, res as any);
-});
-
-app.post("/api/ai-improvement", async (req, res) => {
-  await aiImprovementHandler(req as any, res as any);
 });
 
 app.post("/api/markitdown", async (req, res) => {
