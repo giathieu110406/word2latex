@@ -119,70 +119,105 @@ async function getDynamicSystemPrompt(service: string, actionName: string, defau
   return defaultPrompt;
 }
 
-async function generateContentWithRetry(params: any, retries = 3, delay = 1500, overrideModelsToTry?: string[]) {
+// Chuỗi fallback cố định theo thứ tự ưu tiên (không thay đổi giữa các lần gọi)
+// 3.7-flash (mặc định) → 3.5-flash-lite → 3.1-flash-lite → 3.1-pro
+const DEFAULT_FALLBACK_CHAIN = [
+  "gemini-3.7-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.1-pro",
+];
+
+// Các lỗi hạ tầng — được phép fallback sang model tiếp theo
+function isInfraError(error: any): boolean {
+  if (error.status === 429 || error.status === 503) return true;
+  if (error.message && (
+    error.message.includes("quota") ||
+    error.message.includes("Quota") ||
+    error.message.includes("high demand") ||
+    error.message.includes("overloaded") ||
+    error.message.includes("UNAVAILABLE")
+  )) return true;
+  return false;
+}
+
+// Các lỗi xác thực — không retry, báo lỗi ngay
+function isAuthError(error: any): boolean {
+  return (
+    error.status === 401 ||
+    error.status === 403 ||
+    error.message?.includes("API_KEY_INVALID") ||
+    error.message?.includes("cấu hình GEMINI_API_KEY")
+  );
+}
+
+async function generateContentWithRetry(
+  params: any,
+  retries = 2,
+  delay = 1500,
+  generationConfig?: { temperature?: number; topK?: number; topP?: number }
+) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("Không thể kết nối đến Trợ lý AI. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
   }
 
+  // Merge generationConfig vào params.config nếu có
+  const mergedParams = { ...params };
+  if (generationConfig) {
+    mergedParams.config = {
+      ...params.config,
+      ...generationConfig,
+    };
+  }
+
   let lastError: any = null;
-  let firstImportantError: any = null;
-  
-  const modelsToTry = overrideModelsToTry || [
-    params.model || "gemini-3.5-flash-lite",
-    "gemini-3.5-flash-lite",
-    "gemini-3.7-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-pro"
-  ].filter((value, index, self) => self.indexOf(value) === index && value);
-  
+
   for (let attempt = 1; attempt <= retries; attempt++) {
-    for (const model of modelsToTry) {
+    for (const model of DEFAULT_FALLBACK_CHAIN) {
       try {
-        console.log(`[Gemini API] Đang gửi yêu cầu bằng model: ${model} (Lần thử ${attempt}/${retries})`);
+        console.log(`[Gemini API] Model: ${model} | Lần thử: ${attempt}/${retries} | Temp: ${mergedParams.config?.temperature ?? 'default'}`);
         const aiInstance = getAiClient();
         const response = await aiInstance.models.generateContent({
-          ...params,
-          model: model
+          ...mergedParams,
+          model,
         });
         return response;
       } catch (error: any) {
         lastError = error;
-        if (!firstImportantError && error.status !== 404) {
-          firstImportantError = error;
+        console.warn(`[Gemini API] Model ${model} thất bại:`, error.message || error);
+
+        // Lỗi xác thực → dừng ngay, không thử tiếp
+        if (isAuthError(error)) {
+          throw error;
         }
-        console.warn(`[Gemini API] Thử nghiệm model ${model} thất bại:`, error.message || error);
-        
-        if (
-          error.message?.includes("API_KEY_INVALID") ||
-          error.message?.includes("cấu hình GEMINI_API_KEY") ||
-          error.status === 403 ||
-          error.status === 401
-        ) {
-          break; 
+
+        // Chỉ fallback khi là lỗi hạ tầng (429/503)
+        // Các lỗi khác (400, 404...) → dừng vòng model hiện tại, thử lại toàn chuỗi ở vòng sau
+        if (!isInfraError(error)) {
+          break;
         }
-        
-        if (error.status === 429 || error.status === 503 || (error.message && (error.message.includes("quota") || error.message.includes("Quota") || error.message.includes("high demand") || error.message.includes("overloaded")))) {
-          continue;
-        }
+        // Là lỗi hạ tầng → tiếp tục thử model tiếp theo trong chuỗi
+        continue;
       }
     }
-    
+
     if (attempt < retries) {
       const waitTime = delay * Math.pow(2, attempt - 1);
-      console.log(`[Gemini API] Tất cả các model đều tạm thời không khả dụng ở lần thử ${attempt}. Đang chờ ${waitTime}ms trước khi thử lại...`);
+      console.log(`[Gemini API] Tất cả model đều bận (vòng ${attempt}). Chờ ${waitTime}ms...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
-  
-  let finalError = firstImportantError || lastError || new Error("Tất cả các model đều thất bại sau nhiều lần thử.");
-  if (finalError.status === 429 || (finalError.message && (finalError.message.includes("quota") || finalError.message.includes("Quota")))) {
-    finalError.message = "Đã hết hạn mức sử dụng API Gemini (Quota Exceeded) hoặc API Key không hỗ trợ gói miễn phí. Vui lòng kiểm tra lại tài khoản Google AI Studio của bạn.";
-  } else if (finalError.status === 404 || (finalError.message && finalError.message.includes("not found"))) {
-    finalError.message = "Model AI không được hỗ trợ bởi API Key này (404 Not Found). Vui lòng kiểm tra lại cấu hình.";
-  } else if (finalError.status === 503 || (finalError.message && (finalError.message.includes("high demand") || finalError.message.includes("overloaded") || finalError.message.includes("UNAVAILABLE")))) {
-    finalError.message = "Hệ thống AI đang quá tải (503). Vui lòng thử lại sau ít phút.";
+
+  // Xây dựng thông báo lỗi cuối cùng
+  const err = lastError || new Error("Tất cả model đều thất bại sau nhiều lần thử.");
+  if (err.status === 429 || (err.message && (err.message.includes("quota") || err.message.includes("Quota")))) {
+    err.message = "Đã hết hạn mức sử dụng API Gemini (Quota Exceeded). Vui lòng kiểm tra lại tài khoản Google AI Studio.";
+  } else if (err.status === 503 || (err.message && (err.message.includes("high demand") || err.message.includes("overloaded") || err.message.includes("UNAVAILABLE")))) {
+    err.message = "Hệ thống AI đang quá tải (503). Vui lòng thử lại sau ít phút.";
+  } else if (err.status === 404 || (err.message && err.message.includes("not found"))) {
+    err.message = "Model AI không được hỗ trợ bởi API Key này (404 Not Found). Vui lòng kiểm tra lại cấu hình.";
   }
-  throw finalError;
+  throw err;
 }
 
 const localFilePath = path.join(process.cwd(), 'api_usage_local.json');
@@ -356,7 +391,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Call Gemini API using retry logic to parse the text with strict guidelines
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash-lite", // Use the fastest and lightest model by default
       contents: contentsText,
       config: {
         systemInstruction: systemInstruction,
@@ -403,7 +437,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           required: ["questions", "summary"]
         }
       }
-    });
+    }, 2, 1500, { temperature: 1 });
 
     const responseText = response.text?.trim() || "{}";
     const parsedJson = JSON.parse(responseText);
@@ -432,7 +466,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Nội dung văn bản trống" });
     }
 
-    console.log("[Gemini API] Đang xử lý bóc tách và phân loại câu hỏi thô bằng model gemini-3.5-flash-lite...");
+    console.log("[Gemini API] Đang xử lý bóc tách và phân loại câu hỏi thô...");
 
     const defaultPrompt = `Bạn là trợ lý AI chuyên môn cao đóng vai trò là bộ bóc tách cấu trúc câu hỏi thô (raw extractor) và phân loại câu hỏi cực kỳ chính xác.
 
@@ -455,7 +489,6 @@ HƯỚNG DẪN CỰC KỲ QUAN TRỌNG:
     const contentsText = `Hãy phân tích, phân nhóm và bóc tách các câu hỏi từ văn bản dưới đây:\n\n${text}`;
 
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash-lite", // The fastest and lightest AI model
       contents: contentsText,
       config: {
         systemInstruction: systemInstruction,
@@ -482,7 +515,7 @@ HƯỚNG DẪN CỰC KỲ QUAN TRỌNG:
           required: ["questions"]
         }
       }
-    });
+    }, 2, 1500, { temperature: 1 });
 
     const responseText = response.text?.trim() || "{}";
     const parsedJson = JSON.parse(responseText);
@@ -544,17 +577,17 @@ HÃY ÁP DỤNG NGHIÊM NGẶT CÁC QUY TẮC SAU:
 6. ĐẦU RA:
    - TRẢ VỀ TRỰC TIẾP VĂN BẢN ĐÃ SỬA. KHÔNG giải thích, KHÔNG bọc trong khối \`\`\`markdown ... \`\`\`.`;
 
-    const systemInstruction = await getDynamicSystemPrompt("latex", "fix-logic", defaultPrompt);
+    const contentLockPrefix = `NGUYÊN TẮC TUYỆT ĐỐI (ưu tiên cao nhất):\n- Chỉ chỉnh sửa ĐỊNH DẠNG (heading, bold, table, LaTeX syntax). Không được thay đổi bất kỳ từ ngữ, số liệu, tên riêng nào.\n- Nếu một phần không rõ định dạng → giữ nguyên văn bản thô, không đoán.\n\n`;
+    const systemInstruction = contentLockPrefix + await getDynamicSystemPrompt("latex", "fix-logic", defaultPrompt);
     const contentsText = `Hãy tối ưu hóa hiển thị và sửa toàn bộ các lỗi trình bày, lỗi logic định dạng cho văn bản tiếng Việt sau đây:\n\n${text}`;
 
     // Call Gemini API using retry logic to fix the text with strict presentation guidelines
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash-lite", // Use the fastest and lightest model by default
       contents: contentsText,
       config: {
         systemInstruction: systemInstruction,
       }
-    });
+    }, 2, 1500, { temperature: 1 });
 
     let fixedText = response.text || "";
     
@@ -603,17 +636,17 @@ HÃY TUÂN THỦ CÁC QUY TẮC CHẶT CHẼ SAU:
 2. Đảm bảo cấu trúc Markdown (bảng biểu, in đậm, tiêu đề, danh sách) được giữ nguyên vẹn và hiển thị chính xác.
 3. Chỉ trả về trực tiếp kết quả văn bản sau khi đã sửa đổi. Tuyệt đối KHÔNG giải thích dông dài, KHÔNG thêm lời chào hay lời cảm ơn, KHÔNG bọc trong khối \`\`\`markdown ... \`\`\`.`;
 
-    const systemInstruction = await getDynamicSystemPrompt("latex", "gemini-canvas", defaultPrompt);
+    const contentLockPrefix = `NGUYÊN TẮC TUYỆT ĐỐI (ưu tiên cao nhất):\n- Chỉ thực hiện đúng yêu cầu của người dùng. Không được tự ý thêm nội dung ngoài yêu cầu.\n- Giữ nguyên toàn bộ số liệu, tên riêng, mã tài khoản không liên quan đến yêu cầu.\n\n`;
+    const systemInstruction = contentLockPrefix + await getDynamicSystemPrompt("latex", "gemini-canvas", defaultPrompt);
     const contentsText = `Nội dung Canvas hiện tại:\n${text || ""}\n\nYêu cầu thực hiện:\n${prompt}`;
 
     // Call Gemini API using retry logic to process text with user prompt
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash-lite", // standard highly-available fast model
       contents: contentsText,
       config: {
         systemInstruction: systemInstruction,
       }
-    });
+    }, 2, 1500, { temperature: 1 });
 
     let fixedText = response.text || "";
     
@@ -657,15 +690,16 @@ HÃY TUÂN THỦ CÁC QUY TẮC CHẶT CHẼ SAU:
     console.log("[Gemini API] Đang gửi yêu cầu thay thế số liệu đề thi bằng AI...");
 
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash-lite", // Use the fastest and lightest model by default
       contents: `Dưới đây là danh sách câu hỏi trong đề thi. Với mỗi câu hỏi, hãy THAY ĐỔI CÁC SỐ LIỆU (số tự nhiên, số thực, phân số, tọa độ...), biến số hoặc ngữ cảnh nhỏ trong câu hỏi sao cho vẫn GIỮ NGUYÊN cấu trúc toán học/logic và phương pháp giải bài toán đó. Tuyệt đối không thay đổi phương pháp giải hoặc bản chất câu hỏi.
 Nếu là câu hỏi trắc nghiệm có các phương án lựa chọn A, B, C, D, hãy đảm bảo tính toán lại các phương án nhiễu và phương án đúng một cách chính xác theo số liệu mới đã thay thế.
 Trả về dữ liệu dưới dạng JSON với định dạng là một mảng đối tượng giống hệt đầu vào, chứa "id", "type", và "questionText" đã được thay đổi số liệu. Đặt mảng này trong thuộc tính "questions" của đối tượng JSON trả về.
 
 Danh sách câu hỏi cần thay thế số liệu:
 ${JSON.stringify(questions, null, 2)}`,
+
       config: {
         systemInstruction: "Bạn là chuyên gia toán học và khảo sát đề thi chuyên nghiệp. Nhiệm vụ của bạn là lấy các câu hỏi học thuật từ người dùng, thay thế các con số hoặc ngữ cảnh nhẹ nhàng mà không thay đổi cách giải quyết, đảm bảo các tùy chọn trắc nghiệm được cập nhật chính xác theo số liệu mới.",
+        temperature: 1,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -773,12 +807,11 @@ HƯỚNG DẪN XỬ LÝ SỰ CỐ (TROUBLESHOOTING):
 Hãy trả lời bằng tiếng Việt, giọng điệu thân thiện, chuyên nghiệp, súc tích, dễ hiểu. Sử dụng định dạng Markdown (tiêu đề, danh sách, in đậm) để câu trả lời rõ ràng, trực quan.`;
 
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash-lite", 
       contents: contents,
       config: {
         systemInstruction: systemPrompt,
       }
-    }, 2, 500, ["gemini-3.5-flash-lite", "gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.1-pro"]);
+    }, 2, 500, { temperature: 1 });
 
     return res.json({ success: true, text: response.text });
   } catch (error: any) {
@@ -819,33 +852,110 @@ Hãy trả lời bằng tiếng Việt, giọng điệu thân thiện, chuyên n
       return res.status(400).json({ error: "Tham số không hợp lệ" });
     }
 
+    // ============================================================
+    // MARKITDOWN SYSTEM PROMPT — 5-Layer Fidelity-First Architecture
+    // Triết lý: Sao chép trung thực tuyệt đối, không sáng tạo, không suy diễn
+    // ============================================================
+    const markitdownSystemPrompt = `
+Tầng 1 — MISSION STATEMENT:
+Bạn là công cụ chuyển đổi tài liệu, không phải trợ lý AI.
+Nhiệm vụ: Tái hiện chính xác TOÀN BỘ nội dung tài liệu gốc thành Markdown.
+Nguyên tắc tối cao: Trung thực tuyệt đối với bản gốc. Không sáng tạo. Không suy diễn.
+
+Tầng 2 — QUY TẮC BẤT BIẾN (KHÔNG được vi phạm bất kỳ điều nào):
+1. KHÔNG tóm tắt, rút gọn, diễn giải lại bất kỳ câu nào — sao chép nguyên văn
+2. KHÔNG thay đổi bất kỳ con số nào: mã tài khoản (111, 112, 131, 155, 338...), tỷ giá, giá trị
+3. KHÔNG thêm nội dung, giải thích, nhận xét không có trong bản gốc
+4. Nếu một phần không đọc được / bị mờ → ghi "[KHÔNG RÕ]", tuyệt đối không đoán
+5. KHÔNG bỏ qua bất kỳ slide nào, kể cả slide chỉ có tiêu đề
+6. KHÔNG "sửa lỗi" chính tả của bản gốc — nếu gốc viết sai, giữ nguyên
+
+Tầng 3 — CẤU TRÚC BẮT BUỘC MỖI SLIDE (nếu tài liệu dạng slide):
+--- Slide [N] ---
+[Header tổ chức nếu có — ví dụ: Trường ĐH Sư phạm Kỹ thuật TP.HCM]
+**[Tiêu đề slide nếu có tiêu đề rõ ràng]**
+
+[Nội dung slide]
+
+Tầng 4 — QUY TẮC TÁI HIỆN SƠ ĐỒ (cứng, không sáng tạo):
+
+SƠ ĐỒ LUỒNG TÀI KHOẢN:
+- Dùng Unicode box-drawing: ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼
+- Mũi tên: ──► (chiều xuôi), ◄── (chiều ngược), ▲ (lên), ▼ (xuống)
+- Mỗi ô tương ứng 1 tài khoản — ghi đúng mã số gốc (TK 338, không viết TK 33x)
+- Nhãn trên mũi tên: sao chép nguyên văn từ bản gốc
+
+SƠ ĐỒ CHỮ T (T-Account):
+- Dùng bảng Markdown 2 cột
+- Tiêu đề cột: sao chép nguyên văn nhãn từ bản gốc (ví dụ: "Bên Nợ (TS, CP)" / "Bên Có (NV, DT, TN)")
+- Các khoản mục: liệt kê nguyên văn, không rút gọn
+
+BẢNG SỐ LIỆU:
+- Dùng bảng Markdown chuẩn với header và separator
+- Tất cả giá trị số: sao chép nguyên văn (giữ nguyên định dạng 1.000.000 hay 1,000,000)
+
+CÔNG THỨC TOÁN HỌC — QUY TẮC LATEX:
+- Công thức có sẵn dạng $...$ hoặc $$...$$ trong bản gốc → giữ nguyên 100%
+- Ký hiệu unicode: x² → $x^2$, x₁ → $x_1$, α → $\alpha$, √x → $\sqrt{x}$, ∫ → $\int$, ∑ → $\sum$, ≤ → $\leq$, ≥ → $\geq$
+- Công thức kế toán dạng phân số: "ROE = Lợi nhuận / Vốn" → $ROE = \\frac{\\text{Lợi nhuận}}{\\text{Vốn}}$
+- Công thức mô tả đơn giản ("Tỷ giá = Số ngoại tệ × Tỷ giá GD") → giữ nguyên text, KHÔNG bọc vào LaTeX
+
+PHƯƠNG ÁN TRẮC NGHIỆM:
+- Chuẩn hóa sang danh sách Markdown: "* a. ...", "* b. ...", "* c. ...", "* d. ..."
+
+Tầng 5 — FEW-SHOT EXAMPLES (output chuẩn cần học theo):
+
+[VÍ DỤ 1 — Định khoản kế toán]
+INPUT: "Ghi nhận giá vốn: Nợ TK 632 / Có TK 155"
+OUTPUT ĐÚNG:
+| Nghiệp vụ | Nợ | Có |
+|---|---|---|
+| Ghi nhận giá vốn hàng xuất khẩu | TK 632 | TK 155 |
+OUTPUT SAI (cấm làm): TK 13X — sai vì tự thay đổi mã tài khoản
+
+[VÍ DỤ 2 — Sơ đồ chữ T]
+INPUT: "Bên trái: TS, CP / Bên phải: NV, DT, TN / đường kẻ giữa"
+OUTPUT ĐÚNG:
+| **Bên Nợ (TS, CP)** | **Bên Có (NV, DT, TN)** |
+|---|---|
+| Tài sản tăng | Nguồn vốn tăng |
+| Chi phí phát sinh | Doanh thu, Thu nhập ghi nhận |
+OUTPUT SAI (cấm làm): "Sơ đồ chữ T thể hiện nguyên tắc kép..." — sai vì AI tự giải thích
+
+[VÍ DỤ 3 — Câu hỏi trắc nghiệm]
+INPUT: "a. Tỷ giá mua  b. Tỷ giá bán  c. Tỷ giá giao dịch  d. Tỷ giá trung tâm"
+OUTPUT ĐÚNG:
+* a. Tỷ giá mua
+* b. Tỷ giá bán
+* c. Tỷ giá giao dịch
+* d. Tỷ giá trung tâm
+
+[VÍ DỤ 4 — Nội dung không rõ]
+INPUT: Vùng ảnh bị mờ, che khuất
+OUTPUT ĐÚNG: [KHÔNG RÕ - phần nội dung bị mờ trong bản gốc]
+OUTPUT SAI (cấm làm): "Dựa trên ngữ cảnh, có thể đây là..." — sai vì AI tự suy đoán
+
+CHỈ TRẢ VỀ NỘI DUNG MARKDOWN. Không giải thích. Không thêm lời mở đầu hay kết thúc.
+`;
+
     const contents: any = {
       parts: [
-        {
-          text: `Nhiệm vụ của bạn là nhận diện đầy đủ và chính xác toàn bộ nội dung trong tài liệu/URL được cung cấp, sau đó chuyển đổi thành định dạng Markdown chuẩn và đẹp mắt nhất.
-Lưu ý:
-- Phải trích xuất ĐẦY ĐỦ VÀ CHÍNH XÁC mọi nội dung: chữ, số, công thức toán học (Latex), ký hiệu đặc biệt, văn bản, bảng biểu. Không bỏ sót bất kỳ thông tin nào.
-- Giữ nguyên cấu trúc tiêu đề, đoạn văn, danh sách (list).
-- Đối với bảng biểu (tables): Nhận diện và format chính xác thành bảng Markdown.
-- Nếu là văn xuôi/bài báo, hãy trích xuất gọn gàng, loại bỏ các thành phần rác (header/footer web nếu có).
-- Nếu là transcript (Youtube, Audio), hãy trình bày lại thành các đoạn văn dễ đọc, có thể thêm tiêu đề phụ nếu cần thiết.
-- Không cần giải thích gì thêm, CHỈ TRẢ VỀ ĐÚNG NỘI DUNG MARKDOWN.`
-        }
+        { text: markitdownSystemPrompt }
       ]
     };
 
     if (rawText) {
-      contents.parts.push({ text: `\n\n[NỘI DUNG TÀI LIỆU]:\n${rawText}` });
+      contents.parts.push({ text: `\n\n[NỘI DUNG TÀI LIỆU CẦN CHUYỂN ĐỔI]:\n${rawText}` });
     }
     
     if (inlineParts.length > 0) {
       contents.parts.push(...inlineParts);
     }
 
+    // temperature: 0, topK: 1 — Extraction mode (fidelity-first, không sáng tạo)
     const response = await generateContentWithRetry({
-      model: "gemini-3.5-flash-lite",
       contents: contents
-    }, 3, 1500, ["gemini-3.5-flash-lite", "gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-3.1-pro"]);
+    }, 2, 1500, { temperature: 0, topK: 1, topP: 1.0 });
 
     return res.json({ success: true, markdown: response.text });
 
@@ -867,8 +977,8 @@ Lưu ý:
   
       console.log("[Gemini API] Đang trích xuất văn bản từ hình ảnh...");
   
+      // temperature: 0, topK: 1 — Extraction mode (fidelity-first)
       const response = await generateContentWithRetry({
-        model: "gemini-3.5-flash-lite",
         contents: {
           parts: [
             {
@@ -878,11 +988,19 @@ Lưu ý:
               },
             },
             {
-              text: "Hãy trích xuất toàn bộ văn bản trong hình ảnh này. Trả về văn bản nguyên bản. Không cần giải thích thêm.",
+              text: `Trích xuất TOÀN BỘ văn bản trong hình ảnh này.
+
+Quy tắc bắt buộc:
+1. Đọc và sao chép từng ký tự, từ trái sang phải, từ trên xuống dưới
+2. Tất cả nhãn nhỏ (nhãn màu, nhãn góc, số slide, tên tổ chức) đều PHẢI được giữ lại
+3. Không sửa chính tả — đọc sao chép vậy. Nếu mờ → ghi [KHÔNG RÕ]
+4. Mã tài khoản (3 chữ số: 111, 112, 131, 155, 338...) — đọc kỹ từng chữ số, không nhầm lẫn
+5. Nhãn màu sắc đặc biệt (VAT màu đỏ, tiêu đề màu xanh...) — giữ lại nội dung text của nhãn đó
+6. Không thêm bất kỳ giải thích nào. Chỉ trả về text thuần.`,
             },
           ],
         },
-      });
+      }, 2, 1500, { temperature: 0, topK: 1, topP: 1.0 });
   
       return res.json({ success: true, text: response.text });
     }
