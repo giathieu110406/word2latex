@@ -73,7 +73,7 @@ export const TOUR_CONFIGS: Record<string, PageTourConfig> = {
           "Tạo các câu hỏi/bài tập toán học tương tự đi kèm đáp án và hướng dẫn giải."
         ],
         tip: "Bấm vào các thẻ gợi ý có sẵn phía dưới thanh AI Canvas để thực hiện tác vụ tức thời.",
-        position: "bottom",
+        position: "right",
       },
       {
         targetId: "tour-latex-preview-panel",
@@ -120,7 +120,7 @@ export const TOUR_CONFIGS: Record<string, PageTourConfig> = {
           "Tùy chọn bố cục hiển thị đáp án: 1 cột (dài), 2 cột (vừa) hoặc 4 cột (ngắn gọn trên 1 dòng)."
         ],
         tip: "Bạn có thể nhập trực tiếp công thức toán học $...$ vào cả phần câu hỏi và phần đáp án giải chi tiết.",
-        position: "bottom",
+        position: "right",
       },
       {
         targetId: "tour-qbuilder-saved-list",
@@ -134,7 +134,7 @@ export const TOUR_CONFIGS: Record<string, PageTourConfig> = {
           "Nút 'Sửa' để đưa câu hỏi lên form chỉnh sửa và nút 'Xóa' để loại bỏ câu hỏi khỏi đề."
         ],
         tip: "Bấm vào tiêu đề hoặc nội dung tóm tắt của bất kỳ câu hỏi nào trong bảng để bắt đầu chỉnh sửa nhanh.",
-        position: "top",
+        position: "right",
       },
       {
         targetId: "tour-qbuilder-export-panel",

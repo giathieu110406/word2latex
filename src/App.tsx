@@ -9004,7 +9004,7 @@ ${bodyHtml}
               Trần Gia Thiều - Giathieu110406@gmail.com
             </strong>
             <span className="hidden sm:inline"> · </span>
-            <span className="block sm:inline mt-1 sm:mt-0">Phiên bản v3.8</span>
+            <span className="block sm:inline mt-1 sm:mt-0">Phiên bản v4.0</span>
           </p>
           <p className="text-[11px] text-slate-400 font-medium px-2">
             © Q-Builder · Số hóa công thức LaTeX · Tự động hóa xây dựng đề thi ·
