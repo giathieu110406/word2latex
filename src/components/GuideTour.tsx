@@ -8,13 +8,15 @@ import {
   Check, 
   Lightbulb, 
   FileText,
-  Layout
+  Layout,
+  MousePointerClick
 } from "lucide-react";
 
 export interface TourStep {
   targetId: string;
   title: string;
   description: string;
+  bullets?: string[];
   tip?: string;
   position?: "top" | "bottom" | "left" | "right" | "center";
 }
@@ -34,34 +36,57 @@ export const TOUR_CONFIGS: Record<string, PageTourConfig> = {
     steps: [
       {
         targetId: "tour-latex-input-panel",
-        title: "1. Khung soạn thảo & Nhập công thức",
+        title: "1. Khung Soạn Thảo & Nhập Nguồn Công Thức",
         description:
-          "Dán đoạn văn bản hoặc mã LaTeX chứa công thức toán dạng $...$ (trong dòng) hoặc $$...$$ (khối hiển thị). Hệ thống sẽ tự động quét và kiểm tra xem có công thức nào bị quên đóng dấu $ hay không.",
-        tip: "Bạn có thể dán trực tiếp ảnh chụp đề bài từ clipboard (Ctrl+V) vào đây để AI tự động trích xuất văn bản.",
+          "Khu vực tiếp nhận văn bản học thuật và công thức toán học từ mọi nguồn tài liệu.",
+        bullets: [
+          "Hỗ trợ cả công thức nội dòng ($x^2 + y^2 = z^2$) và công thức hiển thị riêng dòng ($$\\int_0^1 f(x)dx$$).",
+          "Tự động cảnh báo khi có công thức bị quên đóng dấu Đô-la ($) và hỗ trợ nút sửa nhanh với 1 click.",
+          "Hỗ trợ dán trực tiếp hình ảnh chụp đề bài từ Clipboard (Ctrl+V) để AI nhận diện và trích xuất thành chữ.",
+          "Nút 'Xóa sạch' giúp bạn nhanh chóng làm trống khung soạn thảo để bắt đầu tài liệu mới."
+        ],
+        tip: "Bạn có thể gõ phím tắt hoặc dán văn bản có sẵn cấu trúc bảng Markdown/HTML vào đây.",
         position: "right",
       },
       {
         targetId: "tour-latex-font-controls",
-        title: "2. Chọn Phông chữ & Định dạng Word",
+        title: "2. Chọn Phông Chữ & Định Dạng Word",
         description:
-          "Tùy chọn phông chữ khi xuất tài liệu Word (Mặc định là 'Times New Roman' chuẩn quốc gia). Tất cả công thức toán học sẽ được giữ nguyên phông tương ứng và chuyển thành chuẩn Word Equation.",
-        tip: "Sử dụng các nút B (In đậm) và I (In nghiêng) để định dạng nhanh văn bản đang bôi đen.",
+          "Bộ công cụ kiểm soát phông chữ và định dạng thẩm mỹ khi xuất sang Microsoft Word.",
+        bullets: [
+          "Lựa chọn phông chữ đích: Times New Roman (chuẩn thể thức văn bản Việt Nam), Inter, Arial hoặc Calibri.",
+          "Công thức toán học sẽ tự động được định dạng đồng bộ và chuyển thành chuẩn Microsoft Equation tương thích.",
+          "Sử dụng 2 nút B (In đậm) và I (In nghiêng) để định dạng nhanh đoạn văn bản bạn đang bôi đen."
+        ],
+        tip: "Times New Roman là phông chữ mặc định chuẩn cho các tài liệu khoa học, đề thi THPT và giáo trình.",
         position: "bottom",
       },
       {
         targetId: "tour-latex-ai-canvas",
-        title: "3. Trợ lý AI Canvas & Trích xuất ảnh",
+        title: "3. Trợ Lý AI Canvas & Xử Lý Ảnh Chuyên Sâu",
         description:
-          "Gọi Trợ lý AI Canvas để dịch thuật, sửa lỗi logic định dạng, bổ sung lời giải chi tiết từng bước, hoặc đính kèm hình ảnh để AI tự động bóc tách thành công thức LaTeX nguyên bản.",
-        tip: "Bấm vào các thẻ gợi ý sẵn (như 'Thêm lời giải chi tiết', 'In đậm từ khóa') để xử lý nhanh chỉ với 1 cú click.",
+          "Công cụ Trí tuệ Nhân tạo thông minh hỗ trợ nâng cấp và hiệu chỉnh tài liệu trực tiếp.",
+        bullets: [
+          "Dịch thuật toàn bộ tài liệu sang tiếng Anh hoặc tiếng Việt mà vẫn bảo toàn 100% công thức LaTeX.",
+          "Tự động thêm lời giải, các bước giải thích chi tiết cho từng bài toán trong văn bản.",
+          "Tìm kiếm và in đậm các từ khóa chuyên ngành, định lý, định luật quan trọng.",
+          "Tạo các câu hỏi/bài tập toán học tương tự đi kèm đáp án và hướng dẫn giải."
+        ],
+        tip: "Bấm vào các thẻ gợi ý có sẵn phía dưới thanh AI Canvas để thực hiện tác vụ tức thời.",
         position: "bottom",
       },
       {
         targetId: "tour-latex-preview-panel",
-        title: "4. Xem trước & Tải về Word Equation",
+        title: "4. Xem Trước KaTeX & Xuất File Word Equation",
         description:
-          "Xem trước công thức hiển thị trực quan tức thời bằng KaTeX. Bấm 'Sao chép' để dán thẳng vào Microsoft Word thành công thức Equation xịn sò, hoặc bấm 'Tải Word' để lưu file hoàn chỉnh về máy.",
-        tip: "Bạn cũng có thể chuyển sang tab 'Tải PDF' để lấy mã nguồn LaTeX tiêu chuẩn cho Overleaf hoặc xuất file PDF trực tiếp.",
+          "Khung hiển thị kết quả trực quan và các tùy chọn xuất bản tài liệu chất lượng cao.",
+        bullets: [
+          "Kết xuất công thức toán học sắc nét tức thời theo chuẩn KaTeX.",
+          "Nút 'Sao chép': Dán thẳng vào Microsoft Word thành công thức Equation xịn sò (không bị vỡ hạt như ảnh).",
+          "Nút 'Word': Tải trực tiếp file .doc/.docx hoàn chỉnh về máy tính với đầy đủ bảng biểu và công thức.",
+          "Tab 'Tải PDF': Cung cấp mã nguồn LaTeX chuẩn cho Overleaf hoặc xuất file PDF in ấn trực tiếp."
+        ],
+        tip: "Sau khi bấm 'Sao chép', chỉ cần mở Word và nhấn Ctrl+V là công thức toán sẽ tự động hiển thị mượt mà.",
         position: "left",
       },
     ],
@@ -73,34 +98,55 @@ export const TOUR_CONFIGS: Record<string, PageTourConfig> = {
     steps: [
       {
         targetId: "tour-qbuilder-config-header",
-        title: "1. Cấu hình Tiêu đề & Thông tin đề thi",
+        title: "1. Cấu Hình Tiêu Đề & Đầu Trang Đề Thi",
         description:
-          "Thiết lập thông tin đầu trang đề thi theo chuẩn Bộ Giáo Dục: Khung đôi (Trường thi, Môn thi, Mã đề, Thông tin học sinh) hoặc Khung đơn căn giữa truyền thống.",
-        tip: "Bấm vào thanh 'Thu gọn (▲)' để ẩn bớt phần tiêu đề khi bạn muốn tập trung soạn nội dung câu hỏi.",
+          "Thiết lập thông tin hành chính của đề thi theo quy chuẩn giáo dục chuyên nghiệp.",
+        bullets: [
+          "Lựa chọn 2 phong cách đầu trang: 'Khung đôi Bộ GD' (Trường, Môn, Mã đề, Thông tin học sinh) hoặc 'Căn giữa' đơn giản.",
+          "Tùy chỉnh linh hoạt: Tên trường/Sở GD, Tên kỳ thi, Môn thi, Mã đề thi và Thời gian làm bài.",
+          "Nút 'Thu gọn (▲) / Mở rộng (▼)' giúp bạn ẩn bớt phần tiêu đề để tập trung tối đa không gian soạn câu hỏi."
+        ],
+        tip: "Khung đôi Bộ GD rất thích hợp cho các đề kiểm tra 15 phút, 1 tiết, học kỳ hoặc đề thi thử tốt nghiệp.",
         position: "bottom",
       },
       {
         targetId: "tour-qbuilder-type-selector",
-        title: "2. Phân loại câu hỏi & Dán thông minh (AI)",
+        title: "2. Phân Loại 4 Dạng Câu Hỏi & Dán Thông Minh AI",
         description:
-          "Hỗ trợ đầy đủ 4 dạng câu hỏi: Trắc nghiệm 4 lựa chọn (A,B,C,D), Đúng/Sai, Trả lời ngắn và Tự luận. Bấm nút 'Dán thông minh (AI)' để tự động tách câu hỏi và đáp án từ đoạn chat AI.",
-        tip: "AI sẽ tự động nhận dạng các đáp án A, B, C, D và tách riêng lời giải/đáp án vào đúng ô dữ liệu tương ứng.",
+          "Hỗ trợ đầy đủ các dạng câu hỏi hiện đại của chương trình giáo dục mới.",
+        bullets: [
+          "4 dạng câu hỏi: Trắc nghiệm 4 lựa chọn (A,B,C,D), Đúng/Sai, Trả lời ngắn và Tự luận.",
+          "Nút 'Dán thông minh (AI)': Dán nguyên văn câu trả lời từ ChatGPT/AI, hệ thống sẽ tự bóc tách câu hỏi, các phương án và đáp án vào đúng ô.",
+          "Tùy chọn bố cục hiển thị đáp án: 1 cột (dài), 2 cột (vừa) hoặc 4 cột (ngắn gọn trên 1 dòng)."
+        ],
+        tip: "Bạn có thể nhập trực tiếp công thức toán học $...$ vào cả phần câu hỏi và phần đáp án giải chi tiết.",
         position: "bottom",
       },
       {
         targetId: "tour-qbuilder-saved-list",
-        title: "3. Danh sách câu hỏi đã lưu & Chỉnh sửa",
+        title: "3. Quản Lý & Chỉnh Sửa Danh Sách Câu Hỏi",
         description:
-          "Quản lý toàn bộ câu hỏi đã thêm vào đề. Bạn có thể lọc theo từng dạng câu hỏi, đổi số cột hiển thị đáp án (1, 2, 4 cột), di chuyển thứ tự lên/xuống (▲/▼), hoặc bấm 'Sửa' để chỉnh sửa nội dung.",
-        tip: "Hệ thống sẽ tự động đánh lại số thứ tự Câu 1, Câu 2... một cách nhất quán khi bạn di chuyển vị trí.",
+          "Bảng kiểm soát toàn bộ ngân hàng câu hỏi đã nạp vào đề thi hiện tại.",
+        bullets: [
+          "Các tab lọc thông minh: Xem tất cả hoặc lọc riêng từng dạng (Trắc nghiệm, Đúng/Sai, Trả lời ngắn, Tự luận).",
+          "Đổi số cột hiển thị đáp án (1C, 2C, 4C) trực tiếp trên từng câu hỏi trong bảng.",
+          "Các nút mũi tên (▲/▼) giúp hoán đổi thứ tự câu hỏi và tự động đánh lại số Câu 1, Câu 2... một cách nhất quán.",
+          "Nút 'Sửa' để đưa câu hỏi lên form chỉnh sửa và nút 'Xóa' để loại bỏ câu hỏi khỏi đề."
+        ],
+        tip: "Bấm vào tiêu đề hoặc nội dung tóm tắt của bất kỳ câu hỏi nào trong bảng để bắt đầu chỉnh sửa nhanh.",
         position: "top",
       },
       {
         targetId: "tour-qbuilder-export-panel",
-        title: "4. Xáo trộn đề & Xuất đề thi Word",
+        title: "4. Xáo Trộn Đề, Thay Số AI & Xuất File Word",
         description:
-          "Bấm 'Trộn đề thi' để hoán vị ngẫu nhiên câu hỏi/đáp án hoặc bật tính năng 'Thay số bằng AI' để tự động đổi số liệu bài toán. Sau đó bấm 'Tải Word' để xuất file đề thi kèm bảng đáp án chi tiết.",
-        tip: "Tài liệu Word xuất ra được tạo bảng phân bổ đáp án chuyên nghiệp và bảo toàn 100% công thức toán học.",
+          "Xem trước bố cục toàn diện của đề thi và xuất bản tài liệu hoàn chỉnh.",
+        bullets: [
+          "Nút 'Trộn đề thi': Hoán vị ngẫu nhiên vị trí các câu hỏi và các phương án A, B, C, D để tạo nhiều mã đề khác nhau.",
+          "Tính năng 'Thay số bằng AI': Tự động tạo bài toán mới bằng cách thay đổi số liệu nhưng vẫn giữ nguyên phương pháp giải.",
+          "Nút 'Tải Word (.doc)': Xuất file đề thi chuẩn kèm khung thông tin, câu hỏi trình bày đẹp mắt và Bảng đáp án chi tiết ở cuối trang."
+        ],
+        tip: "File Word tải về có bảng đáp án phân bổ theo từng phần, giúp giáo viên dễ dàng chấm bài và in ấn phát cho học sinh.",
         position: "left",
       },
     ],
@@ -112,26 +158,42 @@ export const TOUR_CONFIGS: Record<string, PageTourConfig> = {
     steps: [
       {
         targetId: "tour-markitdown-dropzone",
-        title: "1. Tải tệp lên hoặc Nhập URL",
+        title: "1. Tải Lên Tệp Đa Năng Hoặc Nhập URL",
         description:
-          "Hỗ trợ chuyển đổi đa năng: Tệp PDF (1 đến 100+ trang), Word (.docx), PowerPoint (.pptx), Excel (.xlsx), hình ảnh OCR, âm thanh bài giảng hoặc đường link website / video YouTube.",
-        tip: "Chuyển sang tab 'URL / Youtube' ở góc trên để bóc tách nội dung từ bất kỳ trang web nào thành Markdown.",
+          "Chuyển đổi mọi loại tài liệu học liệu và tài nguyên web sang định dạng Markdown chuẩn.",
+        bullets: [
+          "Hỗ trợ đa định dạng: Tệp PDF (1 đến 100+ trang), Word (.docx), PowerPoint (.pptx), Excel (.xlsx), Ảnh chụp tài liệu, File âm thanh bài giảng.",
+          "Tab 'URL / Youtube': Nhập đường link bất kỳ từ website bài báo hoặc video YouTube để trích xuất nội dung bài giảng thành chữ.",
+          "Kéo thả hoặc click vào khung để chọn file từ máy tính dễ dàng."
+        ],
+        tip: "Hệ thống sử dụng model Gemini 3.7 Flash với temperature: 0 để đảm bảo sao chép trung thực 100% không suy diễn.",
         position: "right",
       },
       {
         targetId: "tour-markitdown-queue-settings",
-        title: "2. Cấu hình Hàng đợi & Cắt trang thông minh",
+        title: "2. Cấu Hình Hàng Đợi & Phân Đoạn PDF Lớn",
         description:
-          "Tự động chia nhỏ tài liệu PDF nhiều trang thành các phân đoạn (5, 10, 15, 20 trang/lần) kèm khoảng nghỉ an toàn để tránh bị nghẽn hạn mức API và đảm bảo độ chính xác tối đa.",
-        tip: "Bật tùy chọn 'Ghi chú mốc trang' để tài liệu kết quả có chú thích ranh giới từng trang rõ ràng.",
+          "Hệ thống hàng đợi thông minh giúp xử lý mượt mà tài liệu dung lượng lớn mà không lo lỗi quá tải.",
+        bullets: [
+          "Kích thước phân đoạn: Chia nhỏ PDF thành các gói 5, 10, 15 hoặc 20 trang để AI xử lý chính xác nhất.",
+          "Khoảng nghỉ Cooldown: Tự động nghỉ giữa các đoạn (2.5s, 3.5s, 5.0s) để tránh chạm hạn mức giới hạn của Google AI.",
+          "Tùy chọn 'Ghi chú mốc trang': Tự động chèn mốc ranh giới từng trang <!-- TRANG X - Y --> vào tài liệu kết quả."
+        ],
+        tip: "Với slide bài giảng nhiều hình vẽ và bảng biểu, nên chọn phân đoạn 10 hoặc 15 trang để AI tái hiện chi tiết nhất.",
         position: "right",
       },
       {
         targetId: "tour-markitdown-output-panel",
-        title: "3. Theo dõi Hàng đợi & Tải kết quả Markdown",
+        title: "3. Theo Dõi Tiến Độ Hàng Đợi & Tải File Markdown",
         description:
-          "Theo dõi tiến độ phân tích từng phần theo thời gian thực. Sau khi hoàn tất, bạn có thể xem trước cấu trúc bảng biểu, công thức toán và bấm 'Sao chép' hoặc 'Tải 1 file .md' về máy tính.",
-        tip: "Nếu một phân đoạn bị lỗi do mạng, bạn có thể bấm nút 'Thử lại' riêng cho phân đoạn đó mà không cần chạy lại toàn bộ tệp.",
+          "Xem trước cấu trúc tài liệu sau khi chuyển đổi và lưu trữ kết quả thuận tiện.",
+        bullets: [
+          "Thanh tiến độ thời gian thực hiển thị số phân đoạn đã hoàn thành trên tổng số phân đoạn.",
+          "Tính năng 'Thử lại' từng phân đoạn: Nếu gặp sự cố mạng ở một đoạn cụ thể, bạn chỉ cần bấm thử lại đoạn đó mà không cần xử lý lại từ đầu.",
+          "Nút 'Sao chép': Copy toàn bộ nội dung Markdown chứa bảng biểu và công thức toán học vào bộ nhớ tạm.",
+          "Nút 'Tải 1 file .md': Tải về tệp Markdown hoàn chỉnh để sử dụng trên Obsidian, Notion hoặc các nền tảng AI."
+        ],
+        tip: "Bạn có thể dán nội dung Markdown kết quả vào trang Chuyển đổi LaTeX để xuất ngược lại sang Word Equation bất cứ lúc nào.",
         position: "left",
       },
     ],
@@ -162,6 +224,16 @@ export const GuideTour: React.FC<GuideTourProps> = ({
   }, [isOpen, pageId]);
 
   const currentStep = config.steps[currentStepIndex] || config.steps[0];
+  const totalSteps = config.steps.length;
+
+  // Handle advancing to next step or closing if on last step
+  const handleAdvanceNext = useCallback(() => {
+    if (currentStepIndex < totalSteps - 1) {
+      setCurrentStepIndex((prev) => prev + 1);
+    } else {
+      onClose();
+    }
+  }, [currentStepIndex, totalSteps, onClose]);
 
   // Update target rect on step change or resize/scroll
   const updateTargetRect = useCallback(() => {
@@ -179,14 +251,12 @@ export const GuideTour: React.FC<GuideTourProps> = ({
 
       if (!isInViewport) {
         el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
-        // Re-read rect after scroll animation completes
         setTimeout(() => {
           const updated = el.getBoundingClientRect();
           setTargetRect(updated);
-        }, 300);
+        }, 250);
       }
     } else {
-      // Fallback: centered rect if element not found
       setTargetRect(null);
     }
   }, [isOpen, currentStep]);
@@ -210,13 +280,9 @@ export const GuideTour: React.FC<GuideTourProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
-      } else if (e.key === "ArrowRight" || e.key === "Enter") {
+      } else if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        if (currentStepIndex < config.steps.length - 1) {
-          setCurrentStepIndex((prev) => prev + 1);
-        } else {
-          onClose();
-        }
+        handleAdvanceNext();
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         if (currentStepIndex > 0) {
@@ -227,69 +293,82 @@ export const GuideTour: React.FC<GuideTourProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, currentStepIndex, config.steps.length, onClose]);
+  }, [isOpen, currentStepIndex, handleAdvanceNext, onClose]);
 
   if (!isOpen) return null;
 
   const isFirstStep = currentStepIndex === 0;
-  const isLastStep = currentStepIndex === config.steps.length - 1;
-  const totalSteps = config.steps.length;
+  const isLastStep = currentStepIndex === totalSteps - 1;
 
-  // Calculate Popover Position relative to targetRect
+  // Calculate Popover Position relative to targetRect with safe viewport bounding
   const getPopoverStyle = (): React.CSSProperties => {
-    const cardWidth = Math.min(380, window.innerWidth - 32);
+    const cardWidth = Math.min(420, window.innerWidth - 32);
+    const estimatedHeight = cardRef.current?.offsetHeight || 380;
     const padding = 16;
+    const topNavOffset = 70; // Clearance for top navigation
+    const bottomNavOffset = 20;
 
     if (!targetRect) {
-      // Center of screen fallback
       return {
         position: "fixed",
         top: "50%",
         left: "50%",
         transform: "translate(-50%, -50%)",
         width: `${cardWidth}px`,
+        maxHeight: `calc(100vh - 100px)`,
         zIndex: 99999,
       };
     }
 
-    const { top, bottom, left, right, width, height } = targetRect;
+    const { top, bottom, left, right, width } = targetRect;
     const prefPos = currentStep.position || "bottom";
 
-    let posTop = bottom + padding;
+    let posTop: number;
     let posLeft = left + width / 2 - cardWidth / 2;
 
-    // Adjust for top preferred
-    if (prefPos === "top" && top > 320) {
-      posTop = top - 280 - padding;
-    } else if (prefPos === "right" && right + cardWidth + padding < window.innerWidth) {
-      posTop = Math.max(80, Math.min(top, window.innerHeight - 340));
+    if (prefPos === "right" && right + cardWidth + padding < window.innerWidth - 10) {
       posLeft = right + padding;
-    } else if (prefPos === "left" && left - cardWidth - padding > 0) {
-      posTop = Math.max(80, Math.min(top, window.innerHeight - 340));
+      posTop = top;
+    } else if (prefPos === "left" && left - cardWidth - padding > 10) {
       posLeft = left - cardWidth - padding;
-    } else if (prefPos === "bottom" || posTop + 300 > window.innerHeight) {
-      // If bottom overflows, place above or clamp
-      if (top > 320) {
-        posTop = top - 290 - padding;
+      posTop = top;
+    } else if (prefPos === "top" && top - estimatedHeight - padding >= topNavOffset) {
+      posTop = top - estimatedHeight - padding;
+    } else {
+      // Preferred Bottom: check if fits below target
+      if (bottom + estimatedHeight + padding <= window.innerHeight - bottomNavOffset) {
+        posTop = bottom + padding;
+      } else if (top - estimatedHeight - padding >= topNavOffset) {
+        // Fits above target
+        posTop = top - estimatedHeight - padding;
       } else {
-        posTop = Math.max(80, window.innerHeight - 320);
+        // If neither fits completely, place at bottom or top of viewport with scrollable card
+        if (top > window.innerHeight / 2) {
+          posTop = topNavOffset;
+        } else {
+          posTop = Math.max(topNavOffset, window.innerHeight - estimatedHeight - bottomNavOffset);
+        }
       }
     }
 
-    // Horizontal boundary clamp
+    // Horizontal bounds clamping
     posLeft = Math.max(16, Math.min(posLeft, window.innerWidth - cardWidth - 16));
-    posTop = Math.max(70, Math.min(posTop, window.innerHeight - 320));
+    
+    // Vertical bounds clamping to ALWAYS guarantee full visibility
+    const maxTop = window.innerHeight - estimatedHeight - bottomNavOffset;
+    posTop = Math.max(topNavOffset, Math.min(posTop, maxTop));
 
     return {
       position: "fixed",
       top: `${posTop}px`,
       left: `${posLeft}px`,
       width: `${cardWidth}px`,
+      maxHeight: `calc(100vh - ${posTop + bottomNavOffset}px)`,
       zIndex: 99999,
     };
   };
 
-  // SVG mask dimensions for smooth spotlight cutout with border radius
+  // SVG mask dimensions for smooth spotlight cutout
   const spotPadding = 8;
   const spotX = targetRect ? Math.max(0, targetRect.left - spotPadding) : 0;
   const spotY = targetRect ? Math.max(0, targetRect.top - spotPadding) : 0;
@@ -300,17 +379,17 @@ export const GuideTour: React.FC<GuideTourProps> = ({
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[99990] overflow-hidden select-none">
-        {/* SVG Backdrop with Spotlight Cutout */}
+        {/* SVG Backdrop with Spotlight Cutout. Clicking anywhere on the backdrop advances to next step! */}
         <svg
-          className="absolute inset-0 w-full h-full pointer-events-auto transition-all duration-300"
-          onClick={onClose}
+          className="absolute inset-0 w-full h-full pointer-events-auto transition-all duration-300 cursor-pointer"
+          onClick={handleAdvanceNext}
           style={{ width: "100vw", height: "100vh" }}
+          aria-label="Bấm vào khoảng trống để chuyển tiếp bước tiếp theo"
         >
+          <title>Bấm vào khoảng trống để chuyển tiếp bước tiếp theo</title>
           <defs>
             <mask id="tour-spotlight-mask">
-              {/* White fills everything (opaque mask = dark backdrop visible) */}
               <rect x="0" y="0" width="100%" height="100%" fill="white" />
-              {/* Black cutout creates transparent hole for the spotlight */}
               {targetRect && (
                 <rect
                   x={spotX}
@@ -325,7 +404,6 @@ export const GuideTour: React.FC<GuideTourProps> = ({
             </mask>
           </defs>
 
-          {/* Dimmed backdrop rect using the mask */}
           <rect
             x="0"
             y="0"
@@ -342,7 +420,7 @@ export const GuideTour: React.FC<GuideTourProps> = ({
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.25 }}
-            className="pointer-events-none fixed rounded-2xl border-2 border-indigo-400/90 shadow-[0_0_25px_rgba(99,102,241,0.5)] z-[99995]"
+            className="pointer-events-none fixed rounded-2xl border-2 border-indigo-400/90 shadow-[0_0_30px_rgba(99,102,241,0.55)] z-[99995]"
             style={{
               top: `${spotY}px`,
               left: `${spotX}px`,
@@ -352,20 +430,26 @@ export const GuideTour: React.FC<GuideTourProps> = ({
           />
         )}
 
+        {/* Floating backdrop click hint badge */}
+        <div className="fixed top-4 right-4 z-[99996] pointer-events-none hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-700 text-slate-300 text-[11px] font-semibold backdrop-blur-md shadow-lg">
+          <MousePointerClick className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+          <span>Click bất kỳ khoảng trống nào để sang bước kế tiếp</span>
+        </div>
+
         {/* Popover Step Dialog Card */}
         <motion.div
           ref={cardRef}
-          initial={{ opacity: 0, y: 15, scale: 0.96 }}
+          initial={{ opacity: 0, y: 12, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.96 }}
-          transition={{ duration: 0.25, ease: "easeOut" }}
+          exit={{ opacity: 0, y: 8, scale: 0.96 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
           style={getPopoverStyle()}
-          className="bg-white/95 backdrop-blur-xl border border-white/80 shadow-[0_20px_50px_rgba(15,23,42,0.3)] rounded-3xl p-5 md:p-6 flex flex-col gap-4 text-slate-850"
+          className="bg-white/98 backdrop-blur-2xl border border-slate-200/90 shadow-[0_25px_60px_rgba(15,23,42,0.35)] rounded-3xl p-5 md:p-6 flex flex-col gap-3.5 text-slate-850 overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div className="p-1.5 rounded-xl bg-indigo-50 border border-indigo-100/60 shrink-0">
                 {config.pageIcon}
               </div>
@@ -374,13 +458,14 @@ export const GuideTour: React.FC<GuideTourProps> = ({
                   {config.pageTitle}
                 </span>
                 <span className="text-xs font-bold text-slate-400">
-                  Bước <strong className="text-slate-800 font-extrabold">{currentStepIndex + 1}</strong> / {totalSteps}
+                  Bước <strong className="text-slate-850 font-black">{currentStepIndex + 1}</strong> / {totalSteps}
                 </span>
               </div>
             </div>
 
             {/* Close Button */}
             <button
+              type="button"
               onClick={onClose}
               className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-all cursor-pointer shrink-0"
               title="Đóng hướng dẫn (Phím Escape)"
@@ -390,32 +475,46 @@ export const GuideTour: React.FC<GuideTourProps> = ({
           </div>
 
           {/* Body Content */}
-          <div className="space-y-2.5">
-            <h4 className="text-sm md:text-base font-extrabold text-slate-900 leading-snug tracking-tight">
+          <div className="space-y-3 flex-1 overflow-y-auto pr-0.5">
+            <h4 className="text-sm md:text-[15px] font-black text-slate-900 leading-snug tracking-tight">
               {currentStep.title}
             </h4>
-            <p className="text-xs md:text-sm text-slate-600 leading-relaxed font-normal">
+            
+            <p className="text-xs md:text-[13px] text-slate-650 leading-relaxed font-medium">
               {currentStep.description}
             </p>
 
-            {/* Optional Pro Tip Box */}
+            {/* Detailed Feature Bullets */}
+            {currentStep.bullets && currentStep.bullets.length > 0 && (
+              <div className="space-y-1.5 bg-slate-50/80 p-3 rounded-2xl border border-slate-100">
+                {currentStep.bullets.map((bullet, bIdx) => (
+                  <div key={bIdx} className="flex items-start gap-2 text-xs text-slate-700 leading-relaxed">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
+                    <span>{bullet}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Pro Tip Box */}
             {currentStep.tip && (
-              <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/60 rounded-2xl flex items-start gap-2 text-[11px] text-amber-950 font-medium leading-relaxed">
+              <div className="p-3 bg-amber-50/80 border border-amber-200/70 rounded-2xl flex items-start gap-2 text-[11px] md:text-xs text-amber-950 font-medium leading-relaxed shadow-3xs">
                 <Lightbulb className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-bold text-amber-900">Mẹo hữu ích:</strong> {currentStep.tip}
+                  <strong className="font-bold text-amber-900">Mẹo hay:</strong> {currentStep.tip}
                 </div>
               </div>
             )}
           </div>
 
           {/* Footer Controls */}
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3 mt-1">
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
             {/* Step Progress Dots */}
             <div className="flex items-center gap-1.5">
               {config.steps.map((_, idx) => (
                 <button
                   key={idx}
+                  type="button"
                   onClick={() => setCurrentStepIndex(idx)}
                   className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
                     idx === currentStepIndex
@@ -434,7 +533,7 @@ export const GuideTour: React.FC<GuideTourProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                className="px-2.5 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
               >
                 Bỏ qua
               </button>
@@ -443,7 +542,7 @@ export const GuideTour: React.FC<GuideTourProps> = ({
                 <button
                   type="button"
                   onClick={() => setCurrentStepIndex((prev) => prev - 1)}
-                  className="px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                  className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all cursor-pointer flex items-center gap-1 active:scale-95"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Trước</span>
@@ -452,14 +551,8 @@ export const GuideTour: React.FC<GuideTourProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  if (isLastStep) {
-                    onClose();
-                  } else {
-                    setCurrentStepIndex((prev) => prev + 1);
-                  }
-                }}
-                className={`px-4 py-2 text-xs font-extrabold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 text-white ${
+                onClick={handleAdvanceNext}
+                className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 text-white ${
                   isLastStep
                     ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20"
                     : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/25"
@@ -472,7 +565,7 @@ export const GuideTour: React.FC<GuideTourProps> = ({
                   </>
                 ) : (
                   <>
-                    <span>Tiếp theo</span>
+                    <span>Tiếp tục</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}
