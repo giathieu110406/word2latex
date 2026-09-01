@@ -258,7 +258,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
           {/* Panel 1: EDITOR / COMPILER FORM (Trái) */}
           <div className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1 ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
             {/* Sub-Header: Settings */}
-            <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80">
+            <div id="tour-qbuilder-config-header" className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -415,7 +415,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
             {/* Form input elements */}
             <div
-              id="question-input-section"
+              id="tour-qbuilder-type-selector"
               className="p-4 md:p-5 pb-10 space-y-4 flex-1 overflow-y-auto min-h-0"
             >
               {editingQuestionId &&
@@ -699,7 +699,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 </button>
               </div>
 
-              <div className="border-t border-slate-200/80 pt-4 space-y-3">
+              <div id="tour-qbuilder-saved-list" className="border-t border-slate-200/80 pt-4 space-y-3">
                 <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:justify-between select-none">
                   <span className="text-xs font-bold text-slate-500 tracking-wide uppercase flex items-center gap-1.5">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -992,7 +992,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
           </div>
 
           {/* Panel 2: EXPORT PREVIEW (Phải) */}
-          <div className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1 ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
+          <div id="tour-qbuilder-export-panel" className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1 ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
               {/* Actions Area */}
               <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col gap-4 select-none">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">

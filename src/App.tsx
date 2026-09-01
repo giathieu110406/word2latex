@@ -28,7 +28,8 @@ import {
   Search, Pin, PinOff, Mail, Phone,
   Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserPlus, UserCog, User, Info, Save,
   Paperclip, Layout, Laptop, Wifi, BrainCircuit, Lock,
-  Vote, BarChart3, PieChart, ListChecks, MessageSquarePlus, PauseCircle, PlayCircle, EyeOff
+  Vote, BarChart3, PieChart, ListChecks, MessageSquarePlus, PauseCircle, PlayCircle, EyeOff,
+  BookOpen
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
@@ -36,6 +37,7 @@ import { marked } from "marked";
 import { LatexConverter } from "./components/LatexConverter";
 import { MarkItDown } from "./components/MarkItDown";
 import { QBuilder } from "./components/QBuilder";
+import { GuideTour } from "./components/GuideTour";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -541,6 +543,7 @@ export default function App() {
   const [deletingNotificationId, setDeletingNotificationId] = useState<string | null>(null);
   const [showShuffleConfirm, setShowShuffleConfirm] = useState<boolean>(false);
   const [showProUpgradeModal, setShowProUpgradeModal] = useState<boolean>(false);
+  const [isGuideTourOpen, setIsGuideTourOpen] = useState<boolean>(false);
 
   // --- SETTINGS STATE ---
   const [settingsDisplayName, setSettingsDisplayName] = useState<string>("");
@@ -5531,10 +5534,24 @@ ${bodyHtml}
               <div className="flex items-center gap-3 flex-1">
                   <button 
                     onClick={() => setIsMenuOpen(true)}
-                    className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-xs shrink-0"
+                    className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-xs shrink-0 cursor-pointer"
+                    title="Mở thanh điều hướng Menu"
                   >
                     <Menu className="w-5 h-5" />
                   </button>
+
+                  {/* Nút Hướng dẫn sử dụng cho 3 trang chức năng chính */}
+                  {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown') && (
+                    <button
+                      id="guide-tour-topbar-btn"
+                      onClick={() => setIsGuideTourOpen(true)}
+                      className="px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 border border-slate-200 hover:border-indigo-200/80 font-bold text-xs flex items-center gap-2 transition-all shadow-3xs hover:shadow-xs active:scale-95 cursor-pointer group shrink-0"
+                      title="Xem hướng dẫn từng bước trực quan cho trang này"
+                    >
+                      <BookOpen className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                      <span className="font-extrabold">Hướng dẫn sử dụng</span>
+                    </button>
+                  )}
               </div>
               <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                   {!isApproved && (
@@ -9077,6 +9094,15 @@ ${bodyHtml}
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Interactive Spotlight Guided Tour Component */}
+      {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown') && (
+        <GuideTour
+          isOpen={isGuideTourOpen}
+          onClose={() => setIsGuideTourOpen(false)}
+          pageId={sidebarView as any}
+        />
+      )}
     </div>
   </div>
   );

@@ -510,6 +510,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
             <div className="flex flex-col gap-4">
               {/* Dropzone */}
               <div
+                id="tour-markitdown-dropzone"
                 onClick={() => !isProcessing && fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all ${
                   isProcessing 
@@ -535,7 +536,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
               </div>
 
               {/* Chunking & Queue Settings Card */}
-              <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-col gap-3.5">
+              <div id="tour-markitdown-queue-settings" className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-col gap-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                     <Sliders className="w-3.5 h-3.5 text-indigo-600" />
@@ -682,7 +683,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         </div>
 
         {/* Right Side: Queue Status & Markdown Output */}
-        <div className={`w-full md:w-2/3 p-6 flex flex-col bg-white overflow-hidden min-h-0 h-full max-h-full relative ${
+        <div id="tour-markitdown-output-panel" className={`w-full md:w-2/3 p-6 flex flex-col bg-white overflow-hidden min-h-0 h-full max-h-full relative ${
           mobileView === "output" ? "flex" : "hidden md:flex"
         }`}>
           {/* Header Action Bar */}
