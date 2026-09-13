@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
+import { verifyAuthAndApproval } from './auth-guard.js';
 import * as mammoth from "mammoth";
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
@@ -279,6 +280,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Xác thực token và trạng thái phê duyệt đối với các tác vụ AI
+  if (action !== 'log-usage') {
+    const authCheck = await verifyAuthAndApproval(req, db);
+    if (!authCheck.authorized) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
   }
 
   try {

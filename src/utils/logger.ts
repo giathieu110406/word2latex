@@ -1,6 +1,8 @@
+import { authFetch } from "./api-client";
+
 export const logApiUsage = (feature: string) => {
     try {
-      fetch("/api/ai?action=log-usage", {
+      authFetch("/api/ai?action=log-usage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ feature })

@@ -1,4 +1,5 @@
 import { logApiUsage } from "./utils/logger";
+import { authFetch } from "./utils/api-client";
 import React, { useState, useRef, useEffect, startTransition } from "react";
 import {
   HelpCircle,
@@ -1409,7 +1410,7 @@ export default function App() {
     if (smartPasteStep === 1) {
       setIsSmartPasteParsing(true);
       try {
-        const response = await fetch("/api/ai?action=smart-paste-parse", {
+        const response = await authFetch("/api/ai?action=smart-paste-parse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: smartPasteText }),
@@ -1511,7 +1512,7 @@ export default function App() {
         }
 
         // Send to backend for AI variation
-        const response = await fetch("/api/ai?action=shuffle-ai", {
+        const response = await authFetch("/api/ai?action=shuffle-ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -5106,7 +5107,7 @@ ${bodyHtml}
     setIsProcessingCanvas(true);
 
     try {
-      const res = await fetch("/api/ai?action=gemini-canvas", {
+      const res = await authFetch("/api/ai?action=gemini-canvas", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -5253,6 +5254,41 @@ ${bodyHtml}
             className="flex items-center font-bold text-xs text-slate-400 hover:text-slate-200 transition-colors mx-auto px-4 py-2 border border-slate-800 hover:border-slate-700 bg-slate-950/25 rounded-lg cursor-pointer"
           >
             QUAY LẠI HỆ THỐNG
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Khóa màn hình đối với thành viên đang chờ quản trị viên phê duyệt
+  if (!isApproved) {
+    return (
+      <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-indigo-950 text-slate-100 flex items-center justify-center p-4 antialiased font-sans">
+        <div
+          className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden"
+          id="pending-approval-container"
+        >
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-500"></div>
+
+          <div className="w-16 h-16 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5 text-2xl shadow-inner">
+            ⏳
+          </div>
+
+          <h2 className="text-2xl font-bold tracking-tight text-white mb-2 font-display">
+            Chờ Quản Trị Viên Phê Duyệt
+          </h2>
+          <p className="text-sm text-slate-300 leading-relaxed mb-4">
+            Tài khoản <strong className="text-amber-300 font-semibold">{user?.email}</strong> đã đăng ký thành công nhưng đang chờ quản trị viên cấp quyền truy cập hệ thống.
+          </p>
+          <p className="text-xs text-slate-400 leading-relaxed mb-6 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800">
+            Vui lòng liên hệ Admin qua email <strong className="text-indigo-400">giathieu110406@gmail.com</strong> để được kích hoạt tài khoản sớm nhất.
+          </p>
+
+          <button
+            onClick={handleLogout}
+            className="flex items-center font-bold text-xs text-slate-300 hover:text-white transition-colors mx-auto px-5 py-2.5 border border-slate-700 hover:border-slate-600 bg-slate-800/80 rounded-xl cursor-pointer shadow-md"
+          >
+            ĐĂNG XUẤT / QUAY LẠI
           </button>
         </div>
       </div>

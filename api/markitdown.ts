@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
+import { verifyAuthAndApproval } from './auth-guard.js';
 
 // Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
 let GoogleGenAISDK: any = null;
@@ -105,6 +106,12 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Xác thực token và trạng thái tài khoản trước khi xử lý
+  const authCheck = await verifyAuthAndApproval(req);
+  if (!authCheck.authorized) {
+    return res.status(authCheck.status).json({ error: authCheck.error });
   }
 
   try {

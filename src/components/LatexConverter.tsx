@@ -1,4 +1,5 @@
 import { logApiUsage } from "../utils/logger";
+import { authFetch } from "../utils/api-client";
 import React, { useState, useRef } from "react";
 import { Sparkles, ArrowRight, Loader2, HelpCircle, Folder, Paperclip } from "lucide-react";
 
@@ -82,7 +83,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
     reader.onloadend = async () => {
       const base64Image = (reader.result as string).split(',')[1];
       try {
-        const res = await fetch("/api/ai?action=extract-text", {
+        const res = await authFetch("/api/ai?action=extract-text", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ image: base64Image, mimeType: file.type }),

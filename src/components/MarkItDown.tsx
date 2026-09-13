@@ -1,4 +1,5 @@
 import { logApiUsage } from "../utils/logger";
+import { authFetch } from "../utils/api-client";
 import React, { useState, useRef } from "react";
 import { 
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
@@ -98,7 +99,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       if (abortControllerRef.current) throw new Error("Quá trình đã bị người dùng dừng lại.");
       attempt++;
       try {
-        const res = await fetch("/api/markitdown", {
+        const res = await authFetch("/api/markitdown", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -280,7 +281,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     }
     const base64Data = btoa(binary);
 
-    const res = await fetch("/api/markitdown", {
+    const res = await authFetch("/api/markitdown", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -366,7 +367,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     triggerToast("Đang phân tích URL bằng AI...", true);
 
     try {
-      const res = await fetch("/api/markitdown", {
+      const res = await authFetch("/api/markitdown", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "url", url: url }),

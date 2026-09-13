@@ -43,16 +43,21 @@ const getFallbackApiKey = () => {
   return "AIza" + "SyDhTHh" + "By3YyL1h5y" + "rIaSMRJI" + "WGc7hcn2N0";
 };
 
+const getValidVal = (val: string | undefined, fallback: string) => {
+  if (!val || val.includes("your_") || val.includes("MY_") || val.trim() === "") return fallback;
+  return val;
+};
+
 // Firebase config matching standard client config
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8",
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN || "word2latex-prod-fde7b.firebaseapp.com",
-  databaseURL: process.env.FIREBASE_DATABASE_URL || process.env.VITE_FIREBASE_DATABASE_URL || "https://word2latex-prod-fde7b-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "word2latex-prod-fde7b",
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || "word2latex-prod-fde7b.firebasestorage.app",
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "341505323323",
-  appId: process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID || "1:341505323323:web:8ba2fc4bb7e14a6fa6871e",
-  measurementId: process.env.FIREBASE_MEASUREMENT_ID || process.env.VITE_FIREBASE_MEASUREMENT_ID || "G-2BF1P0L333"
+  apiKey: getValidVal(process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY, "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8"),
+  authDomain: getValidVal(process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN, "word2latex-prod-fde7b.firebaseapp.com"),
+  databaseURL: getValidVal(process.env.FIREBASE_DATABASE_URL || process.env.VITE_FIREBASE_DATABASE_URL, "https://word2latex-prod-fde7b-default-rtdb.asia-southeast1.firebasedatabase.app"),
+  projectId: getValidVal(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID, "word2latex-prod-fde7b"),
+  storageBucket: getValidVal(process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET, "word2latex-prod-fde7b.firebasestorage.app"),
+  messagingSenderId: getValidVal(process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID, "341505323323"),
+  appId: getValidVal(process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID, "1:341505323323:web:8ba2fc4bb7e14a6fa6871e"),
+  measurementId: getValidVal(process.env.FIREBASE_MEASUREMENT_ID || process.env.VITE_FIREBASE_MEASUREMENT_ID, "G-2BF1P0L333")
 };
 // Use the databaseId provisioned for this project, sanitizing URLs or malformed values if present
 const getCleanDatabaseId = (rawId: string | undefined): string | undefined => {
@@ -94,7 +99,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 
 // Helper to generate a tamper-proof cryptographic approval token
-const SECRET_KEY = "graphic-heading-0km1r-secret-token-key";
+const SECRET_KEY = process.env.APPROVAL_SECRET_KEY || "graphic-heading-0km1r-secret-token-key";
 function generateApprovalToken(uid: string): string {
   return crypto.createHmac("sha256", SECRET_KEY).update(uid).digest("hex");
 }
@@ -289,8 +294,7 @@ app.post("/api/notify-approval", async (req, res) => {
   return res.json({
     success: true,
     emailSent: false,
-    statusMessage: "SMTP Gmail đã bị gỡ bỏ theo yêu cầu. Liên kết giả lập tự kích hoạt thành công.",
-    approvalLink: approvalLink // Send back the link so client can show it for extremely easy testing/demo in the sandbox
+    statusMessage: "Yêu cầu phê duyệt đã được gửi đến quản trị viên."
   });
 });
 

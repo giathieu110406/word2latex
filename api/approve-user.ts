@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, getDoc, updateDoc } from "firebase/firestore";
 
-const SECRET_KEY = "graphic-heading-0km1r-secret-token-key";
+const SECRET_KEY = process.env.APPROVAL_SECRET_KEY || "graphic-heading-0km1r-secret-token-key";
 
 function generateApprovalToken(uid: string): string {
   return crypto.createHmac("sha256", SECRET_KEY).update(uid).digest("hex");

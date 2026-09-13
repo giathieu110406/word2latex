@@ -8,15 +8,20 @@ const getFallbackApiKey = () => {
   return "AIza" + "SyDhTHh" + "By3YyL1h5y" + "rIaSMRJI" + "WGc7hcn2N0";
 };
 
+const getValidVal = (val: string | undefined, fallback: string) => {
+  if (!val || val.includes("your_") || val.includes("MY_") || val.trim() === "") return fallback;
+  return val;
+};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "word2latex-prod-fde7b.firebaseapp.com",
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://word2latex-prod-fde7b-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "word2latex-prod-fde7b",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "word2latex-prod-fde7b.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "341505323323",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:341505323323:web:8ba2fc4bb7e14a6fa6871e",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-2BF1P0L333"
+  apiKey: getValidVal(import.meta.env.VITE_FIREBASE_API_KEY, "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8"),
+  authDomain: getValidVal(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN, "word2latex-prod-fde7b.firebaseapp.com"),
+  databaseURL: getValidVal(import.meta.env.VITE_FIREBASE_DATABASE_URL, "https://word2latex-prod-fde7b-default-rtdb.asia-southeast1.firebasedatabase.app"),
+  projectId: getValidVal(import.meta.env.VITE_FIREBASE_PROJECT_ID, "word2latex-prod-fde7b"),
+  storageBucket: getValidVal(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET, "word2latex-prod-fde7b.firebasestorage.app"),
+  messagingSenderId: getValidVal(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID, "341505323323"),
+  appId: getValidVal(import.meta.env.VITE_FIREBASE_APP_ID, "1:341505323323:web:8ba2fc4bb7e14a6fa6871e"),
+  measurementId: getValidVal(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID, "G-2BF1P0L333")
 };
 
 // Use the databaseId provisioned for this project, sanitizing URLs or malformed values if present
