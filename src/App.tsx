@@ -5232,9 +5232,9 @@ ${bodyHtml}
 
   if (isRejected) {
     return (
-      <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-blue-950 text-slate-100 flex items-center justify-center p-4 antialiased font-sans">
+      <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-blue-950 text-slate-100 flex items-center justify-center p-4 py-6 sm:py-10 overflow-y-auto antialiased font-sans">
         <div
-          className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden"
+          className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden my-auto"
           id="rejected-container"
         >
           <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-500"></div>
@@ -5263,9 +5263,9 @@ ${bodyHtml}
   // Khóa màn hình đối với thành viên đang chờ quản trị viên phê duyệt
   if (!isApproved) {
     return (
-      <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-indigo-950 text-slate-100 flex items-center justify-center p-4 antialiased font-sans">
+      <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-indigo-950 text-slate-100 flex items-center justify-center p-4 py-6 sm:py-10 overflow-y-auto antialiased font-sans">
         <div
-          className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden"
+          className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden my-auto"
           id="pending-approval-container"
         >
           <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-500"></div>
@@ -5461,11 +5461,12 @@ ${bodyHtml}
                     <button
                       id="guide-tour-topbar-btn"
                       onClick={() => setIsGuideTourOpen(true)}
-                      className="px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 border border-slate-200 hover:border-indigo-200/80 font-bold text-xs flex items-center gap-2 transition-all shadow-3xs hover:shadow-xs active:scale-95 cursor-pointer group shrink-0"
+                      className="px-2.5 sm:px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 border border-slate-200 hover:border-indigo-200/80 font-bold text-xs flex items-center gap-1.5 sm:gap-2 transition-all shadow-3xs hover:shadow-xs active:scale-95 cursor-pointer group shrink-0"
                       title="Xem hướng dẫn từng bước trực quan cho trang này"
                     >
                       <BookOpen className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-                      <span className="font-extrabold">Hướng dẫn sử dụng</span>
+                      <span className="font-extrabold hidden sm:inline">Hướng dẫn sử dụng</span>
+                      <span className="font-extrabold sm:hidden text-[11px]">HDSD</span>
                     </button>
                   )}
               </div>
@@ -8959,7 +8960,7 @@ ${bodyHtml}
               href="https://zalo.me/0335784563"
               target="_blank"
               rel="noreferrer"
-              className="group relative flex items-center gap-2.5 bg-white/95 hover:bg-white backdrop-blur-md px-3.5 py-2.5 rounded-2xl shadow-lg hover:shadow-xl border border-blue-200/80 hover:border-blue-400 transition-all duration-300 max-w-[210px] sm:max-w-[280px] cursor-pointer"
+              className="group relative hidden sm:flex items-center gap-2.5 bg-white/95 hover:bg-white backdrop-blur-md px-3.5 py-2.5 rounded-2xl shadow-lg hover:shadow-xl border border-blue-200/80 hover:border-blue-400 transition-all duration-300 max-w-[280px] cursor-pointer"
             >
               {/* Status pulsing dot */}
               <span className="relative flex h-2.5 w-2.5 shrink-0">

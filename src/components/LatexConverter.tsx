@@ -252,9 +252,9 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
       </div>
 
       {/* Workspace with inner padding and subtle background */}
-      <div className="p-4 md:p-6 bg-white/30 flex-1 flex flex-col min-h-0">
+      <div className="p-2 sm:p-4 md:p-6 bg-white/30 flex-1 flex flex-col min-h-0">
         {/* Mobile View Selector */}
-        <div className="lg:hidden flex bg-slate-100 p-1 rounded-xl mb-4 shrink-0 select-none">
+        <div className="lg:hidden flex bg-slate-100 p-1 rounded-xl mb-3 sm:mb-4 shrink-0 select-none">
           <button
             type="button"
             onClick={() => setMobileView("edit")}
@@ -279,9 +279,9 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 flex-1 min-h-0 p-4 md:p-5 lg:p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 flex-1 min-h-0 p-0 sm:p-2 lg:p-0">
           {/* Left panel: Input Area */}
-          <div id="tour-latex-input-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[600px] lg:min-h-0 flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
+          <div id="tour-latex-input-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[380px] sm:min-h-[500px] flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
@@ -440,7 +440,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
           </div>
 
           {/* Right panel: Preview & Advanced Copy Area */}
-          <div id="tour-latex-preview-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[675px] flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
+          <div id="tour-latex-preview-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[380px] sm:min-h-[500px] flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
             {/* Header with Switch output tabs */}
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
               {/* Left Group: Tab selector with visual divider */}

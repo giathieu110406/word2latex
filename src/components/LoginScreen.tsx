@@ -12,7 +12,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   authError,
 }) => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFC] to-[#F0FDF4]/40 text-slate-850 flex flex-col items-center justify-center p-4 sm:p-6 md:p-10 antialiased font-sans relative overflow-hidden select-none">
+    <div className="min-h-screen bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFC] to-[#F0FDF4]/40 text-slate-850 flex flex-col items-center justify-start sm:justify-center p-3 sm:p-6 md:p-10 py-6 sm:py-10 antialiased font-sans relative overflow-y-auto select-none">
       {/* Decorative ambient background floating elements */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {/* Top-left soft sparkle */}
@@ -37,16 +37,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         initial={{ opacity: 0, y: 20, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
-        className="max-w-5xl w-full bg-white/95 backdrop-blur-2xl rounded-[32px] sm:rounded-[40px] border border-white/80 shadow-[0_20px_70px_rgba(15,23,42,0.07)] p-6 sm:p-10 md:p-12 relative z-10 overflow-hidden flex flex-col justify-between"
+        className="max-w-5xl w-full bg-white/95 backdrop-blur-2xl rounded-[24px] sm:rounded-[40px] border border-white/80 shadow-[0_20px_70px_rgba(15,23,42,0.07)] p-4 sm:p-8 md:p-12 relative z-10 overflow-hidden flex flex-col justify-between my-auto"
         id="login-container"
       >
         {/* 2-Column Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-12 items-center">
           
           {/* ================= LEFT COLUMN ================= */}
           <div className="flex flex-col items-center text-center">
             {/* App Icon */}
-            <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 shadow-md shadow-indigo-500/10 p-2 flex items-center justify-center mb-3.5 hover:scale-105 transition-transform duration-300">
+            <div className="w-14 h-14 sm:w-18 sm:h-18 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 shadow-md shadow-indigo-500/10 p-2 flex items-center justify-center mb-2.5 sm:mb-3.5 hover:scale-105 transition-transform duration-300">
               <img
                 src="/logo.svg"
                 alt="Late2Word Logo"
@@ -56,18 +56,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* App Title */}
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 leading-snug">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 leading-snug">
               <span className="text-[#2563EB]">Late2Word</span>{" "}
               <span className="text-slate-900">Converter</span>
             </h1>
 
             {/* Subtitle */}
-            <p className="text-xs sm:text-[13px] text-slate-500 font-medium mt-1 max-w-sm">
+            <p className="text-xs sm:text-[13px] text-slate-500 font-medium mt-0.5 sm:mt-1 max-w-sm">
               Hệ thống chuyển đổi định dạng và kiểm soát chất lượng dữ liệu
             </p>
 
             {/* 3D Isometric Document Conversion Illustration */}
-            <div className="relative w-full max-w-[340px] sm:max-w-[380px] h-[190px] sm:h-[220px] my-3 flex items-center justify-center">
+            <div className="relative w-full max-w-[260px] sm:max-w-[380px] h-[90px] xs:h-[115px] sm:h-[180px] md:h-[220px] my-1 sm:my-3 flex items-center justify-center">
               <svg
                 viewBox="0 0 400 220"
                 className="w-full h-full drop-shadow-md select-none pointer-events-none"
@@ -215,13 +215,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {/* Bottom Security Assurance Callout */}
-            <div className="w-full bg-[#F8FAFC] border border-slate-200/80 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 shadow-3xs text-left">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-indigo-100/90 border border-indigo-200/60 flex items-center justify-center text-indigo-600 shrink-0 shadow-3xs">
-                <Shield className="w-5 h-5 text-indigo-600" />
+            <div className="w-full bg-[#F8FAFC] border border-slate-200/80 rounded-2xl p-2.5 sm:p-4 flex items-center gap-2.5 sm:gap-3.5 shadow-3xs text-left">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-indigo-100/90 border border-indigo-200/60 flex items-center justify-center text-indigo-600 shrink-0 shadow-3xs">
+                <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
               </div>
-              <p className="text-xs sm:text-[12.5px] text-slate-650 leading-relaxed font-medium">
-                Hệ thống yêu cầu xác thực bằng dịch vụ Google bảo mật cao.
-                <br />
+              <p className="text-[11px] sm:text-[12.5px] text-slate-650 leading-relaxed font-medium">
+                Hệ thống yêu cầu xác thực bằng dịch vụ Google bảo mật cao.{" "}
+                <span className="hidden sm:inline"><br /></span>
                 Thông tin của bạn luôn được{" "}
                 <strong className="text-indigo-700 font-bold">
                   bảo vệ an toàn tuyệt đối
@@ -234,10 +234,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           {/* ================= RIGHT COLUMN ================= */}
           <div className="flex flex-col items-center text-center lg:pl-4">
             {/* Official Website Badge */}
-            <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-amber-50 border border-amber-200/90 text-amber-800 font-extrabold text-[11px] uppercase tracking-wider shadow-3xs">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <div className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-1 sm:py-1.5 rounded-full bg-amber-50 border border-amber-200/90 text-amber-800 font-extrabold text-[10px] sm:text-[11px] uppercase tracking-wider shadow-3xs">
+              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-500" />
               <span>TRANG WEB CHÍNH THỨC</span>
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-500" />
             </div>
 
             {/* Domain Name */}
@@ -245,18 +245,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               href="https://word2latex.io.vn"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#2563EB] via-[#0284C7] to-[#0D9488] hover:opacity-90 transition-opacity mt-4 mb-2 select-all font-display"
+              className="text-2xl sm:text-4xl md:text-5xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#2563EB] via-[#0284C7] to-[#0D9488] hover:opacity-90 transition-opacity mt-1.5 sm:mt-4 mb-1 sm:mb-2 select-all font-display"
             >
               word2latex.io.vn
             </a>
 
             {/* Domain Description */}
-            <p className="text-xs sm:text-sm text-slate-500 font-medium text-center max-w-sm mb-6">
+            <p className="text-[11px] sm:text-sm text-slate-500 font-medium text-center max-w-sm mb-2.5 sm:mb-6">
               Truy cập trực tiếp tại đây để có trải nghiệm mượt mà và đầy đủ nhất!
             </p>
 
-            {/* Watermark icon */}
-            <div className="mb-4 text-slate-200 flex items-center justify-center">
+            {/* Watermark icon (hidden on small mobile screens to save vertical height) */}
+            <div className="hidden sm:flex mb-4 text-slate-200 items-center justify-center">
               <Shield className="w-5 h-5 opacity-40 text-slate-400" />
             </div>
 
@@ -274,7 +274,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <button
               type="button"
               onClick={onGoogleLogin}
-              className="w-full max-w-md py-4 px-6 rounded-2xl bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] text-white font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer"
+              className="w-full max-w-md py-3.5 sm:py-4 px-5 sm:px-6 rounded-2xl bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] text-white font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer"
               title="Đăng nhập siêu nhanh qua tài khoản Google"
             >
               {/* Google G Icon */}
@@ -303,8 +303,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </button>
 
             {/* Info Box below Button */}
-            <div className="w-full max-w-md bg-[#F8FAFC] border border-slate-200/80 rounded-2xl p-4 flex items-center gap-3 mt-4 text-xs text-slate-600 shadow-3xs text-left">
-              <Info className="w-4.5 h-4.5 text-blue-500 shrink-0" />
+            <div className="w-full max-w-md bg-[#F8FAFC] border border-slate-200/80 rounded-2xl p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3 mt-3 sm:mt-4 text-[11px] sm:text-xs text-slate-600 shadow-3xs text-left">
+              <Info className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-blue-500 shrink-0" />
               <p className="leading-relaxed">
                 Sử dụng tài khoản Google của bạn để đăng nhập nhanh chóng và an toàn.
               </p>
@@ -313,11 +313,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         </div>
 
         {/* Footer info at the bottom of the card */}
-        <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-center text-xs text-slate-500 font-medium select-text">
-          <span>👤 Tác giả: Trần Gia Thiều · </span>
+        <div className="mt-3.5 sm:mt-8 pt-3 sm:pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-center text-[11px] sm:text-xs text-slate-500 font-medium select-text text-center gap-0.5 sm:gap-1">
+          <span>👤 Tác giả: Trần Gia Thiều</span>
+          <span className="hidden sm:inline">·</span>
           <a
             href="mailto:Giathieu110406@gmail.com"
-            className="text-indigo-600 font-semibold hover:underline ml-1"
+            className="text-indigo-600 font-semibold hover:underline"
           >
             Giathieu110406@gmail.com
           </a>

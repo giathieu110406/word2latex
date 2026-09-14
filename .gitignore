@@ -8,4 +8,6 @@ coverage/
 !.env.example
 firebase-applet-config.json
 knowledge/
+.playwright-cli/
+mobile-view*.png
 
