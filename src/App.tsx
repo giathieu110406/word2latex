@@ -40,6 +40,7 @@ import { MarkItDown } from "./components/MarkItDown";
 import { QBuilder } from "./components/QBuilder";
 import { GuideTour } from "./components/GuideTour";
 import { LoginScreen } from "./components/LoginScreen";
+import { ZaloContactWidget } from "./components/ZaloContactWidget";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -600,21 +601,7 @@ export default function App() {
     }
   }, [user]);
 
-  // Floating Zalo banner rotating messages
-  const ZALO_BANNER_MESSAGES = [
-    "Bạn cần liên hệ hỗ trợ?",
-    "Bạn muốn nâng cấp gói tài khoản?",
-    "Bạn gặp lỗi khi dùng?",
-  ];
-  const [zaloBannerIndex, setZaloBannerIndex] = useState<number>(0);
-  const [isZaloWidgetClosed, setIsZaloWidgetClosed] = useState<boolean>(false);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setZaloBannerIndex((prev) => (prev + 1) % ZALO_BANNER_MESSAGES.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [ZALO_BANNER_MESSAGES.length]);
 
   const getUserVoteForNotif = (notif: any, userUid?: string, uDoc?: any) => {
     if (!userUid) return null;
@@ -1399,9 +1386,9 @@ export default function App() {
       return;
     }
     const currentPromptCount = userDoc?.promptCount || 0;
-    if (!isApproved && currentPromptCount >= 10) {
+    if (!isApproved && currentPromptCount >= 15) {
       triggerToast(
-        "Bạn đã tới giới hạn tính năng dán thông minh (AI). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        "Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa 15 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
         false,
       );
       return;
@@ -1502,9 +1489,9 @@ export default function App() {
 
       if (isAIShuffleEnabled) {
         const currentPromptCount = userDoc?.promptCount || 0;
-        if (!isApproved && currentPromptCount >= 13) {
+        if (!isApproved && currentPromptCount >= 15) {
           triggerToast(
-            "Bạn đã tới giới hạn tính năng AI thay thế số liệu (tối đa 13 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+            "Bạn đã tới giới hạn tính năng AI thay thế số liệu (tối đa 15 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
             false
           );
           setIsShuffling(false);
@@ -3995,9 +3982,9 @@ ${cleanedBody}
     // Nếu có từ 2 câu trở lên, chạy tính năng "Dán thông minh" ẩn danh (nếu không bypass)
     if (!bypassAutoProcess && cauCount >= 2) {
       const currentPromptCount = userDoc?.promptCount || 0;
-      if (!isApproved && currentPromptCount >= 13) {
+      if (!isApproved && currentPromptCount >= 15) {
         triggerToast(
-          "Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa 13 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+          "Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa 15 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
           false,
         );
         return;
@@ -5089,9 +5076,9 @@ ${bodyHtml}
     }
 
     const currentPromptCount = userDoc?.promptCount || 0;
-    if (!isApproved && currentPromptCount >= 13) {
+    if (!isApproved && currentPromptCount >= 15) {
       triggerToast(
-        "Bạn đã tới giới hạn tính năng Trợ lý AI Canvas (tối đa 13 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        "Bạn đã tới giới hạn tính năng Trợ lý AI Canvas (tối đa 15 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
         false,
       );
       return;
@@ -5188,28 +5175,58 @@ ${bodyHtml}
     );
   }
 
+  // Thanh thông báo hỗ trợ khẩn cấp hiển thị trên mọi màn hình chưa đăng nhập thành công
+  const LoginHelpNoticeBanner = () => (
+    <div 
+      role="alert"
+      className="w-full bg-gradient-to-r from-amber-600 via-rose-600 to-amber-600 text-white text-xs sm:text-[13px] font-black px-3 sm:px-4 py-2 sm:py-2.5 text-center shadow-md flex items-center justify-center gap-1.5 sm:gap-2 tracking-tight z-50 sticky top-0"
+    >
+      <span className="text-sm sm:text-base animate-bounce shrink-0">⚠️</span>
+      <span className="leading-snug drop-shadow-xs uppercase">
+        NẾU BẠN KHÔNG ĐĂNG NHẬP ĐƯỢC LÀ DO WEB LỖI. LIÊN HỆ NGAY ĐỂ ĐĂNG NHẬP
+      </span>
+      <a
+        href="https://zalo.me/0335784563"
+        target="_blank"
+        rel="noreferrer"
+        className="ml-1 sm:ml-2 px-2 sm:px-2.5 py-0.5 rounded-lg bg-white text-rose-700 font-extrabold text-[11px] sm:text-xs hover:bg-rose-50 transition-all shadow-xs inline-flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
+      >
+        <span>Zalo: 0335.784.563</span>
+        <span className="text-[10px]">↗</span>
+      </a>
+    </div>
+  );
+
   if (user && !userDoc) {
     return (
-      <div
-        className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center font-sans"
-        id="userdoc-loading-screen"
-      >
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-400 font-medium text-sm animate-pulse">
-            Đang đồng bộ cấu hình bảo mật tài khoản...
-          </p>
+      <>
+        <LoginHelpNoticeBanner />
+        <div
+          className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center font-sans"
+          id="userdoc-loading-screen"
+        >
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-slate-400 font-medium text-sm animate-pulse">
+              Đang đồng bộ cấu hình bảo mật tài khoản...
+            </p>
+          </div>
         </div>
-      </div>
+        <ZaloContactWidget />
+      </>
     );
   }
 
   if (!user) {
     return (
-      <LoginScreen
-        onGoogleLogin={handleGoogleLogin}
-        authError={authError}
-      />
+      <>
+        <LoginHelpNoticeBanner />
+        <LoginScreen
+          onGoogleLogin={handleGoogleLogin}
+          authError={authError}
+        />
+        <ZaloContactWidget />
+      </>
     );
   }
 
@@ -5232,70 +5249,40 @@ ${bodyHtml}
 
   if (isRejected) {
     return (
-      <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-blue-950 text-slate-100 flex items-center justify-center p-4 py-6 sm:py-10 overflow-y-auto antialiased font-sans">
-        <div
-          className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden my-auto"
-          id="rejected-container"
-        >
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-500"></div>
-
-          <h2 className="text-2xl font-bold tracking-tight text-white mb-2 font-display">
-            Tài Khoản Bị Từ Chối
-          </h2>
-          <p className="text-sm text-slate-400 leading-relaxed mb-6">
-            Yêu cầu truy cập hệ thống của bạn đã bị người quản trị từ chối. Vui
-            lòng liên hệ Admin qua email{" "}
-            <strong className="text-blue-400">giathieu110406@gmail.com</strong>{" "}
-            để biết thêm chi tiết.
-          </p>
-
-          <button
-            onClick={handleLogout}
-            className="flex items-center font-bold text-xs text-slate-400 hover:text-slate-200 transition-colors mx-auto px-4 py-2 border border-slate-800 hover:border-slate-700 bg-slate-950/25 rounded-lg cursor-pointer"
+      <>
+        <LoginHelpNoticeBanner />
+        <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-blue-950 text-slate-100 flex items-center justify-center p-4 py-6 sm:py-10 overflow-y-auto antialiased font-sans">
+          <div
+            className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden my-auto"
+            id="rejected-container"
           >
-            QUAY LẠI HỆ THỐNG
-          </button>
-        </div>
-      </div>
-    );
-  }
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-500"></div>
 
-  // Khóa màn hình đối với thành viên đang chờ quản trị viên phê duyệt
-  if (!isApproved) {
-    return (
-      <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-indigo-950 text-slate-100 flex items-center justify-center p-4 py-6 sm:py-10 overflow-y-auto antialiased font-sans">
-        <div
-          className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden my-auto"
-          id="pending-approval-container"
-        >
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-500"></div>
+            <h2 className="text-2xl font-bold tracking-tight text-white mb-2 font-display">
+              Tài Khoản Bị Từ Chối
+            </h2>
+            <p className="text-sm text-slate-400 leading-relaxed mb-6">
+              Yêu cầu truy cập hệ thống của bạn đã bị người quản trị từ chối. Vui
+              lòng liên hệ Admin qua email{" "}
+              <strong className="text-blue-400">giathieu110406@gmail.com</strong>{" "}
+              hoặc Zalo <strong className="text-blue-400">0335.784.563</strong>{" "}
+              để biết thêm chi tiết.
+            </p>
 
-          <div className="w-16 h-16 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5 text-2xl shadow-inner">
-            ⏳
+            <button
+              onClick={handleLogout}
+              className="flex items-center font-bold text-xs text-slate-400 hover:text-slate-200 transition-colors mx-auto px-4 py-2 border border-slate-800 hover:border-slate-700 bg-slate-950/25 rounded-lg cursor-pointer"
+            >
+              QUAY LẠI HỆ THỐNG
+            </button>
           </div>
-
-          <h2 className="text-2xl font-bold tracking-tight text-white mb-2 font-display">
-            Chờ Quản Trị Viên Phê Duyệt
-          </h2>
-          <p className="text-sm text-slate-300 leading-relaxed mb-4">
-            Tài khoản <strong className="text-amber-300 font-semibold">{user?.email}</strong> đã đăng ký thành công nhưng đang chờ quản trị viên cấp quyền truy cập hệ thống.
-          </p>
-          <p className="text-xs text-slate-400 leading-relaxed mb-6 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800">
-            Vui lòng liên hệ Admin qua email <strong className="text-indigo-400">giathieu110406@gmail.com</strong> để được kích hoạt tài khoản sớm nhất.
-          </p>
-
-          <button
-            onClick={handleLogout}
-            className="flex items-center font-bold text-xs text-slate-300 hover:text-white transition-colors mx-auto px-5 py-2.5 border border-slate-700 hover:border-slate-600 bg-slate-800/80 rounded-xl cursor-pointer shadow-md"
-          >
-            ĐĂNG XUẤT / QUAY LẠI
-          </button>
         </div>
-      </div>
+        <ZaloContactWidget />
+      </>
     );
   }
 
-  // --- APPROVED USERS WORKSPACE ---
+  // --- USER WORKSPACE ---
   
   return (
     <div 
@@ -5780,7 +5767,7 @@ ${bodyHtml}
                                         <div className="text-indigo-600 font-extrabold text-[11px] mb-0.5">Dùng hôm nay: {dailyCount} lượt</div>
                                         <div>LaTeX: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.latexCount || 0)} / 30</span></div>
                                         <div>Đề thi: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.examCount || 0)} / 10</span></div>
-                                        <div>Dàn AI: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.promptCount || 0)} / 13</span></div>
+                                        <div>Dàn AI: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.promptCount || 0)} / 15</span></div>
                                       </div>
                                     );
                                   })()}
@@ -7272,9 +7259,6 @@ ${bodyHtml}
                   <div>
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Số lần dùng LaTeX</span>
-                      <span className="text-slate-800 font-black">
-                        {isApproved || isAdminUser(user, userDoc) ? `${userDoc?.latexCount || 0} / ∞` : `${userDoc?.latexCount || 0} / 30`}
-                      </span>
                     </div>
                     {!(isApproved || isAdminUser(user, userDoc)) && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
@@ -7289,9 +7273,6 @@ ${bodyHtml}
                   <div>
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Số lần soạn đề thi</span>
-                      <span className="text-slate-800 font-black">
-                        {isApproved || isAdminUser(user, userDoc) ? `${userDoc?.examCount || 0} / ∞` : `${userDoc?.examCount || 0} / 10`}
-                      </span>
                     </div>
                     {!(isApproved || isAdminUser(user, userDoc)) && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
@@ -7306,15 +7287,12 @@ ${bodyHtml}
                   <div>
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Lượt dán thông minh AI</span>
-                      <span className="text-slate-800 font-black">
-                        {isApproved || isAdminUser(user, userDoc) ? `${userDoc?.promptCount || 0} / ∞` : `${userDoc?.promptCount || 0} / 13`}
-                      </span>
                     </div>
                     {!(isApproved || isAdminUser(user, userDoc)) && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div
                           className="bg-rose-600 h-1.5 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 13) * 100)}%` }}
+                          style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 15) * 100)}%` }}
                         ></div>
                       </div>
                     )}
@@ -7542,7 +7520,7 @@ ${bodyHtml}
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div
                       className="bg-pink-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 13) * 100)}%` }}
+                      style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 15) * 100)}%` }}
                     ></div>
                   </div>
                 </div>
@@ -8931,86 +8909,7 @@ ${bodyHtml}
       </footer>
 
       {/* Floating Zalo Contact Widget */}
-      <AnimatePresence>
-        {!isZaloWidgetClosed && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.85, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: 12 }}
-            transition={{ duration: 0.2 }}
-            className="fixed bottom-5 right-4 sm:bottom-6 sm:right-6 z-45 flex items-center gap-2.5 sm:gap-3 select-none"
-          >
-            {/* Close button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsZaloWidgetClosed(true);
-              }}
-              title="Ẩn icon Zalo"
-              aria-label="Ẩn icon Zalo"
-              className="absolute -top-2.5 -right-2 z-50 w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full bg-slate-700/80 hover:bg-slate-900 text-white flex items-center justify-center shadow-md hover:scale-110 active:scale-95 transition-all cursor-pointer border border-white/90"
-            >
-              <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-            </button>
-
-            {/* Rotating message speech bubble */}
-            <a
-              href="https://zalo.me/0335784563"
-              target="_blank"
-              rel="noreferrer"
-              className="group relative hidden sm:flex items-center gap-2.5 bg-white/95 hover:bg-white backdrop-blur-md px-3.5 py-2.5 rounded-2xl shadow-lg hover:shadow-xl border border-blue-200/80 hover:border-blue-400 transition-all duration-300 max-w-[280px] cursor-pointer"
-            >
-              {/* Status pulsing dot */}
-              <span className="relative flex h-2.5 w-2.5 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600"></span>
-              </span>
-
-              <div className="overflow-hidden min-w-0 flex-1">
-                <AnimatePresence mode="wait">
-                  <motion.p
-                    key={zaloBannerIndex}
-                    initial={{ opacity: 0, y: 7 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -7 }}
-                    transition={{ duration: 0.25 }}
-                    className="text-xs sm:text-[13px] font-bold text-slate-800 leading-tight truncate"
-                  >
-                    {ZALO_BANNER_MESSAGES[zaloBannerIndex]}
-                  </motion.p>
-                </AnimatePresence>
-                <span className="text-[10px] sm:text-[11px] font-semibold text-blue-600 group-hover:underline flex items-center gap-1 mt-0.5">
-                  <span>Chat Zalo: 0335.784.563</span>
-                  <span className="text-[10px]">↗</span>
-                </span>
-              </div>
-
-              {/* Speech bubble tail pointer */}
-              <div className="hidden sm:block absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-t border-r border-blue-200/80 transform rotate-45 group-hover:border-blue-400 transition-colors" />
-            </a>
-
-            {/* Zalo Round Button */}
-            <a
-              href="https://zalo.me/0335784563"
-              target="_blank"
-              rel="noreferrer"
-              className="relative group w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-tr from-[#0068FF] to-[#008fe5] p-0.5 flex items-center justify-center text-white shadow-xl shadow-blue-500/30 hover:shadow-blue-500/50 hover:scale-105 active:scale-95 transition-all duration-300 shrink-0 cursor-pointer"
-              title="Nhắn tin hỗ trợ qua Zalo (0335784563)"
-            >
-              {/* Outer radar pulse ring */}
-              <span className="absolute -inset-1 rounded-full bg-blue-500/25 animate-ping pointer-events-none -z-10" />
-
-              <div className="w-full h-full rounded-full flex flex-col items-center justify-center bg-gradient-to-br from-[#0068FF] to-[#0055d4]">
-                <span className="text-[13px] sm:text-[15px] font-black italic tracking-tighter text-white drop-shadow-xs leading-none">
-                  Zalo
-                </span>
-              </div>
-            </a>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ZaloContactWidget />
 
       {/* Interactive Spotlight Guided Tour Component */}
       {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown') && (

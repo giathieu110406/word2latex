@@ -400,7 +400,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         triggerToast("Bạn đã hết lượt dùng thử MarkItDown AI miễn phí hôm nay. Hãy nâng cấp gói PRO để sử dụng không giới hạn!", false);
         return;
       }
-      if (promptCount >= 10) {
+      if (promptCount >= 15) {
         triggerToast("Bạn đã hết lượt sử dụng AI hôm nay. Hãy nâng cấp gói PRO!", false);
         return;
       }
@@ -423,7 +423,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         triggerToast("Bạn đã hết lượt dùng thử MarkItDown AI miễn phí hôm nay. Hãy nâng cấp gói PRO!", false);
         return;
       }
-      if (promptCount >= 10) {
+      if (promptCount >= 15) {
         triggerToast("Bạn đã hết lượt sử dụng AI hôm nay. Hãy nâng cấp gói PRO!", false);
         return;
       }

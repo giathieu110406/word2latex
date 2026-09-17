@@ -805,7 +805,7 @@ DƯỚI ĐÂY LÀ DỮ LIỆU ĐÀO TẠO VÀ THÔNG TIN CHI TIẾT VỀ HỆ TH
    - **Thành viên Free có các hạn mức hằng ngày sau:**
      + Số lần dùng LaTeX: Tối đa 30 lượt/ngày.
      + Số lần soạn đề thi bằng AI: Tối đa 10 lượt/ngày.
-     + Lượt sử dụng AI / Dán thông minh (promptCount): Tối đa 13 lượt/ngày.
+     + Lượt sử dụng AI / Dán thông minh (promptCount): Tối đa 15 lượt/ngày.
    - **Cơ chế reset tự động:** Toàn bộ các hạn mức sử dụng (LaTeX, Soạn đề thi, Lượt dán thông minh AI) của tất cả người dùng sẽ **tự động reset (thiết lập lại) về 0 sau 5h sáng (5:00 AM) mỗi ngày** theo giờ Việt Nam.
 
 HƯỚNG DẪN XỬ LÝ SỰ CỐ (TROUBLESHOOTING):

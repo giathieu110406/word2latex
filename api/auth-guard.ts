@@ -118,20 +118,6 @@ export async function verifyAuthAndApproval(
     }
 
     // 4. Đánh giá trạng thái thành viên
-    if (status === 'approved') {
-      return {
-        authorized: true,
-        status: 200,
-        user: {
-          uid,
-          email,
-          isOwner: false,
-          status: "approved",
-          role
-        }
-      };
-    }
-
     if (status === 'rejected') {
       return {
         authorized: false,
@@ -140,10 +126,17 @@ export async function verifyAuthAndApproval(
       };
     }
 
+    // Người dùng đã phê duyệt hoặc đang chờ phê duyệt (pending) đều được phép sử dụng hệ thống bình thường
     return {
-      authorized: false,
-      status: 403,
-      error: "Tài khoản của bạn đang chờ phê duyệt. Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được kích hoạt."
+      authorized: true,
+      status: 200,
+      user: {
+        uid,
+        email,
+        isOwner: false,
+        status: status || "pending",
+        role
+      }
     };
   } catch (error: any) {
     console.error("[Auth Guard] Lỗi xác thực token:", error);
