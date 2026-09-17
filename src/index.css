@@ -187,6 +187,31 @@ div.katex-custom-wrapper {
   }
 }
 
+/* Mobile-friendly touch and responsive utilities */
+html, body {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+@media (max-width: 640px) {
+  .preview-content {
+    font-size: 11.5pt !important;
+  }
+  .preview-content p,
+  .preview-content li {
+    font-size: 11.5pt !important;
+  }
+}
+
+/* Utility to hide scrollbars while preserving touch scroll functionality */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 .preview-content th,
 .preview-content td {
   border: 1px solid #cbd5e1;

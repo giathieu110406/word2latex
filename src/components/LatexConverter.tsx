@@ -1,7 +1,7 @@
 import { logApiUsage } from "../utils/logger";
 import { authFetch } from "../utils/api-client";
 import React, { useState, useRef } from "react";
-import { Sparkles, ArrowRight, Loader2, HelpCircle, Folder, Paperclip } from "lucide-react";
+import { Sparkles, ArrowRight, Loader2, HelpCircle, Folder, Paperclip, Code2, Eye } from "lucide-react";
 
 interface LatexConverterProps {
   wordFont: string;
@@ -254,35 +254,42 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
       {/* Workspace with inner padding and subtle background */}
       <div className="p-2 sm:p-4 md:p-6 bg-white/30 flex-1 flex flex-col min-h-0">
         {/* Mobile View Selector */}
-        <div className="lg:hidden flex bg-slate-100 p-1 rounded-xl mb-3 sm:mb-4 shrink-0 select-none">
+        <div className="lg:hidden flex bg-slate-100/90 p-1.5 rounded-2xl mb-3 shrink-0 select-none border border-slate-200/60 shadow-xs">
           <button
             type="button"
             onClick={() => setMobileView("edit")}
-            className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               mobileView === "edit"
-                ? "bg-white text-indigo-700 shadow-3xs"
+                ? "bg-white text-indigo-700 shadow-sm border border-slate-200/50"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            Biên soạn nguồn
+            <Code2 className="w-3.5 h-3.5" />
+            <span>Biên soạn nguồn</span>
+            {inputText.length > 0 && (
+              <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold ml-0.5">
+                {inputText.length > 999 ? `${Math.round(inputText.length / 1000)}k` : inputText.length}
+              </span>
+            )}
           </button>
           <button
             type="button"
             onClick={() => setMobileView("preview")}
-            className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               mobileView === "preview"
-                ? "bg-white text-indigo-700 shadow-3xs"
+                ? "bg-white text-indigo-700 shadow-sm border border-slate-200/50"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            Xem kết quả dịch
+            <Eye className="w-3.5 h-3.5" />
+            <span>Xem kết quả</span>
           </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 flex-1 min-h-0 p-0 sm:p-2 lg:p-0">
           {/* Left panel: Input Area */}
           <div id="tour-latex-input-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[380px] sm:min-h-[500px] flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
-            <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
+            <div className="bg-white/40 px-3.5 py-2.5 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-3 sm:gap-4 select-none">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
                 <span className="text-xs md:text-sm font-bold text-slate-800 whitespace-nowrap">
@@ -290,7 +297,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                   <span className="xs:hidden">Tài liệu nguồn</span>
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-start sm:justify-end mt-2 sm:mt-0">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end mt-1 sm:mt-0">
                 <button
                   id="tour-latex-ai-canvas"
                   type="button"
@@ -349,20 +356,20 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
               onChange={(e) => setInputText(e.target.value)}
               onPaste={(e) => handlePasteGeneric(e, setInputText)}
               disabled={isProcessingCanvas}
-              className={`flex-1 min-h-0 w-full p-4 md:p-5 resize-none overflow-y-auto border-0 focus:ring-0 focus:outline-none text-slate-800 leading-relaxed text-sm md:text-base font-normal placeholder:text-slate-400 bg-white ${isProcessingCanvas ? "opacity-50 cursor-not-allowed" : "opacity-100"} transition-opacity duration-300`}
+              className={`flex-1 min-h-0 w-full p-3.5 sm:p-4 md:p-5 resize-none overflow-y-auto border-0 focus:ring-0 focus:outline-none text-slate-800 leading-relaxed text-sm md:text-base font-normal placeholder:text-slate-400 bg-white ${isProcessingCanvas ? "opacity-50 cursor-not-allowed" : "opacity-100"} transition-opacity duration-300`}
               placeholder="Nhập hoặc sao chép nội dung chứa công thức toán ($x^2$ hoặc $$y = mx+b$$) từ AI hay tài liệu bất kỳ và dán vào đây để chuyển hóa..."
             />
 
             {/* AI Canvas Panel */}
             {showAiCanvas && (
-              <div className="border-t border-slate-100 bg-slate-50/80 backdrop-blur-sm p-4 pb-8 md:pb-4 shrink-0 flex flex-col gap-3 animate-fade-in overflow-y-auto max-h-[50%] z-10 shadow-[0_-10px_20px_rgba(0,0,0,0.02)] relative">
+              <div className="border-t border-slate-100 bg-slate-50/80 backdrop-blur-sm p-3.5 sm:p-4 pb-6 md:pb-4 shrink-0 flex flex-col gap-2.5 animate-fade-in overflow-y-auto max-h-[50%] z-10 shadow-[0_-10px_20px_rgba(0,0,0,0.02)] relative">
                 <div className="flex items-center gap-1.5 text-indigo-950 font-bold text-xs md:text-sm select-none">
                   <Sparkles className="h-4 w-4 text-indigo-500 animate-pulse" />
                   <span>Trợ lý AI Canvas</span>
                 </div>
                 
-                {/* Preset quick action tags */}
-                <div className="flex flex-wrap gap-1.5 select-none">
+                {/* Preset quick action tags - horizontally scrollable on mobile */}
+                <div className="flex overflow-x-auto no-scrollbar sm:flex-wrap gap-1.5 select-none pb-1 -mx-1 px-1">
                   {[
                     { label: "Dịch sang tiếng Anh", prompt: "Dịch toàn bộ văn bản sang tiếng Anh, giữ nguyên các công thức LaTeX dạng $...$ hoặc $$...$$." },
                     { label: "Thêm lời giải chi tiết", prompt: "Hãy bổ sung lời giải thích chi tiết từng bước cho các công thức, các bài tập trong văn bản này." },
@@ -374,7 +381,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                       type="button"
                       onClick={() => handleCallAiCanvas(tag.prompt)}
                       disabled={isProcessingCanvas}
-                      className="text-[11px] font-bold text-slate-600 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-750 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap shadow-3xs hover:shadow-2xs active:scale-95 disabled:opacity-50"
+                      className="text-[11px] font-bold text-slate-600 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-750 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap shadow-3xs hover:shadow-2xs active:scale-95 disabled:opacity-50 shrink-0"
                     >
                       {tag.label}
                     </button>

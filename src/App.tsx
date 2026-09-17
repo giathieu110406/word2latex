@@ -1502,9 +1502,9 @@ export default function App() {
 
       if (isAIShuffleEnabled) {
         const currentPromptCount = userDoc?.promptCount || 0;
-        if (!isApproved && currentPromptCount >= 10) {
+        if (!isApproved && currentPromptCount >= 13) {
           triggerToast(
-            "Bạn đã tới giới hạn tính năng AI thay thế số liệu. Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+            "Bạn đã tới giới hạn tính năng AI thay thế số liệu (tối đa 13 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
             false
           );
           setIsShuffling(false);
@@ -1571,9 +1571,9 @@ export default function App() {
     }
 
     const currentExamCount = userDoc?.examCount || 0;
-    if (!isApproved && currentExamCount >= 5) {
+    if (!isApproved && currentExamCount >= 10) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa 5 lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        "Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa 10 lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
         false,
       );
       return;
@@ -1719,9 +1719,9 @@ export default function App() {
     }
 
     const currentExamCount = userDoc?.examCount || 0;
-    if (!isApproved && currentExamCount >= 5) {
+    if (!isApproved && currentExamCount >= 10) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa 5 lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        "Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa 10 lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
         false,
       );
       return;
@@ -3995,9 +3995,9 @@ ${cleanedBody}
     // Nếu có từ 2 câu trở lên, chạy tính năng "Dán thông minh" ẩn danh (nếu không bypass)
     if (!bypassAutoProcess && cauCount >= 2) {
       const currentPromptCount = userDoc?.promptCount || 0;
-      if (!isApproved && currentPromptCount >= 10) {
+      if (!isApproved && currentPromptCount >= 13) {
         triggerToast(
-          "Bạn đã tới giới hạn tính năng dán thông minh (AI). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+          "Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa 13 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
           false,
         );
         return;
@@ -5089,9 +5089,9 @@ ${bodyHtml}
     }
 
     const currentPromptCount = userDoc?.promptCount || 0;
-    if (!isApproved && currentPromptCount >= 10) {
+    if (!isApproved && currentPromptCount >= 13) {
       triggerToast(
-        "Bạn đã tới giới hạn tính năng Trợ lý AI Canvas. Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        "Bạn đã tới giới hạn tính năng Trợ lý AI Canvas (tối đa 13 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
         false,
       );
       return;
@@ -5779,8 +5779,8 @@ ${bodyHtml}
                                       <div className="flex flex-col gap-0.5 text-slate-600 font-semibold text-[11px]">
                                         <div className="text-indigo-600 font-extrabold text-[11px] mb-0.5">Dùng hôm nay: {dailyCount} lượt</div>
                                         <div>LaTeX: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.latexCount || 0)} / 30</span></div>
-                                        <div>Đề thi: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.examCount || 0)} / 5</span></div>
-                                        <div>Dàn AI: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.promptCount || 0)} / 10</span></div>
+                                        <div>Đề thi: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.examCount || 0)} / 10</span></div>
+                                        <div>Dàn AI: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.promptCount || 0)} / 13</span></div>
                                       </div>
                                     );
                                   })()}
@@ -6133,11 +6133,11 @@ ${bodyHtml}
                                 </div>
 
                                 <div className="flex flex-col gap-1.5">
-                                  <label className="text-xs font-bold text-[#1E2432]">Đề thi (Tối đa 5)</label>
+                                  <label className="text-xs font-bold text-[#1E2432]">Đề thi (Tối đa 10)</label>
                                   <input
                                     type="number"
                                     min={0}
-                                    max={5}
+                                    max={10}
                                     value={editingUser.examCount !== undefined ? editingUser.examCount : 0}
                                     onChange={(e) => setEditingUser({ ...editingUser, examCount: Math.max(0, parseInt(e.target.value) || 0) })}
                                     className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
@@ -6147,11 +6147,11 @@ ${bodyHtml}
 
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="flex flex-col gap-1.5">
-                                  <label className="text-xs font-bold text-[#1E2432]">Dàn AI (Tối đa 10)</label>
+                                  <label className="text-xs font-bold text-[#1E2432]">Dàn AI (Tối đa 13)</label>
                                   <input
                                     type="number"
                                     min={0}
-                                    max={10}
+                                    max={13}
                                     value={editingUser.promptCount !== undefined ? editingUser.promptCount : 0}
                                     onChange={(e) => setEditingUser({ ...editingUser, promptCount: Math.max(0, parseInt(e.target.value) || 0) })}
                                     className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
@@ -7290,14 +7290,14 @@ ${bodyHtml}
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Số lần soạn đề thi</span>
                       <span className="text-slate-800 font-black">
-                        {isApproved || isAdminUser(user, userDoc) ? `${userDoc?.examCount || 0} / ∞` : `${userDoc?.examCount || 0} / 5`}
+                        {isApproved || isAdminUser(user, userDoc) ? `${userDoc?.examCount || 0} / ∞` : `${userDoc?.examCount || 0} / 10`}
                       </span>
                     </div>
                     {!(isApproved || isAdminUser(user, userDoc)) && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div
                           className="bg-violet-600 h-1.5 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / 5) * 100)}%` }}
+                          style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / 10) * 100)}%` }}
                         ></div>
                       </div>
                     )}
@@ -7307,14 +7307,14 @@ ${bodyHtml}
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Lượt dán thông minh AI</span>
                       <span className="text-slate-800 font-black">
-                        {isApproved || isAdminUser(user, userDoc) ? `${userDoc?.promptCount || 0} / ∞` : `${userDoc?.promptCount || 0} / 10`}
+                        {isApproved || isAdminUser(user, userDoc) ? `${userDoc?.promptCount || 0} / ∞` : `${userDoc?.promptCount || 0} / 13`}
                       </span>
                     </div>
                     {!(isApproved || isAdminUser(user, userDoc)) && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div
                           className="bg-rose-600 h-1.5 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 10) * 100)}%` }}
+                          style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 13) * 100)}%` }}
                         ></div>
                       </div>
                     )}
@@ -7523,7 +7523,7 @@ ${bodyHtml}
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div
                       className="bg-violet-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / 5) * 100)}%` }}
+                      style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / 10) * 100)}%` }}
                     ></div>
                   </div>
                 </div>
@@ -7542,7 +7542,7 @@ ${bodyHtml}
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div
                       className="bg-pink-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 10) * 100)}%` }}
+                      style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 13) * 100)}%` }}
                     ></div>
                   </div>
                 </div>

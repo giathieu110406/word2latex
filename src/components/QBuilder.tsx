@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, Sparkles, HelpCircle, Folder, Loader2 } from "lucide-react";
+import { FileText, Sparkles, HelpCircle, Folder, Loader2, FileEdit, Eye } from "lucide-react";
 
 interface QBuilderProps {
   wordFont: string;
@@ -227,30 +227,37 @@ export const QBuilder: React.FC<QBuilderProps> = ({
       </div>
 
       {/* Workspace with inner padding and subtle background */}
-      <div className="p-4 md:p-6 bg-white/30 flex-1 flex flex-col min-h-0">
+      <div className="p-3 sm:p-4 md:p-6 bg-white/30 flex-1 flex flex-col min-h-0">
         {/* Mobile View Selector */}
-        <div className="lg:hidden flex bg-slate-100 p-1 rounded-xl mb-4 shrink-0 select-none">
+        <div className="lg:hidden flex bg-slate-100/90 p-1.5 rounded-2xl mb-3 shrink-0 select-none border border-slate-200/60 shadow-xs">
           <button
             type="button"
             onClick={() => setMobileView("edit")}
-            className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               mobileView === "edit"
-                ? "bg-white text-indigo-700 shadow-3xs"
+                ? "bg-white text-indigo-700 shadow-sm border border-slate-200/50"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            Soạn câu hỏi & Đề thi
+            <FileEdit className="w-3.5 h-3.5" />
+            <span>Soạn câu hỏi</span>
           </button>
           <button
             type="button"
             onClick={() => setMobileView("preview")}
-            className={`flex-1 text-center py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               mobileView === "preview"
-                ? "bg-white text-indigo-700 shadow-3xs"
+                ? "bg-white text-indigo-700 shadow-sm border border-slate-200/50"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            Xem trước đề thi
+            <Eye className="w-3.5 h-3.5" />
+            <span>Xem trước đề</span>
+            {docQuestions.length > 0 && (
+              <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold ml-0.5">
+                {docQuestions.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -708,7 +715,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 </div>
 
                 {docQuestions.length > 0 && (
-                  <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold select-none">
+                  <div className="flex overflow-x-auto no-scrollbar sm:flex-wrap gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold select-none -mx-1 px-1">
                     <button
                       
                       onClick={() => setSavedQuestionTab("all")}
