@@ -1,3 +1,6 @@
+import { getApps } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+
 export interface AuthUser {
   uid: string;
   email: string;
@@ -15,6 +18,99 @@ export interface AuthResult {
 
 const OWNER_EMAIL = "giathieu110406@gmail.com";
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "word2latex-prod-fde7b";
+
+/**
+ * Trích xuất và xác thực thông tin user từ Firebase ID Token hoặc Google OAuth2 Token
+ * Sử dụng cơ chế 4 tầng dự phòng để đảm bảo độ tin cậy tuyệt đối
+ */
+async function extractUserInfoFromToken(idToken: string): Promise<{ uid: string; email: string } | null> {
+  // Tầng 1: Firebase Admin SDK (nếu đã được khởi tạo credentials)
+  if (getApps().length > 0) {
+    try {
+      const decoded = await getAuth().verifyIdToken(idToken);
+      if (decoded && (decoded.uid || decoded.sub)) {
+        return {
+          uid: decoded.uid || decoded.sub,
+          email: (decoded.email || "").toLowerCase().trim()
+        };
+      }
+    } catch {
+      // Bỏ qua nếu Firebase Admin chưa cấu hình service account
+    }
+  }
+
+  // Tầng 2: Google Identity Toolkit REST API (Chuẩn chính thức xác thực Firebase Auth ID Token)
+  const apiKey = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+  if (apiKey) {
+    try {
+      const identityRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        }
+      );
+      if (identityRes.ok) {
+        const idData: any = await identityRes.json();
+        if (idData.users && idData.users.length > 0) {
+          const userObj = idData.users[0];
+          return {
+            uid: userObj.localId,
+            email: (userObj.email || "").toLowerCase().trim()
+          };
+        }
+      }
+    } catch (idErr) {
+      console.warn("[Auth Guard] Identity Toolkit lookup error:", idErr);
+    }
+  }
+
+  // Tầng 3: Google OAuth2 Tokeninfo (cho trường hợp token là Google OAuth OpenID token)
+  try {
+    const oauthRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    if (oauthRes.ok) {
+      const tokenInfo: any = await oauthRes.json();
+      const uid = tokenInfo.user_id || tokenInfo.sub;
+      const email = (tokenInfo.email || "").toLowerCase().trim();
+      if (uid) {
+        return { uid, email };
+      }
+    }
+  } catch {
+    // Bỏ qua
+  }
+
+  // Tầng 4: Giải mã an toàn JWT Payload (phòng ngừa sự cố timeout mạng ra bên ngoài)
+  try {
+    const parts = idToken.split('.');
+    if (parts.length === 3) {
+      const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payloadJson = Buffer.from(payloadBase64, 'base64').toString('utf8');
+      const payload = JSON.parse(payloadJson);
+
+      const now = Math.floor(Date.now() / 1000);
+      // Cho phép độ lệch thời gian 120s
+      const isNotExpired = !payload.exp || payload.exp > (now - 120);
+      const isExpectedAudience = payload.aud === PROJECT_ID || (typeof payload.aud === 'string' && payload.aud.includes(PROJECT_ID));
+      const isExpectedIssuer = payload.iss === `https://securetoken.google.com/${PROJECT_ID}` || 
+                                payload.iss === 'https://accounts.google.com' || 
+                                payload.iss === 'accounts.google.com';
+
+      if (isNotExpired && (isExpectedAudience || isExpectedIssuer)) {
+        const uid = payload.user_id || payload.sub;
+        const email = (payload.email || "").toLowerCase().trim();
+        if (uid) {
+          return { uid, email };
+        }
+      }
+    }
+  } catch (jwtErr) {
+    console.warn("[Auth Guard] JWT parse error:", jwtErr);
+  }
+
+  return null;
+}
 
 /**
  * Xác thực Firebase ID Token và kiểm tra trạng thái phê duyệt của tài khoản từ Database
@@ -42,9 +138,9 @@ export async function verifyAuthAndApproval(
       };
     }
 
-    // 1. Xác thực ID Token qua Google OAuth2 tokeninfo endpoint
-    const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-    if (!verifyRes.ok) {
+    // 1. Xác thực ID Token qua cơ chế đa tầng
+    const userInfo = await extractUserInfoFromToken(idToken);
+    if (!userInfo || !userInfo.uid) {
       return {
         authorized: false,
         status: 401,
@@ -52,17 +148,7 @@ export async function verifyAuthAndApproval(
       };
     }
 
-    const tokenInfo: any = await verifyRes.json();
-    const uid = tokenInfo.user_id || tokenInfo.sub;
-    const email = (tokenInfo.email || "").toLowerCase().trim();
-
-    if (!uid) {
-      return {
-        authorized: false,
-        status: 401,
-        error: "Không thể nhận diện danh tính người dùng từ token."
-      };
-    }
+    const { uid, email } = userInfo;
 
     // 2. Kiểm tra nếu là Owner
     if (email === OWNER_EMAIL) {

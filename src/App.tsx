@@ -38,6 +38,7 @@ import { marked } from "marked";
 import { LatexConverter } from "./components/LatexConverter";
 import { MarkItDown } from "./components/MarkItDown";
 import { QBuilder } from "./components/QBuilder";
+import { AdminAnalyticsDashboard } from "./components/AdminAnalyticsDashboard";
 import { GuideTour } from "./components/GuideTour";
 import { LoginScreen } from "./components/LoginScreen";
 import { ZaloContactWidget } from "./components/ZaloContactWidget";
@@ -142,6 +143,132 @@ function escapeLaTeX(text: string): string {
 
 // Module-level cache to make KaTeX MathML generation instant during Word download/copy
 const mathmlCache = new Map<string, string>();
+
+/**
+ * Tạo tài liệu Word Document (.doc) chuẩn Microsoft Office Print Layout (A4, lề chuẩn 2cm, MathML to Word Equation)
+ * Đảm bảo Microsoft Word mở ngay lập tức ở chế độ Print Layout trang A4 chuẩn, không mở ở chế độ Web Layout HTML
+ */
+function generateOfficeWordHtml(bodyHtml: string, fontName: string = "Times New Roman"): string {
+  return `<html xmlns:v="urn:schemas-microsoft-com:vml"
+xmlns:o="urn:schemas-microsoft-com:office:office"
+xmlns:w="urn:schemas-microsoft-com:office:word"
+xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="Microsoft Word 15">
+<meta name="Originator" content="Microsoft Word 15">
+<!--[if gte mso 9]>
+<xml>
+  <w:WordDocument>
+    <w:View>Print</w:View>
+    <w:Zoom>100</w:Zoom>
+    <w:DoNotOptimizeForBrowser/>
+    <w:ValidateAgainstSchemas/>
+    <w:SaveIfXMLInvalid>false</w:SaveIfXMLInvalid>
+    <w:IgnoreMixedContent>false</w:IgnoreMixedContent>
+    <w:AlwaysShowPlaceholderText>false</w:AlwaysShowPlaceholderText>
+    <w:Compatibility>
+      <w:BreakWrappedTables/>
+      <w:SnapToGridInCell/>
+      <w:WrapTextWithPunct/>
+      <w:UseAsianBreakRules/>
+      <w:DontGrowAutofit/>
+    </w:Compatibility>
+  </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+  @page WordSection1 {
+      size: 595.3pt 841.9pt; /* Chuẩn A4: 21.0cm x 29.7cm */
+      margin: 56.7pt 56.7pt 56.7pt 56.7pt; /* Lề chuẩn 2cm đều 4 phía */
+      mso-header-margin: 35.4pt;
+      mso-footer-margin: 35.4pt;
+      mso-paper-source: 0;
+  }
+  div.WordSection1 {
+      page: WordSection1;
+  }
+  body {
+      font-family: '${fontName}', 'Times New Roman', serif;
+      font-size: 13pt;
+      line-height: 1.35;
+      color: #000000;
+      margin: 0;
+  }
+  p.MsoNormal, li.MsoNormal, div.MsoNormal, p {
+      mso-style-unhide: no;
+      mso-style-qformat: yes;
+      font-family: '${fontName}', 'Times New Roman', serif !important;
+      font-size: 13pt !important;
+      line-height: 1.35 !important;
+      margin-top: 0pt !important;
+      margin-bottom: 5pt !important;
+  }
+  li, span, select, tr, td, th {
+      font-family: '${fontName}', 'Times New Roman', serif !important;
+      font-size: 13pt !important;
+  }
+  div, table {
+      font-family: '${fontName}', 'Times New Roman', serif !important;
+      font-size: 13pt !important;
+      line-height: 1.2 !important;
+  }
+  div.doc-display-math, div.katex-display, .katex-custom-wrapper[data-display="true"] {
+      margin-top: 8pt !important;
+      margin-bottom: 8pt !important;
+      text-align: center !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+  }
+  table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 8pt !important;
+      margin-bottom: 8pt !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+  }
+  table th, table td {
+      border: 1px solid #94a3b8 !important;
+      padding: 6px 10px !important;
+  }
+  table th {
+      font-weight: bold !important;
+      background-color: #f1f5f9 !important;
+  }
+  table.doc-answer-table {
+      margin-top: 14pt !important;
+      margin-bottom: 10pt !important;
+      border: 1px solid #10b981 !important;
+      background-color: #ecfdf5 !important;
+  }
+  table.doc-answer-table th, table.doc-answer-table td {
+      border: none !important;
+      padding: 8pt !important;
+  }
+  table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
+      border: none !important;
+  }
+  table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
+      border: none !important;
+  }
+  table.doc-question-table, table.doc-question-table tr, table.doc-question-table td {
+      border: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      background: none !important;
+  }
+</style>
+</head>
+<body lang="VI">
+<div class="WordSection1">
+${bodyHtml}
+</div>
+</body>
+</html>`;
+}
 
 // Helper functions to protect URLs from being mangled by formatting or KaTeX regexes
 interface ProtectedUrl {
@@ -1574,81 +1701,7 @@ export default function App() {
 
     const bodyHtml = clone.innerHTML;
 
-    const wordDoc = `<html>
-    <head>
-    <meta charset="UTF-8">
-    <meta name="ProgId" content="Word.Document">
-    <style>
-        @page {
-            size: A4;
-            margin: 2cm;
-        }
-        body {
-            font-family: ${wordFont};
-            font-size: 13pt;
-            line-height: 1.15;
-            color: #000000;
-            margin: 0;
-        }
-        h1, h2, h3, h4, h5, h6, h1, h2, h3, h4, h5, h6, p, li, span, select, tr, td, th {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.15 !important;
-            margin-top: 0 !important;
-            margin-bottom: 0 !important;
-        }
-        div, table {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.15 !important;
-        }
-        div.doc-display-math {
-            margin-top: 6pt !important;
-            margin-bottom: 6pt !important;
-            text-align: center !important;
-        }
-        table.doc-answer-table {
-            margin-top: 16pt !important;
-            margin-bottom: 12pt !important;
-            border: 1px solid #10b981 !important;
-            background-color: #ecfdf5 !important;
-        }
-        table.doc-answer-table th, table.doc-answer-table td {
-            border: none !important;
-            padding: 10pt !important;
-        }
-        table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
-            border: none !important;
-        }
-        table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
-            border: none !important;
-        }
-        table.doc-question-table, table.doc-question-table tr, table.doc-question-table td {
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            background: none !important;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 12pt !important;
-            margin-bottom: 12pt !important;
-        }
-        table th, table td {
-            border: 1px solid #475569 !important;
-            padding: 6px !important;
-        }
-        table th {
-            font-weight: bold !important;
-            background-color: transparent !important;
-        }
-    </style>
-    </head>
-    <body>
-    ${bodyHtml}
-    </body>
-    </html>`;
+    const wordDoc = generateOfficeWordHtml(bodyHtml, wordFont);
 
     const tempDiv = document.createElement("div");
     tempDiv.contentEditable = "true";
@@ -1722,91 +1775,10 @@ export default function App() {
 
     const bodyHtml = clone.innerHTML;
 
-    const wordDoc = `<html>
-    <head>
-    <meta charset="UTF-8">
-    <meta name="ProgId" content="Word.Document">
-    <style>
-        @page {
-            size: A4;
-            margin: 2.5cm;
-        }
-        body {
-            font-family: ${wordFont};
-            font-size: 13pt;
-            line-height: 1.5;
-            color: #000000;
-            margin: 0;
-        }
-        p {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.5 !important;
-            margin-top: 6pt !important;
-            margin-bottom: 6pt !important;
-        }
-        li, span, select, tr, td, th {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.2 !important;
-            margin-top: 0 !important;
-            margin-bottom: 0 !important;
-        }
-        div, table {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.15 !important;
-        }
-        div.doc-display-math {
-            margin-top: 6pt !important;
-            margin-bottom: 6pt !important;
-            text-align: center !important;
-        }
-        table.doc-answer-table {
-            margin-top: 16pt !important;
-            margin-bottom: 12pt !important;
-            border: 1px solid #10b981 !important;
-            background-color: #ecfdf5 !important;
-        }
-        table.doc-answer-table th, table.doc-answer-table td {
-            border: none !important;
-            padding: 10pt !important;
-        }
-        table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
-            border: none !important;
-        }
-        table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
-            border: none !important;
-        }
-        table.doc-question-table, table.doc-question-table tr, table.doc-question-table td {
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            background: none !important;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 12pt !important;
-            margin-bottom: 12pt !important;
-        }
-        table th, table td {
-            border: 1px solid #475569 !important;
-            padding: 6px !important;
-        }
-        table th {
-            font-weight: bold !important;
-            background-color: transparent !important;
-        }
-    </style>
-    </head>
-    <body>
-    ${bodyHtml}
-    </body>
-    </html>`;
+    const wordDoc = generateOfficeWordHtml(bodyHtml, wordFont);
 
     const blob = new Blob(["\ufeff" + wordDoc], {
-      type: "application/msword;charset=utf-8",
+      type: "application/vnd.ms-word;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -3709,7 +3681,7 @@ ${cleanedBody}
     const DISPLAY_MATH_REGEX =
        "\\$\\$([\\s\\S]*?)\\$\\$|\\\\\\[([\\s\\S]*?)\\\\\\]|\\\\begin\\{(equation|align|gather|multline|eqnarray|alignat|flalign|split|cases|aligned|alignedat|pmatrix|bmatrix|vmatrix|Bmatrix|Vmatrix|matrix|array)(\\*?)\\}([\\s\\S]*?)\\\\end\\{(?:equation|align|gather|multline|eqnarray|alignat|flalign|split|cases|aligned|alignedat|pmatrix|bmatrix|vmatrix|Bmatrix|Vmatrix|matrix|array)\\*?\\}";
     const INLINE_MATH_REGEX =
-      "(?<!\\$)\\$(?!\\$)((?:[^$\\n\\\\]|\\\\[\\s\\S])*?)(?<!\\$)\\$(?!\\$)";
+      "(?<!\\$)\\$(?!\\$)((?:[^$\\n\\\\]|\\\\[\\s\\S]|\\n(?!\\s*\\n))*?)(?<!\\$)\\$(?!\\$)";
     const INLINE_PAREN_REGEX = "\\\\\\([\\s\\S]*?\\\\\\)";
 
     const MATH_COMBINED_RE = new RegExp(
@@ -3743,10 +3715,21 @@ ${cleanedBody}
       }
 
       const raw = m[0];
-      const isDisplay =
+      let isDisplay =
         raw.startsWith("$$") ||
         raw.startsWith("\\[") ||
         raw.startsWith("\\begin");
+
+      // Tự động nâng cấp công thức đứng riêng một dòng thành Display Math
+      if (!isDisplay && raw.startsWith("$") && !raw.startsWith("$$")) {
+        const textBefore = input.slice(0, m.index);
+        const textAfter = input.slice(m.index + raw.length);
+        const isStartOfLine = /(?:^|\n)[ \t]*$/.test(textBefore);
+        const isEndOfLine = /^[ \t]*(?:\r?\n|$)/.test(textAfter);
+        if (isStartOfLine && isEndOfLine) {
+          isDisplay = true;
+        }
+      }
       let latex = "";
 
       if (raw.startsWith("$$")) latex = raw.slice(2, -2);
@@ -3805,9 +3788,13 @@ ${cleanedBody}
     // Restore URLs with linkification for bare ones just before passing to marked.parse
     mdText = restoreUrls(mdText, urls, false);
 
-    // Parse Markdown synchronously using marked
+    // Parse Markdown synchronously using marked with breaks and gfm enabled
     let htmlContent = "";
     try {
+      marked.use({
+        breaks: true,
+        gfm: true,
+      });
       htmlContent = marked.parse(mdText) as string;
     } catch {
       htmlContent = mdText;
@@ -4820,81 +4807,7 @@ ${bodyHtml}
 
     const bodyHtml = clone.innerHTML;
 
-    const wordDoc = `<html>
-    <head>
-    <meta charset="UTF-8">
-    <meta name="ProgId" content="Word.Document">
-    <style>
-        @page {
-            size: A4;
-            margin: 2cm;
-        }
-        body {
-            font-family: ${wordFont};
-            font-size: 13pt;
-            line-height: 1.15;
-            color: #000000;
-            margin: 0;
-        }
-        p, li, span, select, tr, td, th {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.15 !important;
-            margin-top: 0 !important;
-            margin-bottom: 0 !important;
-        }
-        div, table {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.15 !important;
-        }
-        div.doc-display-math {
-            margin-top: 6pt !important;
-            margin-bottom: 6pt !important;
-            text-align: center !important;
-        }
-        table.doc-answer-table {
-            margin-top: 16pt !important;
-            margin-bottom: 12pt !important;
-            border: 1px solid #10b981 !important;
-            background-color: #ecfdf5 !important;
-        }
-        table.doc-answer-table th, table.doc-answer-table td {
-            border: none !important;
-            padding: 10pt !important;
-        }
-        table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
-            border: none !important;
-        }
-        table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
-            border: none !important;
-        }
-        table.doc-question-table, table.doc-question-table tr, table.doc-question-table td {
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            background: none !important;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 12pt !important;
-            margin-bottom: 12pt !important;
-        }
-        table th, table td {
-                  border: 1px solid #cbd5e1 !important;
-            padding: 6px !important;
-        }
-        table th {
-            font-weight: bold !important;
-            background-color: #f3f4f6 !important;
-        }
-    </style>
-    </head>
-    <body>
-    ${bodyHtml}
-    </body>
-    </html>`;
+    const wordDoc = generateOfficeWordHtml(bodyHtml, wordFont);
 
     const tempDiv = document.createElement("div");
     tempDiv.contentEditable = "true";
@@ -4971,85 +4884,11 @@ ${bodyHtml}
 
     const bodyHtml = clone.innerHTML;
 
-    const wordDoc = `<html>
-    <head>
-    <meta charset="UTF-8">
-    <meta name="ProgId" content="Word.Document">
-    <style>
-        @page {
-            size: A4;
-            margin: 2cm;
-        }
-        body {
-            font-family: ${wordFont};
-            font-size: 13pt;
-            line-height: 1.15;
-            color: #000000;
-            margin: 0;
-        }
-        p, li, span, select, tr, td, th {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.15 !important;
-            margin-top: 0 !important;
-            margin-bottom: 0 !important;
-        }
-        div, table {
-            font-family: ${wordFont} !important;
-            font-size: 13pt !important;
-            line-height: 1.15 !important;
-        }
-        div.doc-display-math {
-            margin-top: 6pt !important;
-            margin-bottom: 6pt !important;
-            text-align: center !important;
-        }
-        table.doc-answer-table {
-            margin-top: 16pt !important;
-            margin-bottom: 12pt !important;
-            border: 1px solid #10b981 !important;
-            background-color: #ecfdf5 !important;
-        }
-        table.doc-answer-table th, table.doc-answer-table td {
-            border: none !important;
-            padding: 10pt !important;
-        }
-        table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
-            border: none !important;
-        }
-        table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
-            border: none !important;
-        }
-        table.doc-question-table, table.doc-question-table tr, table.doc-question-table td {
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            background: none !important;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 12pt !important;
-            margin-bottom: 12pt !important;
-        }
-        table th, table td {
-                    border: 1px solid #cbd5e1 !important;
-            padding: 6px !important;
-        }
-        table th {
-            font-weight: bold !important;
-            background-color: #f3f4f6 !important;
-        }
-    </style>
-    </head>
-    <body>
-    ${bodyHtml}
-    </body>
-    </html>`;
+    const wordDoc = generateOfficeWordHtml(bodyHtml, wordFont);
 
     // Add Byte Order Mark (BOM) for proper UTF-8 decoding in Microsoft Word
     const blob = new Blob(["\ufeff" + wordDoc], {
-      type: "application/msword;charset=utf-8",
+      type: "application/vnd.ms-word;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -5398,6 +5237,9 @@ ${bodyHtml}
                   <button onClick={() => handleSidebarNav('tracking')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'tracking' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" /> <span className="truncate whitespace-nowrap">Theo dõi</span>
                   </button>
+                  <button onClick={() => handleSidebarNav('analytics')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'analytics' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                      <BarChart3 className="w-4 h-4 shrink-0 text-indigo-600" /> <span className="truncate whitespace-nowrap">Phân tích sử dụng</span>
+                  </button>
                   <button onClick={() => handleSidebarNav('feedbacks')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'feedbacks' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <MessageSquare className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Góp ý & Phản hồi</span>
                   </button>
@@ -5498,7 +5340,7 @@ ${bodyHtml}
 
       <div className="flex-1 flex flex-col">
       <div className="max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-10 py-2 md:py-4 flex-1 flex flex-col gap-4 md:gap-6 overflow-x-hidden">
-        {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking") && isAdminUser(user, userDoc) && (
+        {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 
             id="admin-panel-viewport"
@@ -7189,6 +7031,10 @@ ${bodyHtml}
                 </div>
               );
             })()}
+
+            {sidebarView === "analytics" && (
+              <AdminAnalyticsDashboard />
+            )}
 
           </div>
         )}
@@ -8899,7 +8745,7 @@ ${bodyHtml}
               Trần Gia Thiều - Giathieu110406@gmail.com
             </strong>
             <span className="hidden sm:inline"> · </span>
-            <span className="block sm:inline mt-1 sm:mt-0">Phiên bản v4.0</span>
+            <span className="block sm:inline mt-1 sm:mt-0">Phiên bản v4.1</span>
           </p>
           <p className="text-[11px] text-slate-400 font-medium px-2">
             © Q-Builder · Số hóa công thức LaTeX · Tự động hóa xây dựng đề thi ·

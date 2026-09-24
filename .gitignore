@@ -10,4 +10,6 @@ firebase-applet-config.json
 knowledge/
 .playwright-cli/
 mobile-view*.png
+.playwright-mcp/
+api_usage_local.json
 
