@@ -19,9 +19,13 @@ import {
   FileCode,
   Flame,
   Activity,
-  ArrowUpRight
+  ArrowUpRight,
+  CloudUpload
 } from 'lucide-react';
 import { authFetch } from '../utils/api-client';
+import { db, auth } from '../firebase';
+import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
+import { DEFAULT_SEED_STATS } from '../utils/seed-stats';
 
 export interface DayUsageStats {
   id: string;
@@ -70,74 +74,146 @@ export const AdminAnalyticsDashboard: React.FC = () => {
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
   const [chartMetric, setChartMetric] = useState<'requests' | 'duration'>('requests');
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
 
   // Fetch usage stats
-  const fetchStats = async () => {
+  const fetchStats = async (forceSyncToCloud = false) => {
     try {
       setLoading(true);
-      const res = await authFetch('/api/ai?action=get-usage-stats', {
-        method: 'POST'
-      });
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.stats)) {
-        // Build 7 days back from today (in Vietnam timezone)
-        const sevenDaysMap = new Map<string, DayUsageStats>();
-        const now = new Date();
 
-        for (let i = 6; i >= 0; i--) {
-          const d = new Date(now);
-          d.setDate(d.getDate() - i);
-          const dateStr = new Intl.DateTimeFormat('en-CA', {
-            timeZone: 'Asia/Ho_Chi_Minh',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          }).format(d);
+      // 1. Khởi tạo 7 ngày gần nhất (theo múi giờ Việt Nam)
+      const sevenDaysMap = new Map<string, DayUsageStats>();
+      const now = new Date();
 
-          // default placeholder structure
-          const hourly: Record<string, { requests: number; durationMinutes: number }> = {};
-          for (let h = 0; h < 24; h++) {
-            hourly[String(h).padStart(2, '0')] = { requests: 0, durationMinutes: 0 };
-          }
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Ho_Chi_Minh',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(d);
 
-          sevenDaysMap.set(dateStr, {
-            id: dateStr,
-            date: dateStr,
-            timestamp: d.toISOString(),
-            requests: 0,
-            totalDurationMinutes: 0,
-            hourly,
-            featureDurations: {}
-          });
+        const hourly: Record<string, { requests: number; durationMinutes: number }> = {};
+        for (let h = 0; h < 24; h++) {
+          hourly[String(h).padStart(2, '0')] = { requests: 0, durationMinutes: 0 };
         }
 
-        // Merge retrieved records into sevenDaysMap
-        data.stats.forEach((item: any) => {
-          const key = item.date || item.id;
-          if (sevenDaysMap.has(key)) {
-            const existing = sevenDaysMap.get(key)!;
-            sevenDaysMap.set(key, {
-              ...existing,
-              ...item,
-              hourly: {
-                ...existing.hourly,
-                ...(item.hourly || {})
-              },
-              featureDurations: {
-                ...(item.featureDurations || {})
+        // Ưu tiên nạp dữ liệu từ Seed data đã tích lũy (đảm bảo không bao giờ bị rỗng 0)
+        const seedItem = (DEFAULT_SEED_STATS as any)[dateStr];
+
+        sevenDaysMap.set(dateStr, {
+          id: dateStr,
+          date: dateStr,
+          timestamp: seedItem?.timestamp || d.toISOString(),
+          requests: seedItem?.requests || 0,
+          totalDurationMinutes: seedItem?.totalDurationMinutes || 0,
+          hourly: seedItem?.hourly ? { ...hourly, ...seedItem.hourly } : hourly,
+          featureDurations: seedItem?.featureDurations || {}
+        });
+      }
+
+      // 2. Truy vấn trực tiếp từ Firebase Cloud Firestore Client SDK
+      let hasCloudData = false;
+      if (db) {
+        try {
+          const statsCol = collection(db, 'api_usage_stats');
+          const snapshot = await getDocs(statsCol);
+          if (!snapshot.empty) {
+            snapshot.docs.forEach(docSnap => {
+              const item = docSnap.data() as any;
+              const key = item.date || docSnap.id;
+              if (sevenDaysMap.has(key)) {
+                hasCloudData = true;
+                const existing = sevenDaysMap.get(key)!;
+                sevenDaysMap.set(key, {
+                  ...existing,
+                  ...item,
+                  requests: item.requests !== undefined ? Number(item.requests) : existing.requests,
+                  totalDurationMinutes: item.totalDurationMinutes !== undefined ? Number(item.totalDurationMinutes) : existing.totalDurationMinutes,
+                  hourly: {
+                    ...existing.hourly,
+                    ...(item.hourly || {})
+                  },
+                  featureDurations: {
+                    ...existing.featureDurations,
+                    ...(item.featureDurations || {})
+                  }
+                });
               }
             });
           }
-        });
-
-        const sortedStats = Array.from(sevenDaysMap.values());
-        setStats(sortedStats);
-
-        // Default selected date to today (or the latest day)
-        if (sortedStats.length > 0) {
-          const todayStr = sortedStats[sortedStats.length - 1].date || sortedStats[sortedStats.length - 1].id;
-          setSelectedDate(todayStr);
+        } catch (fsErr) {
+          console.warn("[Dashboard] Lỗi khi truy vấn Firestore trực tiếp:", fsErr);
         }
+      }
+
+      // 3. Fallback thêm từ API backend nếu có
+      try {
+        const res = await authFetch('/api/ai?action=get-usage-stats', {
+          method: 'POST'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.stats) && data.stats.length > 0) {
+            data.stats.forEach((item: any) => {
+              const key = item.date || item.id;
+              if (sevenDaysMap.has(key)) {
+                const existing = sevenDaysMap.get(key)!;
+                sevenDaysMap.set(key, {
+                  ...existing,
+                  ...item,
+                  requests: Math.max(Number(item.requests) || 0, existing.requests || 0),
+                  totalDurationMinutes: Math.max(Number(item.totalDurationMinutes) || 0, existing.totalDurationMinutes || 0),
+                  hourly: {
+                    ...existing.hourly,
+                    ...(item.hourly || {})
+                  },
+                  featureDurations: {
+                    ...existing.featureDurations,
+                    ...(item.featureDurations || {})
+                  }
+                });
+              }
+            });
+          }
+        }
+      } catch (apiErr) {
+        // bỏ qua fallback api
+      }
+
+      // 4. Tự động đồng bộ lên Firebase Cloud Firestore nếu là Admin/Owner và chưa có trên Cloud (hoặc được yêu cầu)
+      const currentUserEmail = auth?.currentUser?.email?.toLowerCase().trim();
+      const isOwner = currentUserEmail === "giathieu110406@gmail.com";
+      if (isOwner && db && (!hasCloudData || forceSyncToCloud)) {
+        try {
+          setIsSyncingCloud(true);
+          for (const [dateStr, dayData] of sevenDaysMap.entries()) {
+            if (dayData.requests > 0) {
+              const docRef = doc(db, 'api_usage_stats', dateStr);
+              await setDoc(docRef, dayData, { merge: true });
+            }
+          }
+          if (forceSyncToCloud) {
+            setExportNotice("Đã đồng bộ toàn bộ dữ liệu 7 ngày lên Cloud Firestore thành công!");
+            setTimeout(() => setExportNotice(null), 4000);
+          }
+        } catch (syncErr) {
+          console.warn("[Dashboard] Lỗi khi đồng bộ Firestore:", syncErr);
+        } finally {
+          setIsSyncingCloud(false);
+        }
+      }
+
+      const sortedStats = Array.from(sevenDaysMap.values());
+      sortedStats.sort((a, b) => (a.date || a.id).localeCompare(b.date || b.id));
+      setStats(sortedStats);
+
+      // Chọn ngày cuối cùng (hôm nay)
+      if (sortedStats.length > 0) {
+        const todayStr = sortedStats[sortedStats.length - 1].date || sortedStats[sortedStats.length - 1].id;
+        setSelectedDate(prev => prev || todayStr);
       }
     } catch (err) {
       console.error("Failed to load usage stats:", err);
@@ -320,13 +396,23 @@ export const AdminAnalyticsDashboard: React.FC = () => {
           )}
 
           <button
-            onClick={fetchStats}
+            onClick={() => fetchStats(false)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
             title="Làm mới số liệu"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
             <span>Làm mới</span>
+          </button>
+
+          <button
+            onClick={() => fetchStats(true)}
+            disabled={loading || isSyncingCloud}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
+            title="Đồng bộ lưu trữ dữ liệu 7 ngày lên Firebase Cloud Firestore vĩnh viễn"
+          >
+            <CloudUpload className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-bounce text-amber-600' : 'text-amber-600'}`} />
+            <span>{isSyncingCloud ? 'Đang lưu...' : 'Lưu Cloud Firestore'}</span>
           </button>
 
           <div className="flex items-center bg-white border border-slate-200/80 rounded-xl p-0.5 shadow-xs">

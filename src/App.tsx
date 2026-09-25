@@ -1,4 +1,4 @@
-import { logApiUsage } from "./utils/logger";
+import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils/logger";
 import { authFetch } from "./utils/api-client";
 import React, { useState, useRef, useEffect, startTransition } from "react";
 import {
@@ -598,6 +598,28 @@ export default function App() {
     setSidebarView(view);
     setIsMenuOpen(false);
   };
+
+  // Tự động ghi nhận thời lượng thực tế người dùng thao tác trên từng tính năng
+  useEffect(() => {
+    if (sidebarView === "latex") {
+      startFeatureTracking("Chuyển đổi LaTeX");
+    } else if (sidebarView === "qbuilder") {
+      startFeatureTracking("Soạn đề thi (AI)");
+    } else if (sidebarView === "markitdown") {
+      startFeatureTracking("MarkItDown AI");
+    } else {
+      flushFeatureTracking();
+    }
+
+    const handleBeforeUnload = () => {
+      flushFeatureTracking();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      flushFeatureTracking();
+    };
+  }, [sidebarView]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [dismissingAll, setDismissingAll] = useState<boolean>(false);
   const [userSearchQuery, setUserSearchQuery] = useState<string>("");

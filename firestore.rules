@@ -83,7 +83,8 @@ service cloud.firestore {
 
     match /api_usage_stats/{statId} {
       allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
     }
     match /raw_ai_logs/{logId} {
       allow read, write: if isAdmin();
