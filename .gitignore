@@ -12,4 +12,5 @@ knowledge/
 mobile-view*.png
 .playwright-mcp/
 api_usage_local.json
-
+scratch/
+*.png

@@ -383,9 +383,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             requests: FieldValue.increment(1),
             totalDurationMinutes: FieldValue.increment(duration),
             [feature]: FieldValue.increment(1),
-            [`hourly.${vnHour}.requests`]: FieldValue.increment(1),
-            [`hourly.${vnHour}.durationMinutes`]: FieldValue.increment(duration),
-            [`featureDurations.${feature}`]: FieldValue.increment(duration)
+            hourly: {
+              [vnHour]: {
+                requests: FieldValue.increment(1),
+                durationMinutes: FieldValue.increment(duration)
+              }
+            },
+            featureDurations: {
+              [feature]: FieldValue.increment(duration)
+            }
           }, { merge: true });
           console.log(`[Server Logger] Logged usage for ${feature} (${duration}m, hour ${vnHour}) to Firestore`);
         } catch (dbErr) {

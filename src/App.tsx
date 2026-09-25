@@ -3222,12 +3222,22 @@ export default function App() {
   };
 
   const incrementLatexCount = async () => {
+    logApiUsage("Chuyển đổi LaTeX");
     if (user && userDoc) {
       try {
-        await updateDoc(doc(db, "users", user.uid), {
+        const todayStr = getTodayStr();
+        const updatePayload: any = {
           latexCount: increment(1),
           queryCount: increment(1),
-        });
+        };
+        if (userDoc.lastLatexResetDate !== todayStr) {
+          updatePayload.latexCount = 1;
+          updatePayload.examCount = 0;
+          updatePayload.promptCount = 0;
+          updatePayload.markItDownCount = 0;
+          updatePayload.lastLatexResetDate = todayStr;
+        }
+        await updateDoc(doc(db, "users", user.uid), updatePayload);
       } catch (err) {
         console.error("Lỗi đếm số truy cập LaTeX:", err);
       }
@@ -3235,12 +3245,22 @@ export default function App() {
   };
 
   const incrementExamCount = async () => {
+    logApiUsage("Soạn đề thi (AI)");
     if (user && userDoc) {
       try {
-        await updateDoc(doc(db, "users", user.uid), {
+        const todayStr = getTodayStr();
+        const updatePayload: any = {
           examCount: increment(1),
           queryCount: increment(1),
-        });
+        };
+        if (userDoc.lastLatexResetDate !== todayStr) {
+          updatePayload.latexCount = 0;
+          updatePayload.examCount = 1;
+          updatePayload.promptCount = 0;
+          updatePayload.markItDownCount = 0;
+          updatePayload.lastLatexResetDate = todayStr;
+        }
+        await updateDoc(doc(db, "users", user.uid), updatePayload);
       } catch (err) {
         console.error("Lỗi đếm số lần biên soạn đề:", err);
       }
@@ -3248,12 +3268,22 @@ export default function App() {
   };
 
   const incrementPromptCount = async () => {
+    logApiUsage("Dán AI");
     if (user && userDoc) {
       try {
-        await updateDoc(doc(db, "users", user.uid), {
+        const todayStr = getTodayStr();
+        const updatePayload: any = {
           promptCount: increment(1),
           queryCount: increment(1),
-        });
+        };
+        if (userDoc.lastLatexResetDate !== todayStr) {
+          updatePayload.latexCount = 0;
+          updatePayload.examCount = 0;
+          updatePayload.promptCount = 1;
+          updatePayload.markItDownCount = 0;
+          updatePayload.lastLatexResetDate = todayStr;
+        }
+        await updateDoc(doc(db, "users", user.uid), updatePayload);
       } catch (err) {
         console.error("Lỗi đếm số lượt dán thông minh AI:", err);
       }
@@ -3261,13 +3291,23 @@ export default function App() {
   };
 
   const handleMarkItDownUsage = async () => {
+    logApiUsage("MarkItDown AI");
     if (user && userDoc) {
       try {
-        await updateDoc(doc(db, "users", user.uid), {
+        const todayStr = getTodayStr();
+        const updatePayload: any = {
           markItDownCount: increment(1),
           promptCount: increment(1),
           queryCount: increment(1),
-        });
+        };
+        if (userDoc.lastLatexResetDate !== todayStr) {
+          updatePayload.latexCount = 0;
+          updatePayload.examCount = 0;
+          updatePayload.promptCount = 1;
+          updatePayload.markItDownCount = 1;
+          updatePayload.lastLatexResetDate = todayStr;
+        }
+        await updateDoc(doc(db, "users", user.uid), updatePayload);
       } catch (err) {
         console.error("Lỗi đếm số lượt dùng MarkItDown AI:", err);
       }
@@ -4982,7 +5022,7 @@ ${bodyHtml}
 
       const data = await res.json();
       if (data.success && data.fixedText) {
-        logApiUsage("AI canvas");
+        logApiUsage("AI Canvas");
         const resultText = data.fixedText;
         if (isSelected) {
           const newText = inputText.substring(0, start) + resultText + inputText.substring(end);
@@ -7055,7 +7095,7 @@ ${bodyHtml}
             })()}
 
             {sidebarView === "analytics" && (
-              <AdminAnalyticsDashboard />
+              <AdminAnalyticsDashboard allUsers={allUsers} />
             )}
 
           </div>

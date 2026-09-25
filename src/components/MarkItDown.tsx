@@ -250,7 +250,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
           }
         }
 
-        logApiUsage("Markitdown");
+        logApiUsage("MarkItDown AI");
         const finalCombined = stitchChunks(updatedChunks, includePageDividers);
         setOutputMarkdown(finalCombined);
         triggerToast("Đã hoàn tất phân tích và ghép file thành công!", true);
@@ -299,7 +299,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
     const data = await res.json();
     if (data.success && data.markdown) {
-      logApiUsage("Markitdown");
+      logApiUsage("MarkItDown AI");
       setOutputMarkdown(data.markdown);
       triggerToast("Chuyển đổi thành công!", true);
     } else {
@@ -377,7 +377,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
       const data = await res.json();
       if (data.success && data.markdown) {
-        logApiUsage("Markitdown");
+        logApiUsage("MarkItDown AI");
         setOutputMarkdown(data.markdown);
         triggerToast("Chuyển đổi URL thành công!", true);
       } else {

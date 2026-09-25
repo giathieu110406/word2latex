@@ -24,7 +24,22 @@ function getVietnamTimeInfo() {
   return { vnHour, vnDate, nowIso: now.toISOString() };
 }
 
-export const logApiUsage = (feature: string, durationMinutes = 1) => {
+export function normalizeFeatureName(rawName: string): string {
+  const trimmed = (rawName || "").trim();
+  const lower = trimmed.toLowerCase();
+  if (lower === "ai canvas" || lower === "aicanvas") return "AI Canvas";
+  if (lower === "markitdown" || lower === "markitdown ai") return "MarkItDown AI";
+  if (lower === "chuyển đổi latex" || lower === "chuyen doi latex") return "Chuyển đổi LaTeX";
+  if (lower === "soạn đề thi (ai)" || lower === "soan de thi (ai)" || lower === "soạn đề thi") return "Soạn đề thi (AI)";
+  if (lower === "dán ai" || lower === "dan ai") return "Dán AI";
+  if (lower === "ai hỏi đáp" || lower === "ai hoi dap") return "AI hỏi đáp";
+  if (lower === "ai thay thế số liệu") return "AI thay thế số liệu";
+  if (lower === "trích xuất văn bản") return "Trích xuất văn bản";
+  return trimmed;
+}
+
+export const logApiUsage = (featureRaw: string, durationMinutes = 1) => {
+  const feature = normalizeFeatureName(featureRaw);
   const duration = Math.max(1, Math.round(durationMinutes));
 
   // 1. Ghi nhận trực tiếp vào Cloud Firestore từ Client nếu người dùng đã đăng nhập
@@ -38,9 +53,15 @@ export const logApiUsage = (feature: string, durationMinutes = 1) => {
         requests: increment(1),
         totalDurationMinutes: increment(duration),
         [feature]: increment(1),
-        [`hourly.${vnHour}.requests`]: increment(1),
-        [`hourly.${vnHour}.durationMinutes`]: increment(duration),
-        [`featureDurations.${feature}`]: increment(duration)
+        hourly: {
+          [vnHour]: {
+            requests: increment(1),
+            durationMinutes: increment(duration)
+          }
+        },
+        featureDurations: {
+          [feature]: increment(duration)
+        }
       }, { merge: true }).catch(err => {
         // Fallback qua API nếu có vấn đề phân quyền
         console.warn(`[Logger] Firestore client log warning for ${feature}:`, err);

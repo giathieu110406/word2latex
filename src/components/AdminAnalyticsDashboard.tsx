@@ -5,9 +5,7 @@ import {
   Zap,
   TrendingUp,
   Calendar,
-  Download,
   RefreshCw,
-  Sparkles,
   Layers,
   ChevronRight,
   Sun,
@@ -19,13 +17,17 @@ import {
   FileCode,
   Flame,
   Activity,
-  ArrowUpRight,
-  CloudUpload
+  Users
 } from 'lucide-react';
 import { authFetch } from '../utils/api-client';
-import { db, auth } from '../firebase';
-import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
-import { DEFAULT_SEED_STATS } from '../utils/seed-stats';
+import { db } from '../firebase';
+import { collection, doc, getDocs, setDoc, onSnapshot } from 'firebase/firestore';
+import { normalizeFeatureName } from '../utils/logger';
+import { reconcileStatsWithUsers, ActiveMemberStat } from '../utils/reconciliation';
+
+export interface AdminAnalyticsDashboardProps {
+  allUsers?: any[];
+}
 
 export interface DayUsageStats {
   id: string;
@@ -42,8 +44,8 @@ const FEATURE_COLORS: Record<string, { bg: string; text: string; bar: string }> 
   "Chuyển đổi LaTeX": { bg: "bg-blue-50 text-blue-700 border-blue-200", text: "text-blue-600", bar: "bg-blue-500" },
   "Soạn đề thi (AI)": { bg: "bg-purple-50 text-purple-700 border-purple-200", text: "text-purple-600", bar: "bg-purple-500" },
   "MarkItDown AI": { bg: "bg-emerald-50 text-emerald-700 border-emerald-200", text: "text-emerald-600", bar: "bg-emerald-500" },
-  "AI canvas": { bg: "bg-amber-50 text-amber-700 border-amber-200", text: "text-amber-600", bar: "bg-amber-500" },
   "AI Canvas": { bg: "bg-amber-50 text-amber-700 border-amber-200", text: "text-amber-600", bar: "bg-amber-500" },
+  "AI canvas": { bg: "bg-amber-50 text-amber-700 border-amber-200", text: "text-amber-600", bar: "bg-amber-500" },
   "Dán AI": { bg: "bg-indigo-50 text-indigo-700 border-indigo-200", text: "text-indigo-600", bar: "bg-indigo-500" },
   "AI hỏi đáp": { bg: "bg-rose-50 text-rose-700 border-rose-200", text: "text-rose-600", bar: "bg-rose-500" },
   "AI thay thế số liệu": { bg: "bg-teal-50 text-teal-700 border-teal-200", text: "text-teal-600", bar: "bg-teal-500" },
@@ -67,114 +69,149 @@ function getPeriodIcon(hour: number) {
   return <Sunset className="w-3 h-3 text-purple-400" />;
 }
 
-export const AdminAnalyticsDashboard: React.FC = () => {
+export function normalizeDayDoc(docData: any, docId: string): DayUsageStats {
+  const dateStr = docData.date || docId;
+  const hourly: Record<string, { requests: number; durationMinutes: number }> = {};
+  for (let h = 0; h < 24; h++) {
+    const hh = String(h).padStart(2, '0');
+    const nestedH = docData.hourly?.[hh];
+    const dottedReq = docData[`hourly.${hh}.requests`];
+    const dottedDur = docData[`hourly.${hh}.durationMinutes`];
+
+    const req = Number(nestedH?.requests ?? dottedReq ?? 0);
+    const dur = Number(nestedH?.durationMinutes ?? dottedDur ?? 0);
+    hourly[hh] = {
+      requests: isNaN(req) ? 0 : Math.max(0, req),
+      durationMinutes: isNaN(dur) ? 0 : Math.max(0, dur)
+    };
+  }
+
+  const featureDurations: Record<string, number> = {};
+  const featureRequests: Record<string, number> = {};
+
+  if (docData.featureDurations && typeof docData.featureDurations === 'object') {
+    Object.keys(docData.featureDurations).forEach(k => {
+      const normKey = normalizeFeatureName(k);
+      const val = Number(docData.featureDurations[k]) || 0;
+      featureDurations[normKey] = (featureDurations[normKey] || 0) + val;
+    });
+  }
+
+  const excludedKeys = new Set(['id', 'date', 'timestamp', 'requests', 'totalDurationMinutes', 'hourly', 'featureDurations']);
+  Object.keys(docData).forEach(k => {
+    if (k.startsWith('featureDurations.')) {
+      const fName = normalizeFeatureName(k.replace('featureDurations.', ''));
+      featureDurations[fName] = (featureDurations[fName] || 0) + (Number(docData[k]) || 0);
+    } else if (!excludedKeys.has(k) && typeof docData[k] === 'number') {
+      const fName = normalizeFeatureName(k);
+      featureRequests[fName] = (featureRequests[fName] || 0) + Number(docData[k]);
+    }
+  });
+
+  const hourlyTotalReq = Object.values(hourly).reduce((acc, h) => acc + h.requests, 0);
+  const hourlyTotalDur = Object.values(hourly).reduce((acc, h) => acc + h.durationMinutes, 0);
+
+  let totalRequests = Number(docData.requests);
+  let totalDuration = Number(docData.totalDurationMinutes);
+
+  if (isNaN(totalRequests) || totalRequests < hourlyTotalReq) {
+    totalRequests = hourlyTotalReq;
+  }
+  if (isNaN(totalDuration) || totalDuration < hourlyTotalDur) {
+    totalDuration = hourlyTotalDur;
+  }
+
+  return {
+    ...docData,
+    id: dateStr,
+    date: dateStr,
+    requests: totalRequests,
+    totalDurationMinutes: totalDuration,
+    hourly,
+    featureDurations,
+    ...featureRequests
+  };
+}
+
+export function buildSevenDaysList(cloudDocsMap: Map<string, DayUsageStats>): DayUsageStats[] {
+  const result: DayUsageStats[] = [];
+  const now = new Date();
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d);
+
+    if (cloudDocsMap.has(dateStr)) {
+      result.push(cloudDocsMap.get(dateStr)!);
+    } else {
+      const emptyHourly: Record<string, { requests: number; durationMinutes: number }> = {};
+      for (let h = 0; h < 24; h++) {
+        emptyHourly[String(h).padStart(2, '0')] = { requests: 0, durationMinutes: 0 };
+      }
+      result.push({
+        id: dateStr,
+        date: dateStr,
+        timestamp: d.toISOString(),
+        requests: 0,
+        totalDurationMinutes: 0,
+        hourly: emptyHourly,
+        featureDurations: {}
+      });
+    }
+  }
+
+  result.sort((a, b) => (a.date || a.id).localeCompare(b.date || b.id));
+  return result;
+}
+
+export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = ({ allUsers = [] }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [stats, setStats] = useState<DayUsageStats[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
   const [chartMetric, setChartMetric] = useState<'requests' | 'duration'>('requests');
   const [exportNotice, setExportNotice] = useState<string | null>(null);
-  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [isRealtimeActive, setIsRealtimeActive] = useState<boolean>(false);
 
-  // Fetch usage stats
-  const fetchStats = async (forceSyncToCloud = false) => {
+  // Manual fallback fetch if onSnapshot encounters issues
+  const fetchStatsManual = async () => {
     try {
       setLoading(true);
+      const cloudMap = new Map<string, DayUsageStats>();
 
-      // 1. Khởi tạo 7 ngày gần nhất (theo múi giờ Việt Nam)
-      const sevenDaysMap = new Map<string, DayUsageStats>();
-      const now = new Date();
-
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const dateStr = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Ho_Chi_Minh',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit'
-        }).format(d);
-
-        const hourly: Record<string, { requests: number; durationMinutes: number }> = {};
-        for (let h = 0; h < 24; h++) {
-          hourly[String(h).padStart(2, '0')] = { requests: 0, durationMinutes: 0 };
-        }
-
-        // Ưu tiên nạp dữ liệu từ Seed data đã tích lũy (đảm bảo không bao giờ bị rỗng 0)
-        const seedItem = (DEFAULT_SEED_STATS as any)[dateStr];
-
-        sevenDaysMap.set(dateStr, {
-          id: dateStr,
-          date: dateStr,
-          timestamp: seedItem?.timestamp || d.toISOString(),
-          requests: seedItem?.requests || 0,
-          totalDurationMinutes: seedItem?.totalDurationMinutes || 0,
-          hourly: seedItem?.hourly ? { ...hourly, ...seedItem.hourly } : hourly,
-          featureDurations: seedItem?.featureDurations || {}
-        });
-      }
-
-      // 2. Truy vấn trực tiếp từ Firebase Cloud Firestore Client SDK
-      let hasCloudData = false;
+      // 1. Truy vấn trực tiếp từ Firebase Cloud Firestore Client SDK
       if (db) {
         try {
           const statsCol = collection(db, 'api_usage_stats');
           const snapshot = await getDocs(statsCol);
-          if (!snapshot.empty) {
-            snapshot.docs.forEach(docSnap => {
-              const item = docSnap.data() as any;
-              const key = item.date || docSnap.id;
-              if (sevenDaysMap.has(key)) {
-                hasCloudData = true;
-                const existing = sevenDaysMap.get(key)!;
-                sevenDaysMap.set(key, {
-                  ...existing,
-                  ...item,
-                  requests: item.requests !== undefined ? Number(item.requests) : existing.requests,
-                  totalDurationMinutes: item.totalDurationMinutes !== undefined ? Number(item.totalDurationMinutes) : existing.totalDurationMinutes,
-                  hourly: {
-                    ...existing.hourly,
-                    ...(item.hourly || {})
-                  },
-                  featureDurations: {
-                    ...existing.featureDurations,
-                    ...(item.featureDurations || {})
-                  }
-                });
-              }
-            });
-          }
+          snapshot.docs.forEach(docSnap => {
+            const data = docSnap.data();
+            const key = data.date || docSnap.id;
+            cloudMap.set(key, normalizeDayDoc(data, docSnap.id));
+          });
         } catch (fsErr) {
-          console.warn("[Dashboard] Lỗi khi truy vấn Firestore trực tiếp:", fsErr);
+          console.warn("[Dashboard] Lỗi khi truy vấn Firestore thủ công:", fsErr);
         }
       }
 
-      // 3. Fallback thêm từ API backend nếu có
+      // 2. Fallback thêm từ API backend nếu có
       try {
         const res = await authFetch('/api/ai?action=get-usage-stats', {
           method: 'POST'
         });
         if (res.ok) {
           const data = await res.json();
-          if (data && data.success && Array.isArray(data.stats) && data.stats.length > 0) {
+          if (data && data.success && Array.isArray(data.stats)) {
             data.stats.forEach((item: any) => {
               const key = item.date || item.id;
-              if (sevenDaysMap.has(key)) {
-                const existing = sevenDaysMap.get(key)!;
-                sevenDaysMap.set(key, {
-                  ...existing,
-                  ...item,
-                  requests: Math.max(Number(item.requests) || 0, existing.requests || 0),
-                  totalDurationMinutes: Math.max(Number(item.totalDurationMinutes) || 0, existing.totalDurationMinutes || 0),
-                  hourly: {
-                    ...existing.hourly,
-                    ...(item.hourly || {})
-                  },
-                  featureDurations: {
-                    ...existing.featureDurations,
-                    ...(item.featureDurations || {})
-                  }
-                });
+              if (!cloudMap.has(key)) {
+                cloudMap.set(key, normalizeDayDoc(item, key));
               }
             });
           }
@@ -183,36 +220,11 @@ export const AdminAnalyticsDashboard: React.FC = () => {
         // bỏ qua fallback api
       }
 
-      // 4. Tự động đồng bộ lên Firebase Cloud Firestore nếu là Admin/Owner và chưa có trên Cloud (hoặc được yêu cầu)
-      const currentUserEmail = auth?.currentUser?.email?.toLowerCase().trim();
-      const isOwner = currentUserEmail === "giathieu110406@gmail.com";
-      if (isOwner && db && (!hasCloudData || forceSyncToCloud)) {
-        try {
-          setIsSyncingCloud(true);
-          for (const [dateStr, dayData] of sevenDaysMap.entries()) {
-            if (dayData.requests > 0) {
-              const docRef = doc(db, 'api_usage_stats', dateStr);
-              await setDoc(docRef, dayData, { merge: true });
-            }
-          }
-          if (forceSyncToCloud) {
-            setExportNotice("Đã đồng bộ toàn bộ dữ liệu 7 ngày lên Cloud Firestore thành công!");
-            setTimeout(() => setExportNotice(null), 4000);
-          }
-        } catch (syncErr) {
-          console.warn("[Dashboard] Lỗi khi đồng bộ Firestore:", syncErr);
-        } finally {
-          setIsSyncingCloud(false);
-        }
-      }
+      const sevenDays = buildSevenDaysList(cloudMap);
+      setStats(sevenDays);
 
-      const sortedStats = Array.from(sevenDaysMap.values());
-      sortedStats.sort((a, b) => (a.date || a.id).localeCompare(b.date || b.id));
-      setStats(sortedStats);
-
-      // Chọn ngày cuối cùng (hôm nay)
-      if (sortedStats.length > 0) {
-        const todayStr = sortedStats[sortedStats.length - 1].date || sortedStats[sortedStats.length - 1].id;
+      if (sevenDays.length > 0) {
+        const todayStr = sevenDays[sevenDays.length - 1].date || sevenDays[sevenDays.length - 1].id;
         setSelectedDate(prev => prev || todayStr);
       }
     } catch (err) {
@@ -222,15 +234,83 @@ export const AdminAnalyticsDashboard: React.FC = () => {
     }
   };
 
+
+
+  // Lắng nghe cập nhật thời gian thực từ Firestore với onSnapshot
   useEffect(() => {
-    fetchStats();
+    if (!db) {
+      fetchStatsManual();
+      return;
+    }
+
+    setLoading(true);
+    let unsubscribe: (() => void) | null = null;
+
+    try {
+      const statsCol = collection(db, 'api_usage_stats');
+      unsubscribe = onSnapshot(statsCol, (snapshot) => {
+        const cloudMap = new Map<string, DayUsageStats>();
+        snapshot.docs.forEach(docSnap => {
+          const data = docSnap.data();
+          const key = data.date || docSnap.id;
+          cloudMap.set(key, normalizeDayDoc(data, docSnap.id));
+        });
+
+        const sevenDays = buildSevenDaysList(cloudMap);
+        setStats(sevenDays);
+        setIsRealtimeActive(true);
+        setLoading(false);
+
+        setSelectedDate(prev => {
+          if (prev && sevenDays.some(s => (s.date || s.id) === prev)) {
+            return prev;
+          }
+          return sevenDays[sevenDays.length - 1]?.date || '';
+        });
+      }, (err) => {
+        console.warn("[Dashboard] onSnapshot bị từ chối quyền hoặc lỗi mạng, chuyển sang fetch thủ công:", err);
+        setIsRealtimeActive(false);
+        fetchStatsManual();
+      });
+    } catch (err) {
+      console.warn("[Dashboard] Lỗi khởi tạo onSnapshot:", err);
+      setIsRealtimeActive(false);
+      fetchStatsManual();
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
-  // Currently selected day stats
+  // Thuật toán Realtime Hybrid Reconciliation: Hợp nhất live data từ allUsers (Ground Truth) vào stats
+  const { stats: displayStats, activeMembersToday, hasDiscrepancy } = useMemo(() => {
+    return reconcileStatsWithUsers(stats, allUsers);
+  }, [stats, allUsers]);
+
+  // Tự động đồng bộ số liệu sau đối soát lên Cloud Firestore nếu phát hiện có sai lệch
+  useEffect(() => {
+    if (!hasDiscrepancy || !db) return;
+    const timer = setTimeout(async () => {
+      try {
+        const todayVNDate = displayStats[displayStats.length - 1]?.date;
+        const todayDoc = displayStats.find(s => (s.date || s.id) === todayVNDate);
+        if (todayDoc && (Number(todayDoc.requests) || 0) > 0) {
+          const docRef = doc(db, 'api_usage_stats', todayDoc.date || todayDoc.id);
+          await setDoc(docRef, todayDoc, { merge: true });
+        }
+      } catch (syncErr) {
+        console.warn("[Dashboard] Lỗi tự động lưu đồng bộ Firestore:", syncErr);
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [hasDiscrepancy, displayStats]);
+
+  // Currently selected day stats (sử dụng dữ liệu sau reconcile)
   const activeDayStats = useMemo(() => {
-    if (!stats.length) return null;
-    return stats.find(s => (s.date || s.id) === selectedDate) || stats[stats.length - 1];
-  }, [stats, selectedDate]);
+    if (!displayStats.length) return null;
+    return displayStats.find(s => (s.date || s.id) === selectedDate) || displayStats[displayStats.length - 1];
+  }, [displayStats, selectedDate]);
 
   // Overall calculations for the selected day
   const metrics = useMemo(() => {
@@ -269,16 +349,18 @@ export const AdminAnalyticsDashboard: React.FC = () => {
     // Check direct feature keys
     Object.keys(activeDayStats).forEach(k => {
       if (!excludedKeys.has(k) && typeof activeDayStats[k] === 'number') {
-        if (!featureMap[k]) featureMap[k] = { requests: 0, duration: 0 };
-        featureMap[k].requests += activeDayStats[k];
+        const normKey = normalizeFeatureName(k);
+        if (!featureMap[normKey]) featureMap[normKey] = { requests: 0, duration: 0 };
+        featureMap[normKey].requests += activeDayStats[k];
       }
     });
 
     // Check featureDurations map
     if (activeDayStats.featureDurations) {
       Object.keys(activeDayStats.featureDurations).forEach(k => {
-        if (!featureMap[k]) featureMap[k] = { requests: 0, duration: 0 };
-        featureMap[k].duration += activeDayStats.featureDurations[k] || 0;
+        const normKey = normalizeFeatureName(k);
+        if (!featureMap[normKey]) featureMap[normKey] = { requests: 0, duration: 0 };
+        featureMap[normKey].duration += activeDayStats.featureDurations[k] || 0;
       });
     }
 
@@ -297,8 +379,9 @@ export const AdminAnalyticsDashboard: React.FC = () => {
       totalDuration: activeDayStats.totalDurationMinutes || 0,
       peakHourStr: maxHourlyVal > 0 ? `${String(peakH).padStart(2, '0')}:00 - ${String(peakH + 1).padStart(2, '0')}:00` : 'Không có lưu lượng',
       peakHourRequests: maxHourlyVal,
-      topFeatureName: topFeature ? topFeature.name : 'Chưa có',
+      topFeatureName: topFeature ? topFeature.name : 'Chưa có hoạt động',
       topFeatureCount: topFeature ? topFeature.requests : 0,
+      topFeatureDuration: topFeature ? topFeature.duration : 0,
       featureBreakdown: featureList
     };
   }, [activeDayStats, chartMetric]);
@@ -319,11 +402,11 @@ export const AdminAnalyticsDashboard: React.FC = () => {
 
   // Export to CSV
   const handleExportCSV = () => {
-    if (!stats.length) return;
+    if (!displayStats.length) return;
     let csvContent = 'data:text/csv;charset=utf-8,';
     csvContent += 'Ngày,Tổng lượt sử dụng,Tổng thời gian (phút),Khung giờ,Lượt giờ này,Thời lượng giờ này (phút)\n';
 
-    stats.forEach(day => {
+    displayStats.forEach(day => {
       const d = day.date || day.id;
       const totalReq = day.requests || 0;
       const totalDur = day.totalDurationMinutes || 0;
@@ -350,8 +433,8 @@ export const AdminAnalyticsDashboard: React.FC = () => {
 
   // Export to JSON
   const handleExportJSON = () => {
-    if (!stats.length) return;
-    const jsonStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(stats, null, 2));
+    if (!displayStats.length) return;
+    const jsonStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(displayStats, null, 2));
     const link = document.createElement('a');
     link.setAttribute('href', jsonStr);
     link.setAttribute('download', `word2latex_usage_stats_7days_${selectedDate}.json`);
@@ -366,68 +449,59 @@ export const AdminAnalyticsDashboard: React.FC = () => {
   return (
     <div className="bg-white/75 backdrop-blur-xl border border-white/60 shadow-[0_12px_45px_rgba(120,120,180,.08)] rounded-[28px] p-4 sm:p-6 lg:p-8 flex-1 flex flex-col gap-6">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shrink-0 shadow-md shadow-indigo-200 text-white">
-            <BarChart3 className="w-6 h-6" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-white">
+            <BarChart3 className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-800 font-sans">
-                Dashboard Phân Tích Sử Dụng
+              <h2 className="text-lg sm:text-xl font-black tracking-tight text-slate-800">
+                Phân tích sử dụng
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100">
-                0h - 24h & 7 Ngày
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-600 border border-emerald-200/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Realtime
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Phân tích khung giờ cao điểm trong ngày và lưu trữ lịch sử sử dụng các tính năng hệ thống.
+            <p className="text-[11px] text-slate-400 font-medium">
+              Thống kê lưu lượng và hoạt động thành viên theo thời gian thực
             </p>
           </div>
         </div>
 
         {/* Action buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           {exportNotice && (
-            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl animate-fade-in">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl animate-fade-in">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               <span>{exportNotice}</span>
             </div>
           )}
 
           <button
-            onClick={() => fetchStats(false)}
+            onClick={() => fetchStatsManual()}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-xl shadow-2xs transition-all cursor-pointer disabled:opacity-50"
             title="Làm mới số liệu"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-slate-400'}`} />
             <span>Làm mới</span>
           </button>
 
-          <button
-            onClick={() => fetchStats(true)}
-            disabled={loading || isSyncingCloud}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
-            title="Đồng bộ lưu trữ dữ liệu 7 ngày lên Firebase Cloud Firestore vĩnh viễn"
-          >
-            <CloudUpload className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-bounce text-amber-600' : 'text-amber-600'}`} />
-            <span>{isSyncingCloud ? 'Đang lưu...' : 'Lưu Cloud Firestore'}</span>
-          </button>
-
-          <div className="flex items-center bg-white border border-slate-200/80 rounded-xl p-0.5 shadow-xs">
+          <div className="flex items-center bg-white border border-slate-200/90 rounded-xl p-0.5 shadow-2xs">
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
               title="Xuất bảng dữ liệu CSV"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Xuất CSV</span>
+              <span>CSV</span>
             </button>
-            <div className="w-px h-4 bg-slate-200 my-auto"></div>
+            <div className="w-px h-3.5 bg-slate-200 my-auto"></div>
             <button
               onClick={handleExportJSON}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
               title="Xuất dữ liệu thô JSON"
             >
               <FileCode className="w-3.5 h-3.5 text-indigo-600" />
@@ -439,18 +513,18 @@ export const AdminAnalyticsDashboard: React.FC = () => {
 
       {/* 7-Day Date Selector Row */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
+        <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
           <span className="flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-indigo-500" /> Chọn ngày phân tích (7 ngày gần nhất):
+            <Calendar className="w-3.5 h-3.5 text-indigo-500" /> 7 ngày gần đây
           </span>
-          <span className="text-[11px] font-semibold text-slate-400">
-            Múi giờ chuẩn: Việt Nam (GMT+7)
+          <span className="text-[10px] font-medium text-slate-400">
+            Giờ Việt Nam (GMT+7)
           </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-          {stats.map((day, idx) => {
-            const isToday = idx === stats.length - 1;
+          {displayStats.map((day, idx) => {
+            const isToday = idx === displayStats.length - 1;
             const isSelected = (day.date || day.id) === selectedDate;
             const dayParts = (day.date || day.id).split('-');
             const displayDate = dayParts.length === 3 ? `${dayParts[2]}/${dayParts[1]}` : day.id;
@@ -498,77 +572,73 @@ export const AdminAnalyticsDashboard: React.FC = () => {
       </div>
 
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Card 1: Tổng lượt gọi */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 shadow-xs flex flex-col justify-between relative overflow-hidden">
-          <div className="flex items-center justify-between mb-3">
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Tổng Lượt Sử Dụng</span>
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Activity className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Activity className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-800">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-2xl font-black text-slate-800">
               {metrics.totalRequests.toLocaleString('vi-VN')}
-              <span className="text-xs text-slate-400 font-bold ml-1">lượt</span>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1">
-              Ghi nhận trên toàn hệ thống trong ngày {selectedDate}
-            </p>
+            </span>
+            <span className="text-xs text-slate-400 font-bold">lượt</span>
           </div>
         </div>
 
         {/* Card 2: Thời lượng tương tác */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 shadow-xs flex flex-col justify-between relative overflow-hidden">
-          <div className="flex items-center justify-between mb-3">
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Thời Gian Hoạt Động</span>
-            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-              <Clock className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+              <Clock className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-800">
-              {formatDuration(metrics.totalDuration)}
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1">
-              Tổng thời lượng người dùng thao tác thực tế
-            </p>
+          <div className="text-2xl font-black text-slate-800">
+            {formatDuration(metrics.totalDuration)}
           </div>
         </div>
 
         {/* Card 3: Khung giờ cao điểm */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 shadow-xs flex flex-col justify-between relative overflow-hidden">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Giờ Cao Điểm (Peak)</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Flame className="w-4 h-4" />
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Giờ Cao Điểm</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Flame className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-xl sm:text-2xl font-black text-slate-800 truncate" title={metrics.peakHourStr}>
+          <div className="flex items-center justify-between">
+            <div className="text-lg font-black text-slate-800 truncate" title={metrics.peakHourStr}>
               {metrics.peakHourStr}
             </div>
-            <p className="text-[11px] text-amber-700 font-medium mt-1">
-              Đạt đỉnh: <span className="font-bold">{metrics.peakHourRequests}</span> {chartMetric === 'requests' ? 'lượt gọi' : 'phút'}
-            </p>
+            {metrics.peakHourRequests > 0 && (
+              <span className="text-[11px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-md">
+                {metrics.peakHourRequests} lượt
+              </span>
+            )}
           </div>
         </div>
 
         {/* Card 4: Tính năng thịnh hành nhất */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 shadow-xs flex flex-col justify-between relative overflow-hidden">
-          <div className="flex items-center justify-between mb-3">
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Tính Năng Hàng Đầu</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4" />
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <TrendingUp className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-lg sm:text-xl font-black text-slate-800 truncate" title={metrics.topFeatureName}>
+          <div className="flex items-center justify-between gap-1">
+            <div className="text-base font-black text-slate-800 truncate" title={metrics.topFeatureName}>
               {metrics.topFeatureName}
             </div>
-            <p className="text-[11px] text-emerald-700 font-medium mt-1">
-              Dẫn đầu với <span className="font-bold">{metrics.topFeatureCount}</span> lượt sử dụng
-            </p>
+            {metrics.topFeatureCount > 0 && (
+              <span className="text-[11px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md shrink-0">
+                {metrics.topFeatureCount} lượt
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -582,9 +652,7 @@ export const AdminAnalyticsDashboard: React.FC = () => {
               <Zap className="w-4 h-4 text-amber-500" />
               Biểu Đồ Phân Phối Hoạt Động 24 Giờ (00:00 - 23:59)
             </h3>
-            <p className="text-xs text-slate-500 font-medium">
-              Rà soát mật độ thao tác theo từng khung giờ trong ngày {selectedDate}.
-            </p>
+
           </div>
 
           <div className="flex items-center bg-slate-100/80 p-1 rounded-xl shrink-0 self-start sm:self-auto">
@@ -765,10 +833,7 @@ export const AdminAnalyticsDashboard: React.FC = () => {
             )}
           </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Dữ liệu tự động đồng bộ khi thành viên tương tác</span>
-            <span className="font-bold text-indigo-600">Đã kích hoạt Realtime</span>
-          </div>
+
         </div>
 
         {/* Right: So sánh xu hướng 7 ngày (Weekly Trends) */}
@@ -780,17 +845,17 @@ export const AdminAnalyticsDashboard: React.FC = () => {
                 Tổng Quan Xu Hướng 7 Ngày Qua
               </h3>
               <span className="text-[11px] font-bold text-slate-400">
-                Tổng 7 ngày: {stats.reduce((acc, s) => acc + (s.requests || 0), 0)} lượt
+                Tổng 7 ngày: {displayStats.reduce((acc, s) => acc + (s.requests || 0), 0)} lượt
               </span>
             </div>
 
             <div className="space-y-3">
-              {stats.map((day) => {
+              {displayStats.map((day) => {
                 const totalReq = day.requests || 0;
                 const totalDur = day.totalDurationMinutes || 0;
                 const isSelected = (day.date || day.id) === selectedDate;
 
-                const maxWeekly = Math.max(...stats.map(s => s.requests || 0), 1);
+                const maxWeekly = Math.max(...displayStats.map(s => s.requests || 0), 1);
                 const percent = Math.round((totalReq / maxWeekly) * 100);
 
                 return (
@@ -828,11 +893,107 @@ export const AdminAnalyticsDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Dữ liệu được lưu trữ tự động trên Cloud Firestore</span>
-            <span className="font-bold text-emerald-600">Đã đồng bộ</span>
+
+        </div>
+      </div>
+
+      {/* Realtime Active Members Breakdown Widget */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+              <Users className="w-4 h-4 text-indigo-600" />
+              Chi Tiết Hoạt Động Theo Thành Viên Hôm Nay
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-100">
+                LIVE REALTIME
+              </span>
+            </h3>
+
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+              {activeMembersToday.length} thành viên đã thao tác
+            </span>
           </div>
         </div>
+
+        {activeMembersToday.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 text-xs">
+            Hôm nay chưa có thành viên nào phát sinh lượt thao tác hệ thống.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[700px]">
+              <thead>
+                <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="py-3 px-4">Thành viên</th>
+                  <th className="py-3 px-4 text-center">Chuyển đổi LaTeX</th>
+                  <th className="py-3 px-4 text-center">Soạn đề thi (AI)</th>
+                  <th className="py-3 px-4 text-center">Dán AI</th>
+                  <th className="py-3 px-4 text-center">MarkItDown AI</th>
+                  <th className="py-3 px-4 text-center">Tổng lượt hôm nay</th>
+                  <th className="py-3 px-4 text-right">Đóng góp (%)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100/70 text-xs">
+                {activeMembersToday.map((member) => (
+                  <tr key={member.uid} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-tr from-indigo-100 to-purple-100 text-indigo-700 font-bold flex items-center justify-center text-xs shrink-0 border border-indigo-200/50">
+                          {member.photoURL ? (
+                            <img src={member.photoURL} alt={member.displayName} className="w-full h-full object-cover" />
+                          ) : (
+                            member.displayName.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-extrabold text-slate-800 text-xs truncate max-w-[180px]">
+                            {member.displayName}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">
+                            {member.email}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-center font-bold text-blue-600">
+                      {member.latexCount}
+                    </td>
+                    <td className="py-3.5 px-4 text-center font-bold text-purple-600">
+                      {member.examCount}
+                    </td>
+                    <td className="py-3.5 px-4 text-center font-bold text-indigo-600">
+                      {member.promptCount}
+                    </td>
+                    <td className="py-3.5 px-4 text-center font-bold text-emerald-600">
+                      {member.markItDownCount}
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="font-black text-slate-900 bg-indigo-50/80 px-2.5 py-1 rounded-lg text-xs">
+                        {member.totalDailyCount} lượt
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden shrink-0">
+                          <div
+                            className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+                            style={{ width: `${Math.max(member.percentage, 5)}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-extrabold text-slate-700 w-8 text-right">
+                          {member.percentage}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
