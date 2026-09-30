@@ -72,6 +72,38 @@ export function normalizeDateToISO(dateStr: string): string {
   return trimmed;
 }
 
+export function getActiveMembersForDate(day?: DayUsageStats | null): ActiveMemberStat[] {
+  const memberActivity = day?.memberActivity;
+  if (!memberActivity || typeof memberActivity !== 'object') return [];
+
+  const members = Object.entries(memberActivity).map(([uid, activity]: [string, any]) => {
+    const features = activity?.features || activity || {};
+    const latexCount = Number(features['Chuyển đổi LaTeX']) || 0;
+    const examCount = Number(features['Soạn đề thi (AI)']) || 0;
+    const promptCount = Number(features['Dán AI']) || 0;
+    const markItDownCount = Number(features['MarkItDown AI']) || 0;
+
+    return {
+      uid,
+      displayName: activity?.displayName || activity?.email?.split('@')[0] || 'Thành viên mới',
+      email: activity?.email || 'Không có email',
+      photoURL: activity?.photoURL || undefined,
+      latexCount,
+      examCount,
+      promptCount,
+      markItDownCount,
+      totalDailyCount: latexCount + examCount + promptCount + markItDownCount,
+      percentage: 0,
+      lastActive: activity?.lastActive
+    };
+  }).filter(member => member.totalDailyCount > 0);
+
+  const total = members.reduce((sum, member) => sum + member.totalDailyCount, 0);
+  return members
+    .map(member => ({ ...member, percentage: total > 0 ? Math.round((member.totalDailyCount / total) * 100) : 0 }))
+    .sort((a, b) => b.totalDailyCount - a.totalDailyCount);
+}
+
 /**
  * Thuật toán Reconcile đối soát và hợp nhất Live Realtime giữa:
  * 1. Dữ liệu User Activity Truth từ collection `users` (từng thành viên).
@@ -80,7 +112,7 @@ export function normalizeDateToISO(dateStr: string): string {
  * Đảm bảo:
  * - Dữ liệu hôm nay luôn khớp 100% với danh sách thành viên thực tế.
  * - Phản ánh tức thời theo thời gian thực (Realtime sub-second).
- * - Tự động bổ sung các lượt chênh lệch vào khung giờ hiện tại và các tính năng tương ứng.
+ * - Không suy diễn giờ phát sinh cho dữ liệu không có timestamp sự kiện.
  */
 export function reconcileStatsWithUsers(
   baseStats: DayUsageStats[],
@@ -88,7 +120,6 @@ export function reconcileStatsWithUsers(
   targetTodayDate?: string
 ): ReconciledStatsResult {
   const todayStr = targetTodayDate || getTodayVNDate();
-  const currentHourStr = String(getVNHour()).padStart(2, '0');
 
   // 1. Phân tích chi tiết từng user trong ngày hôm nay
   let totalUserLatex = 0;
@@ -238,16 +269,6 @@ export function reconcileStatsWithUsers(
     if (!hourly[hh]) {
       hourly[hh] = { requests: 0, durationMinutes: 0 };
     }
-  }
-
-  const currentHourlySum = Object.values(hourly).reduce((acc, h) => acc + (h.requests || 0), 0);
-  if (currentHourlySum < reconciledRequests) {
-    const diff = reconciledRequests - currentHourlySum;
-    const curH = hourly[currentHourStr] || { requests: 0, durationMinutes: 0 };
-    hourly[currentHourStr] = {
-      requests: curH.requests + diff,
-      durationMinutes: curH.durationMinutes + Math.round(diff * 1.5)
-    };
   }
 
   // 5. Cập nhật thời lượng hoạt động tương ứng

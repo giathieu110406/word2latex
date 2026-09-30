@@ -46,6 +46,7 @@ export const logApiUsage = (featureRaw: string, durationMinutes = 1) => {
   if (db && auth?.currentUser) {
     try {
       const { vnHour, vnDate, nowIso } = getVietnamTimeInfo();
+      const currentUser = auth.currentUser;
       const docRef = doc(db, 'api_usage_stats', vnDate);
       setDoc(docRef, {
         timestamp: nowIso,
@@ -61,6 +62,17 @@ export const logApiUsage = (featureRaw: string, durationMinutes = 1) => {
         },
         featureDurations: {
           [feature]: increment(duration)
+        },
+        memberActivity: {
+          [currentUser.uid]: {
+            displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'Thành viên mới',
+            email: currentUser.email || '',
+            photoURL: currentUser.photoURL || null,
+            lastActive: nowIso,
+            features: {
+              [feature]: increment(1)
+            }
+          }
         }
       }, { merge: true }).catch(err => {
         // Fallback qua API nếu có vấn đề phân quyền

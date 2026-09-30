@@ -92,7 +92,7 @@ const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConf
 const db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -114,10 +114,10 @@ app.post("/api/ai", async (req, res) => {
 app.post("/api/markitdown", async (req, res) => {
   await markitdownHandler(req as any, res as any);
 });
+
 app.post("/api/email-verification", async (req, res) => {
   await emailVerificationHandler(req as any, res as any);
 });
-
 
 
 
@@ -419,4 +419,4 @@ if (process.env.VERCEL !== "1") {
 }
 
 export default app;
- 
+

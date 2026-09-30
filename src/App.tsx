@@ -5178,7 +5178,6 @@ ${bodyHtml}
       {needsEmailOtp && (
         <EmailVerificationGate
           email={user.email || user.providerData?.[0]?.email || ""}
-          onLogout={handleLogout}
           onVerified={async (verifiedAt) => {
             await user.getIdToken(true);
             setUserDoc((currentDoc) => ({
@@ -5241,7 +5240,7 @@ ${bodyHtml}
                  </div>
                  <div>
                     <div className="font-bold text-slate-800 text-[15px] leading-tight">Word2LaTeX.io.vn</div>
-                    <div className="text-[10px] text-slate-500 leading-tight">Chuyển đổi LaTeX sang Word</div>
+                    <div className="text-[10px] text-slate-500 leading-tight">Chuyển đổi soạn đề thi LaTeX sang Word</div>
                  </div>
              </div>
              
@@ -7788,7 +7787,7 @@ ${bodyHtml}
         <AnimatePresence>
           {isFeedbackOpen && (
             <div
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto"
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-60 overflow-y-auto"
               id="feedback-rating-overlay"
             >
               <motion.div
@@ -8108,6 +8107,25 @@ ${bodyHtml}
                         className="text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer text-[11px]"
                       >
                         Đã đọc tất cả
+                      </button>
+                    </div>
+                  )}
+
+                  {!isAdminUser(user, userDoc) && (
+                    <div className="px-6 py-3 border-b border-slate-100 bg-white">
+                      <button
+                        type="button"
+                        onClick={() => setIsFeedbackOpen(true)}
+                        className="w-full flex items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-3 text-left transition-colors hover:bg-indigo-50 cursor-pointer"
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
+                          <MessageSquarePlus className="w-4 h-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-extrabold text-indigo-900">Đánh giá & góp ý</span>
+                          <span className="mt-0.5 block text-[11px] font-medium text-indigo-700">Chia sẻ trải nghiệm hoặc đề xuất cải tiến Word2LaTeX.</span>
+                        </span>
+                        <ArrowRight className="w-4 h-4 shrink-0 text-indigo-500" />
                       </button>
                     </div>
                   )}

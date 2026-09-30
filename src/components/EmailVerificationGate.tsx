@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Loader2, LogOut, Mail, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
+import { Loader2, Mail, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
 import { authFetch } from '../utils/api-client';
 
 interface EmailVerificationGateProps {
   email: string;
   onVerified: (verifiedAt: string) => Promise<void> | void;
-  onLogout: () => Promise<void> | void;
 }
 
 type Step = 'phone' | 'code';
@@ -14,7 +13,7 @@ async function readResponse(response: Response): Promise<Record<string, unknown>
   return response.json().catch(() => ({}));
 }
 
-export function EmailVerificationGate({ email, onVerified, onLogout }: EmailVerificationGateProps) {
+export function EmailVerificationGate({ email, onVerified }: EmailVerificationGateProps) {
   const [step, setStep] = useState<Step>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
@@ -121,7 +120,7 @@ export function EmailVerificationGate({ email, onVerified, onLogout }: EmailVeri
               placeholder="123456"
               className="w-full rounded-xl border border-slate-200 px-4 py-3 text-center text-xl font-bold tracking-[0.35em] text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
             />
-            <p className="text-xs leading-5 text-slate-500">Mã hết hạn sau 10 phút và có tối đa 5 lần nhập sai.</p>
+            <p className="text-xs leading-5 text-slate-500">Nếu chưa thấy mã, hãy kiểm tra Hộp thư rác hoặc Spam.</p>
             <button type="button" onClick={verifyCode} disabled={isSubmitting || code.length !== 6} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
               {isSubmitting ? <Loader2 className="animate-spin" size={19} /> : <ShieldCheck size={19} />}
               Xác thực và tiếp tục
@@ -134,10 +133,6 @@ export function EmailVerificationGate({ email, onVerified, onLogout }: EmailVeri
         )}
 
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p>}
-
-        <button type="button" onClick={onLogout} className="mx-auto mt-6 flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-slate-800">
-          <LogOut size={16} aria-hidden="true" /> Đăng xuất
-        </button>
       </section>
     </main>
   );

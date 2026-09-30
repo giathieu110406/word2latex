@@ -23,7 +23,7 @@ import { authFetch } from '../utils/api-client';
 import { db } from '../firebase';
 import { collection, doc, getDocs, setDoc, onSnapshot } from 'firebase/firestore';
 import { normalizeFeatureName } from '../utils/logger';
-import { reconcileStatsWithUsers, ActiveMemberStat } from '../utils/reconciliation';
+import { getActiveMembersForDate, getTodayVNDate, reconcileStatsWithUsers } from '../utils/reconciliation';
 
 export interface AdminAnalyticsDashboardProps {
   allUsers?: any[];
@@ -311,6 +311,14 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
     if (!displayStats.length) return null;
     return displayStats.find(s => (s.date || s.id) === selectedDate) || displayStats[displayStats.length - 1];
   }, [displayStats, selectedDate]);
+
+  const activeMembersForSelectedDate = useMemo(() => {
+    const members = getActiveMembersForDate(activeDayStats);
+    if (members.length || selectedDate !== getTodayVNDate()) return members;
+    return activeMembersToday;
+  }, [activeDayStats, activeMembersToday, selectedDate]);
+
+  const isSelectedDateToday = selectedDate === getTodayVNDate();
 
   // Overall calculations for the selected day
   const metrics = useMemo(() => {
@@ -903,24 +911,26 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
           <div>
             <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
               <Users className="w-4 h-4 text-indigo-600" />
-              Chi Tiết Hoạt Động Theo Thành Viên Hôm Nay
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-100">
-                LIVE REALTIME
-              </span>
+              Chi tiết hoạt động ngày {selectedDate}
+              {isSelectedDateToday && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-100">
+                  LIVE REALTIME
+                </span>
+              )}
             </h3>
 
           </div>
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
-              {activeMembersToday.length} thành viên đã thao tác
+              {activeMembersForSelectedDate.length} thành viên đã thao tác
             </span>
           </div>
         </div>
 
-        {activeMembersToday.length === 0 ? (
+        {activeMembersForSelectedDate.length === 0 ? (
           <div className="py-12 text-center text-slate-400 text-xs">
-            Hôm nay chưa có thành viên nào phát sinh lượt thao tác hệ thống.
+            Chưa có dữ liệu hoạt động theo thành viên cho ngày {selectedDate}.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -932,12 +942,12 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
                   <th className="py-3 px-4 text-center">Soạn đề thi (AI)</th>
                   <th className="py-3 px-4 text-center">Dán AI</th>
                   <th className="py-3 px-4 text-center">MarkItDown AI</th>
-                  <th className="py-3 px-4 text-center">Tổng lượt hôm nay</th>
+                  <th className="py-3 px-4 text-center">Tổng lượt trong ngày</th>
                   <th className="py-3 px-4 text-right">Đóng góp (%)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100/70 text-xs">
-                {activeMembersToday.map((member) => (
+                {activeMembersForSelectedDate.map((member) => (
                   <tr key={member.uid} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
