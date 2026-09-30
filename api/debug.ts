@@ -28,6 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     SMTP_USER: !!process.env.SMTP_USER,
     SMTP_GMAIL: !!process.env.SMTP_GMAIL,
     SMTP_APP_PASSWORD: !!process.env.SMTP_APP_PASSWORD,
+    SMTP_APP_PASSWORD_length: process.env.SMTP_APP_PASSWORD?.length ?? 0,
+    SMTP_APP_PASSWORD_has_spaces: process.env.SMTP_APP_PASSWORD?.includes(' ') ?? false,
     SMTP_FROM: !!process.env.SMTP_FROM,
     OTP_PEPPER: !!process.env.OTP_PEPPER,
     resolved_user: !!(process.env.SMTP_USER || process.env.SMTP_GMAIL),

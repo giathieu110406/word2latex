@@ -77,7 +77,7 @@ function createFirestoreStore(db: any): EmailVerificationStore {
 
 function createMailer() {
   const user = process.env.SMTP_USER || process.env.SMTP_GMAIL;
-  const password = process.env.SMTP_APP_PASSWORD;
+  const password = process.env.SMTP_APP_PASSWORD?.replace(/\s/g, '');
   const host = process.env.SMTP_HOST || (user ? 'smtp.gmail.com' : '');
   if (!host || !user || !password) {
     const missing = [!host && 'SMTP_HOST', !user && 'SMTP_USER/SMTP_GMAIL', !password && 'SMTP_APP_PASSWORD']
