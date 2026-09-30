@@ -42,6 +42,8 @@ import { AdminAnalyticsDashboard } from "./components/AdminAnalyticsDashboard";
 import { GuideTour } from "./components/GuideTour";
 import { LoginScreen } from "./components/LoginScreen";
 import { ZaloContactWidget } from "./components/ZaloContactWidget";
+import { EmailVerificationGate } from "./components/EmailVerificationGate";
+import { isEmailOtpVerified } from "./utils/email-verification";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -5125,6 +5127,24 @@ ${bodyHtml}
         <LoginScreen
           onGoogleLogin={handleGoogleLogin}
           authError={authError}
+        />
+        <ZaloContactWidget />
+      </>
+    );
+  }
+  if (!isEmailOtpVerified(userDoc)) {
+    return (
+      <>
+        <EmailVerificationGate
+          email={user.email || user.providerData?.[0]?.email || ""}
+          onLogout={handleLogout}
+          onVerified={async (verifiedAt) => {
+            await user.getIdToken(true);
+            setUserDoc((currentDoc) => ({
+              ...(currentDoc || {}),
+              emailOtpVerifiedAt: verifiedAt,
+            }));
+          }}
         />
         <ZaloContactWidget />
       </>

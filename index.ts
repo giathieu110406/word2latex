@@ -1,6 +1,7 @@
 import express from "express";
 import aiHandler from "./api/ai";
 import markitdownHandler from "./api/markitdown";
+import emailVerificationHandler from "./api/email-verification";
 
 
 
@@ -112,6 +113,10 @@ app.post("/api/ai", async (req, res) => {
 app.post("/api/markitdown", async (req, res) => {
   await markitdownHandler(req as any, res as any);
 });
+app.post("/api/email-verification", async (req, res) => {
+  await emailVerificationHandler(req as any, res as any);
+});
+
 
 
 

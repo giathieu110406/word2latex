@@ -32,9 +32,13 @@ service cloud.firestore {
       return isOwnerEmail() || isAdminDoc() || isAdminRole();
     }
 
-    // Owner: full access toàn bộ database
-    match /{document=**} {
-      allow read, write: if isOwnerEmail();
+    // Owner: full access ngoại trừ profiles và OTP records, vốn cần các ràng buộc riêng.
+    match /{collection}/{document=**} {
+      allow read, write: if collection != 'email_verifications' && collection != 'users' && isOwnerEmail();
+    }
+
+    match /email_verifications/{uid} {
+      allow read, write: if false;
     }
 
     // Collection admins: chỉ đọc được nếu là admin, không ai write được từ client
@@ -46,13 +50,14 @@ service cloud.firestore {
     match /users/{userId} {
       allow get:    if isSignedIn() && (currentUid() == userId || isAdmin());
       allow list:   if isAdmin();
-      allow create: if isSignedIn() && currentUid() == userId && (
+      allow create: if isSignedIn() && request.resource.data.get('emailOtpVerifiedAt', null) == null && (
         isAdmin() || (
+          currentUid() == userId &&
           request.resource.data.get('role', 'user') == 'user' &&
           request.resource.data.get('status', 'pending') == 'pending'
         )
       );
-      allow update: if isSignedIn() && (
+      allow update: if isSignedIn() && request.resource.data.get('emailOtpVerifiedAt', null) == resource.data.get('emailOtpVerifiedAt', null) && (
         isAdmin() || (
           currentUid() == userId &&
           request.resource.data.get('role', 'user') == resource.data.get('role', 'user') &&
@@ -99,4 +104,4 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
   }
-} 
+}

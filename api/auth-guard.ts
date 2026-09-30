@@ -1,5 +1,6 @@
 import { getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirebaseAdmin } from './firebase-admin.js';
 
 export interface AuthUser {
   uid: string;
@@ -19,11 +20,33 @@ export interface AuthResult {
 const OWNER_EMAIL = "giathieu110406@gmail.com";
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "word2latex-prod-fde7b";
 
+type TokenResolver = (idToken: string) => Promise<{ uid: string; email: string } | null>;
+
+export function hasEmailOtpVerification(profile: unknown): boolean {
+  if (!profile || typeof profile !== 'object') return false;
+  const value = (profile as { emailOtpVerifiedAt?: unknown }).emailOtpVerifiedAt;
+  if (typeof value === 'string') return value.trim().length > 0 && Number.isFinite(Date.parse(value));
+  if (value instanceof Date) return Number.isFinite(value.getTime());
+  if (value && typeof value === 'object' && 'toDate' in value) {
+    const date = (value as { toDate?: () => Date }).toDate?.();
+    return date instanceof Date && Number.isFinite(date.getTime());
+  }
+  return false;
+}
+
 /**
  * Trích xuất và xác thực thông tin user từ Firebase ID Token hoặc Google OAuth2 Token
  * Sử dụng cơ chế 4 tầng dự phòng để đảm bảo độ tin cậy tuyệt đối
  */
 async function extractUserInfoFromToken(idToken: string): Promise<{ uid: string; email: string } | null> {
+  if (!getApps().length && process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      getFirebaseAdmin();
+    } catch {
+      // Continue with the existing public-token fallbacks when Admin is unavailable.
+    }
+  }
+
   // Tầng 1: Firebase Admin SDK (nếu đã được khởi tạo credentials)
   if (getApps().length > 0) {
     try {
@@ -117,7 +140,8 @@ async function extractUserInfoFromToken(idToken: string): Promise<{ uid: string;
  */
 export async function verifyAuthAndApproval(
   req: any,
-  firestoreDb?: any
+  firestoreDb?: any,
+  tokenResolver: TokenResolver = extractUserInfoFromToken,
 ): Promise<AuthResult> {
   try {
     const authHeader = req.headers?.authorization || req.headers?.Authorization;
@@ -139,7 +163,7 @@ export async function verifyAuthAndApproval(
     }
 
     // 1. Xác thực ID Token qua cơ chế đa tầng
-    const userInfo = await extractUserInfoFromToken(idToken);
+    const userInfo = await tokenResolver(idToken);
     if (!userInfo || !userInfo.uid) {
       return {
         authorized: false,
@@ -150,40 +174,36 @@ export async function verifyAuthAndApproval(
 
     const { uid, email } = userInfo;
 
-    // 2. Kiểm tra nếu là Owner
-    if (email === OWNER_EMAIL) {
-      return {
-        authorized: true,
-        status: 200,
-        user: {
-          uid,
-          email,
-          isOwner: true,
-          status: "approved",
-          role: "admin"
-        }
-      };
-    }
-
-    // 3. Kiểm tra trạng thái tài khoản trong Firestore
+    // 2. Kiểm tra trạng thái tài khoản và xác thực email trong Firestore
     let status = "";
     let role = "user";
+    let emailOtpVerifiedAt: unknown;
 
-    // 3a. Thử qua SDK firestoreDb nếu có
-    if (firestoreDb && typeof firestoreDb.collection === 'function') {
+    let activeFirestoreDb = firestoreDb;
+    if (!activeFirestoreDb) {
       try {
-        const docSnap = await firestoreDb.collection('users').doc(uid).get();
+        activeFirestoreDb = getFirebaseAdmin().db;
+      } catch {
+        // The user-token REST fallback below remains available for legacy local setups.
+      }
+    }
+
+    // 2a. Thử qua SDK Firebase Admin nếu có
+    if (activeFirestoreDb && typeof activeFirestoreDb.collection === 'function') {
+      try {
+        const docSnap = await activeFirestoreDb.collection('users').doc(uid).get();
         if (docSnap.exists) {
           const data = typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data;
           status = data?.status || "";
           role = data?.role || "user";
+          emailOtpVerifiedAt = data?.emailOtpVerifiedAt;
         }
       } catch (sdkErr) {
         console.warn("[Auth Guard] Không thể đọc qua SDK, chuyển sang REST API:", sdkErr);
       }
     }
 
-    // 3b. Fallback qua Firestore REST API chính thức với ID Token của người dùng
+    // 2b. Fallback qua Firestore REST API chính thức với ID Token của người dùng
     if (!status) {
       try {
         const restUrl = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/users/${uid}`;
@@ -197,13 +217,14 @@ export async function verifyAuthAndApproval(
           const docData: any = await fsRes.json();
           status = docData?.fields?.status?.stringValue || "";
           role = docData?.fields?.role?.stringValue || "user";
+          emailOtpVerifiedAt = docData?.fields?.emailOtpVerifiedAt?.timestampValue || docData?.fields?.emailOtpVerifiedAt?.stringValue;
         }
       } catch (restErr) {
         console.warn("[Auth Guard] Lỗi truy vấn Firestore REST API:", restErr);
       }
     }
 
-    // 4. Đánh giá trạng thái thành viên
+    // 3. Đánh giá trạng thái thành viên
     if (status === 'rejected') {
       return {
         authorized: false,
@@ -212,16 +233,24 @@ export async function verifyAuthAndApproval(
       };
     }
 
-    // Người dùng đã phê duyệt hoặc đang chờ phê duyệt (pending) đều được phép sử dụng hệ thống bình thường
+    if (!hasEmailOtpVerification({ emailOtpVerifiedAt })) {
+      return {
+        authorized: false,
+        status: 403,
+        error: "Bạn cần xác thực email trước khi sử dụng tính năng AI."
+      };
+    }
+
+    const isOwner = email === OWNER_EMAIL;
     return {
       authorized: true,
       status: 200,
       user: {
         uid,
         email,
-        isOwner: false,
-        status: status || "pending",
-        role
+        isOwner,
+        status: isOwner ? "approved" : status || "pending",
+        role: isOwner ? "admin" : role
       }
     };
   } catch (error: any) {

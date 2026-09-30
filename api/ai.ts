@@ -2,32 +2,16 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 import { verifyAuthAndApproval } from './auth-guard.js';
 import * as mammoth from "mammoth";
-import { getApps, initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
+import { getFirebaseAdmin } from './firebase-admin.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Initialize firebase admin for backend operations if not already initialized
 let db: FirebaseFirestore.Firestore | null = null;
-if (!getApps().length) {
-  try {
-    const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (serviceAccountStr) {
-      initializeApp({
-        credential: cert(JSON.parse(serviceAccountStr)),
-        databaseURL: process.env.FIREBASE_DATABASE_URL || process.env.VITE_FIREBASE_DATABASE_URL,
-      });
-      db = getFirestore();
-    } else {
-      console.warn("FIREBASE_SERVICE_ACCOUNT is missing. Backend Firestore logging will be disabled.");
-    }
-  } catch (e) {
-    console.warn("Failed to initialize firebase admin", e);
-  }
-} else {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    db = getFirestore();
-  }
+try {
+  db = getFirebaseAdmin().db;
+} catch (error) {
+  console.warn('Backend Firestore logging will be disabled.', error);
 }
 
 // Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
