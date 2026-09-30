@@ -1,5 +1,5 @@
 import React from "react";
-import { Shield, Info, Sparkles, AlertTriangle } from "lucide-react";
+import { Shield } from "lucide-react";
 import { motion } from "motion/react";
 
 interface LoginScreenProps {
@@ -233,13 +233,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
           {/* ================= RIGHT COLUMN ================= */}
           <div className="flex flex-col items-center text-center lg:pl-4">
-            {/* Official Website Badge */}
-            <div className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-1 sm:py-1.5 rounded-full bg-amber-50 border border-amber-200/90 text-amber-800 font-extrabold text-[10px] sm:text-[11px] uppercase tracking-wider shadow-3xs">
-              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-500" />
-              <span>TRANG WEB CHÍNH THỨC</span>
-              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-500" />
-            </div>
-
             {/* Domain Name */}
             <a
               href="https://word2latex.io.vn"
@@ -255,11 +248,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               Truy cập trực tiếp tại đây để có trải nghiệm mượt mà và đầy đủ nhất!
             </p>
 
-            {/* Watermark icon (hidden on small mobile screens to save vertical height) */}
-            <div className="hidden sm:flex mb-4 text-slate-200 items-center justify-center">
-              <Shield className="w-5 h-5 opacity-40 text-slate-400" />
-            </div>
-
             {/* Auth Error Display (if any) */}
             {authError && (
               <div
@@ -269,27 +257,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <span>{authError}</span>
               </div>
             )}
-
-            {/* Urgent Login Issue Support Banner */}
-            <div className="w-full max-w-md mb-3.5 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-rose-50 to-amber-50 border-2 border-rose-300 shadow-sm flex items-center gap-3 text-left">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs text-base font-black">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11.5px] sm:text-xs font-black text-rose-700 uppercase tracking-tight leading-snug">
-                  NẾU BẠN KHÔNG ĐĂNG NHẬP ĐƯỢC LÀ DO WEB LỖI. LIÊN HỆ NGAY ĐỂ ĐĂNG NHẬP
-                </p>
-                <a
-                  href="https://zalo.me/0335784563"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] font-bold text-blue-600 hover:underline inline-flex items-center gap-1 mt-1"
-                >
-                  <span>Chat Zalo hỗ trợ: 0335.784.563</span>
-                  <span className="text-[10px]">↗</span>
-                </a>
-              </div>
-            </div>
 
             {/* Primary Google Login Button */}
             <button
@@ -350,13 +317,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </span>
             </a>
 
-            {/* Info Box below Button */}
-            <div className="w-full max-w-md bg-[#F8FAFC] border border-slate-200/80 rounded-2xl p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3 mt-2.5 sm:mt-3 text-[11px] sm:text-xs text-slate-600 shadow-3xs text-left">
-              <Info className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-blue-500 shrink-0" />
-              <p className="leading-relaxed">
-                Sử dụng tài khoản Google của bạn để đăng nhập nhanh chóng và an toàn.
-              </p>
-            </div>
           </div>
         </div>
 

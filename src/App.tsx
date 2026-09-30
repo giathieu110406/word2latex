@@ -5078,32 +5078,9 @@ ${bodyHtml}
     );
   }
 
-  // Thanh thông báo hỗ trợ khẩn cấp hiển thị trên mọi màn hình chưa đăng nhập thành công
-  const LoginHelpNoticeBanner = () => (
-    <div 
-      role="alert"
-      className="w-full bg-gradient-to-r from-amber-600 via-rose-600 to-amber-600 text-white text-xs sm:text-[13px] font-black px-3 sm:px-4 py-2 sm:py-2.5 text-center shadow-md flex items-center justify-center gap-1.5 sm:gap-2 tracking-tight z-50 sticky top-0"
-    >
-      <span className="text-sm sm:text-base animate-bounce shrink-0">⚠️</span>
-      <span className="leading-snug drop-shadow-xs uppercase">
-        NẾU BẠN KHÔNG ĐĂNG NHẬP ĐƯỢC LÀ DO WEB LỖI. LIÊN HỆ NGAY ĐỂ ĐĂNG NHẬP
-      </span>
-      <a
-        href="https://zalo.me/0335784563"
-        target="_blank"
-        rel="noreferrer"
-        className="ml-1 sm:ml-2 px-2 sm:px-2.5 py-0.5 rounded-lg bg-white text-rose-700 font-extrabold text-[11px] sm:text-xs hover:bg-rose-50 transition-all shadow-xs inline-flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
-      >
-        <span>Zalo: 0335.784.563</span>
-        <span className="text-[10px]">↗</span>
-      </a>
-    </div>
-  );
-
   if (user && !userDoc) {
     return (
       <>
-        <LoginHelpNoticeBanner />
         <div
           className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center font-sans"
           id="userdoc-loading-screen"
@@ -5123,7 +5100,6 @@ ${bodyHtml}
   if (!user) {
     return (
       <>
-        <LoginHelpNoticeBanner />
         <LoginScreen
           onGoogleLogin={handleGoogleLogin}
           authError={authError}
@@ -5154,7 +5130,6 @@ ${bodyHtml}
   if (isRejected) {
     return (
       <>
-        <LoginHelpNoticeBanner />
         <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-blue-950 text-slate-100 flex items-center justify-center p-4 py-6 sm:py-10 overflow-y-auto antialiased font-sans">
           <div
             className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden my-auto"
@@ -8846,4 +8821,4 @@ ${bodyHtml}
     </div>
   </div>
   );
-} 
+}
