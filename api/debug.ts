@@ -39,15 +39,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   try {
-    const { createEmailVerificationHandler } = await import('./email-verification');
-    const mailer = require('./email-verification').createMailer;
-    // Call it to see if it throws
-    if (mailer) mailer();
+    const { createMailer } = require('./email-verification');
+    const mailer = createMailer();
     reports.email_verification.mailer_initialized = true;
+    
+    // Actually test the SMTP connection
+    if (mailer && mailer.transport && mailer.transport.verify) {
+      await mailer.transport.verify();
+      reports.email_verification.mailer_connection = 'OK';
+    } else {
+      reports.email_verification.mailer_connection = 'Transport not accessible or verify missing';
+    }
   } catch (e: any) {
     reports.email_verification.mailer_initialized = false;
     reports.email_verification.mailer_error = e.message;
   }
+
 
 
   

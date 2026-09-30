@@ -98,10 +98,12 @@ export function createMailer() {
   });
   const from = process.env.SMTP_FROM || user;
   return {
+    transport,
     sendMail(message: { to: string; subject: string; text: string; html: string }) {
       return transport.sendMail({ ...message, from });
     },
   };
+
 }
 
 function getBearerToken(req: RequestLike): string | null {
