@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Mail, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
+import { Loader2, Mail, RefreshCw, ShieldCheck, Smartphone, LogOut } from 'lucide-react';
 import { authFetch } from '../utils/api-client';
+import { auth } from '../firebase';
+import { signOut } from 'firebase/auth';
 
 interface EmailVerificationGateProps {
   email: string;
@@ -133,6 +135,17 @@ export function EmailVerificationGate({ email, onVerified }: EmailVerificationGa
         )}
 
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p>}
+
+        <div className="mt-6 flex justify-center">
+          <button
+            type="button"
+            onClick={() => signOut(auth)}
+            className="flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-rose-600"
+          >
+            <LogOut size={16} />
+            Đăng xuất
+          </button>
+        </div>
       </section>
     </main>
   );
