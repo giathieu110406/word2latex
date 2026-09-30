@@ -76,7 +76,11 @@ function createFirestoreStore(db: any): EmailVerificationStore {
 }
 
 function createMailer() {
-  const user = process.env.SMTP_USER || process.env.SMTP_GMAIL;
+  let user = process.env.SMTP_USER || process.env.SMTP_GMAIL;
+  if (user && !user.includes('@')) {
+    console.warn(`[SMTP] Biến môi trường SMTP_GMAIL bị sai định dạng (${user}). Tự động fallback về Giathieu110406@gmail.com`);
+    user = 'Giathieu110406@gmail.com';
+  }
   const password = process.env.SMTP_APP_PASSWORD?.replace(/\s/g, '');
   const host = process.env.SMTP_HOST || (user ? 'smtp.gmail.com' : '');
   if (!host || !user || !password) {
