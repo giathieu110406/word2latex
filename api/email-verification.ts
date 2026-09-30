@@ -145,7 +145,14 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
         throw new EndpointError(401, 'UNAUTHENTICATED', 'Bạn chưa đăng nhập. Vui lòng đăng nhập lại.');
       }
 
-      const { auth, db } = getAdmin();
+      const { auth, db } = (() => {
+        try {
+          return getAdmin();
+        } catch (adminErr: unknown) {
+          const msg = adminErr instanceof Error ? adminErr.message : String(adminErr);
+          throw new EndpointError(503, 'ADMIN_UNAVAILABLE', `Lỗi cấu hình server: ${msg}`);
+        }
+      })();
       const decoded = await auth.verifyIdToken(token);
       if (!decoded.uid) {
         throw new EndpointError(401, 'UNAUTHENTICATED', 'Token xác thực không có địa chỉ email hợp lệ.');
@@ -240,8 +247,9 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
       if (error instanceof EndpointError) {
         return res.status(error.status).json({ error: error.message, code: error.code, ...error.details });
       }
-      console.error('[Email verification] Request failed:', error);
-      return res.status(503).json({ error: 'Dịch vụ xác thực email hiện không khả dụng.' });
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[Email verification] Unhandled error:', msg, error);
+      return res.status(503).json({ error: `Dịch vụ xác thực email hiện không khả dụng. (${msg})` });
     }
   };
 }

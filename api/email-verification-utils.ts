@@ -22,7 +22,7 @@ export function createOtp(): string {
 export function hashOtp(uid: string, otp: string): string {
   const pepper = process.env.OTP_PEPPER;
   if (!pepper) {
-    throw new Error('OTP_PEPPER is not configured');
+    throw new Error('OTP_PEPPER env var is not configured on server');
   }
 
   return createHmac('sha256', pepper).update(`${uid}:${otp}`).digest('hex');

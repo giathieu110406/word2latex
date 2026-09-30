@@ -16,25 +16,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     VITE_FIREBASE_PROJECT_ID: !!process.env.VITE_FIREBASE_PROJECT_ID,
     VITE_FIREBASE_AUTH_DOMAIN: !!process.env.VITE_FIREBASE_AUTH_DOMAIN,
     VITE_FIREBASE_APP_ID: !!process.env.VITE_FIREBASE_APP_ID,
+    FIREBASE_SERVICE_ACCOUNT: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+    APPROVAL_SECRET_KEY: !!process.env.APPROVAL_SECRET_KEY,
+  };
+
+  // 3. Test Email Verification env vars (SMTP + OTP_PEPPER)
+  reports.email_verification = {
+    SMTP_HOST: !!process.env.SMTP_HOST,
+    SMTP_PORT: process.env.SMTP_PORT || '(default 465)',
+    SMTP_SECURE: process.env.SMTP_SECURE || '(default true)',
+    SMTP_USER: !!process.env.SMTP_USER,
+    SMTP_APP_PASSWORD: !!process.env.SMTP_APP_PASSWORD,
+    SMTP_FROM: !!process.env.SMTP_FROM,
+    OTP_PEPPER: !!process.env.OTP_PEPPER,
   };
   
-  // 3. Try importing @google/genai
+  // 4. Try importing @google/genai
   try {
     const sdk = await import('@google/genai');
     reports.sdk_import = "success";
-    reports.sdk_keys = Object.keys(sdk);
   } catch (err: any) {
     reports.sdk_import_error = err.message || String(err);
-    reports.sdk_import_stack = err.stack;
   }
   
-  // 4. Try importing markitdown
+  // 5. Try importing markitdown
   try {
-    const md = await import('../markitdown');
+    await import('../markitdown');
     reports.markitdown_import = "success";
   } catch (err: any) {
     reports.markitdown_import_error = err.message || String(err);
-    reports.markitdown_import_stack = err.stack;
   }
   
   return res.status(200).json(reports);
