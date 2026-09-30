@@ -31,7 +31,8 @@ const handler = createEmailVerificationHandler({
         return { uid: 'user-1', email: 'member@example.com' };
       },
       getUser: async (uid: string) => ({
-        email: uid === 'user-2' ? 'fallback@example.com' : undefined,
+        email: undefined,
+        providerData: uid === 'user-2' ? [{ email: 'fallback@example.com', providerId: 'google.com' }] : [],
         customClaims: { existingClaim: true },
       }),
       setCustomUserClaims: async (uid: string, nextClaims: Record<string, unknown>) => claims.set(uid, nextClaims),

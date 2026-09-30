@@ -33,7 +33,11 @@ export interface EmailVerificationStore {
 
 export interface EmailOtpAuth {
   verifyIdToken(token: string): Promise<{ uid: string; email?: string }>;
-  getUser(uid: string): Promise<{ email?: string; customClaims?: Record<string, unknown> }>;
+  getUser(uid: string): Promise<{
+    email?: string;
+    providerData?: Array<{ email?: string; providerId?: string }>;
+    customClaims?: Record<string, unknown>;
+  }>;
   setCustomUserClaims(uid: string, claims: Record<string, unknown>): Promise<void>;
 }
 
@@ -112,6 +116,20 @@ function recordNumber(record: RecordData, key: string): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function getFirebaseAccountEmail(
+  decoded: { email?: string },
+  user: { email?: string; providerData?: Array<{ email?: string }> },
+): string | null {
+  const candidates = [
+    decoded.email,
+    user.email,
+    ...(user.providerData?.map((provider) => provider.email) ?? []),
+  ];
+  return candidates.find((candidate): candidate is string => (
+    typeof candidate === 'string' && /^\S+@\S+\.\S+$/.test(candidate.trim())
+  ))?.trim() ?? null;
+}
+
 export function createEmailVerificationHandler(dependencies: EmailVerificationHandlerDependencies = {}) {
   const getAdmin = dependencies.getAdmin ?? getFirebaseAdmin;
   const now = dependencies.now ?? (() => new Date());
@@ -133,7 +151,7 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
         throw new EndpointError(401, 'UNAUTHENTICATED', 'Token xác thực không có địa chỉ email hợp lệ.');
       }
       const firebaseUser = await auth.getUser(decoded.uid);
-      const email = decoded.email || firebaseUser.email;
+      const email = getFirebaseAccountEmail(decoded, firebaseUser);
       if (!email) {
         throw new EndpointError(401, 'UNAUTHENTICATED', 'Tài khoản không có địa chỉ email hợp lệ.');
       }
