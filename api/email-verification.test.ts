@@ -26,10 +26,14 @@ const handler = createEmailVerificationHandler({
   getAdmin: () => ({
     auth: {
       verifyIdToken: async (token: string) => {
+        if (token === 'missing-email-token') return { uid: 'user-2' };
         if (token !== 'valid-token') throw new Error('invalid token');
         return { uid: 'user-1', email: 'member@example.com' };
       },
-      getUser: async () => ({ customClaims: { existingClaim: true } }),
+      getUser: async (uid: string) => ({
+        email: uid === 'user-2' ? 'fallback@example.com' : undefined,
+        customClaims: { existingClaim: true },
+      }),
       setCustomUserClaims: async (uid: string, nextClaims: Record<string, unknown>) => claims.set(uid, nextClaims),
     },
     db: {},
@@ -76,11 +80,16 @@ const emailedOtp = sentMessages[0].text.match(/\b\d{6}\b/)?.[0];
 assert.ok(emailedOtp, 'the email must contain a six-digit OTP');
 assert.equal(String(storedRecord).includes(emailedOtp), false);
 
+const fallbackEmail = responseRecorder();
+await handler({ method: 'POST', headers: { authorization: 'Bearer missing-email-token' }, query: { action: 'send' }, body: { phoneNumber: '0901234567' } }, fallbackEmail.response);
+assert.equal(fallbackEmail.result.status, 200);
+assert.equal(sentMessages[1].to, 'fallback@example.com');
+
 currentTime = new Date('2026-09-30T00:00:30.000Z');
 const resendTooEarly = responseRecorder();
 await handler({ method: 'POST', headers: { authorization: 'Bearer valid-token' }, query: { action: 'send' }, body: { phoneNumber: '0901234567' } }, resendTooEarly.response);
 assert.equal(resendTooEarly.result.status, 429);
-assert.equal(sentMessages.length, 1);
+assert.equal(sentMessages.length, 2);
 
 verificationRecords.set('user-1', {
   phoneNumber: '+84901234567',

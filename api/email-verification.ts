@@ -33,7 +33,7 @@ export interface EmailVerificationStore {
 
 export interface EmailOtpAuth {
   verifyIdToken(token: string): Promise<{ uid: string; email?: string }>;
-  getUser(uid: string): Promise<{ customClaims?: Record<string, unknown> }>;
+  getUser(uid: string): Promise<{ email?: string; customClaims?: Record<string, unknown> }>;
   setCustomUserClaims(uid: string, claims: Record<string, unknown>): Promise<void>;
 }
 
@@ -129,8 +129,13 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
 
       const { auth, db } = getAdmin();
       const decoded = await auth.verifyIdToken(token);
-      if (!decoded.uid || !decoded.email) {
+      if (!decoded.uid) {
         throw new EndpointError(401, 'UNAUTHENTICATED', 'Token xác thực không có địa chỉ email hợp lệ.');
+      }
+      const firebaseUser = await auth.getUser(decoded.uid);
+      const email = decoded.email || firebaseUser.email;
+      if (!email) {
+        throw new EndpointError(401, 'UNAUTHENTICATED', 'Tài khoản không có địa chỉ email hợp lệ.');
       }
 
       const action = getAction(req);
@@ -157,7 +162,7 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
         const otpHash = hashOtp(decoded.uid, otp);
         const expiresAt = new Date(currentTime.getTime() + OTP_TTL_MS).toISOString();
         await mailer().sendMail({
-          to: decoded.email,
+          to: email,
           subject: 'Mã xác thực Word2LaTeX',
           text: `Mã xác thực Word2LaTeX của bạn là ${otp}. Mã hết hạn sau 10 phút.`,
           html: `<p>Mã xác thực Word2LaTeX của bạn là <strong>${otp}</strong>.</p><p>Mã hết hạn sau 10 phút.</p>`,
@@ -204,9 +209,8 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
           phoneNumber: record.phoneNumber,
           emailOtpVerifiedAt: verifiedAt,
         });
-        const user = await auth.getUser(decoded.uid);
         await auth.setCustomUserClaims(decoded.uid, {
-          ...(user.customClaims ?? {}),
+          ...(firebaseUser.customClaims ?? {}),
           emailOtpVerified: true,
         });
         await store.delete(decoded.uid);

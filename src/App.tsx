@@ -5132,29 +5132,12 @@ ${bodyHtml}
       </>
     );
   }
-  if (!isEmailOtpVerified(userDoc)) {
-    return (
-      <>
-        <EmailVerificationGate
-          email={user.email || user.providerData?.[0]?.email || ""}
-          onLogout={handleLogout}
-          onVerified={async (verifiedAt) => {
-            await user.getIdToken(true);
-            setUserDoc((currentDoc) => ({
-              ...(currentDoc || {}),
-              emailOtpVerifiedAt: verifiedAt,
-            }));
-          }}
-        />
-        <ZaloContactWidget />
-      </>
-    );
-  }
 
   // Determine user constraints
   const isOwner = checkIsOwnerEmail(user);
   const isApproved = isOwner || userDoc?.status === "approved";
   const isRejected = !isApproved && userDoc?.status === "rejected";
+  const needsEmailOtp = !isEmailOtpVerified(userDoc);
 
   const getUserAvatar = () => {
     if (user?.photoURL) {
@@ -5217,6 +5200,19 @@ ${bodyHtml}
         `
       }}
     >
+      {needsEmailOtp && (
+        <EmailVerificationGate
+          email={user.email || user.providerData?.[0]?.email || ""}
+          onLogout={handleLogout}
+          onVerified={async (verifiedAt) => {
+            await user.getIdToken(true);
+            setUserDoc((currentDoc) => ({
+              ...(currentDoc || {}),
+              emailOtpVerifiedAt: verifiedAt,
+            }));
+          }}
+        />
+      )}
       {/* Toast message wrapper with exit animations */}
       <AnimatePresence>
         {toast.show && (
