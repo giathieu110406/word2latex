@@ -26,10 +26,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     SMTP_PORT: process.env.SMTP_PORT || '(default 465)',
     SMTP_SECURE: process.env.SMTP_SECURE || '(default true)',
     SMTP_USER: !!process.env.SMTP_USER,
+    SMTP_GMAIL: !!process.env.SMTP_GMAIL,
     SMTP_APP_PASSWORD: !!process.env.SMTP_APP_PASSWORD,
     SMTP_FROM: !!process.env.SMTP_FROM,
     OTP_PEPPER: !!process.env.OTP_PEPPER,
+    resolved_user: !!(process.env.SMTP_USER || process.env.SMTP_GMAIL),
+    resolved_host: !!(process.env.SMTP_HOST || process.env.SMTP_USER || process.env.SMTP_GMAIL),
   };
+
   
   // 4. Try importing @google/genai
   try {

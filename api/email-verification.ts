@@ -76,11 +76,13 @@ function createFirestoreStore(db: any): EmailVerificationStore {
 }
 
 function createMailer() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
+  const user = process.env.SMTP_USER || process.env.SMTP_GMAIL;
   const password = process.env.SMTP_APP_PASSWORD;
+  const host = process.env.SMTP_HOST || (user ? 'smtp.gmail.com' : '');
   if (!host || !user || !password) {
-    throw new EndpointError(503, 'SMTP_UNAVAILABLE', 'Dịch vụ gửi email chưa được cấu hình.');
+    const missing = [!host && 'SMTP_HOST', !user && 'SMTP_USER/SMTP_GMAIL', !password && 'SMTP_APP_PASSWORD']
+      .filter(Boolean).join(', ');
+    throw new EndpointError(503, 'SMTP_UNAVAILABLE', `Dịch vụ gửi email chưa được cấu hình (thiếu: ${missing}).`);
   }
 
   const port = Number(process.env.SMTP_PORT || 465);
