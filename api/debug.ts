@@ -26,9 +26,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     SMTP_PORT: process.env.SMTP_PORT || '(default 465)',
     SMTP_SECURE: process.env.SMTP_SECURE || '(default true)',
     SMTP_USER: !!process.env.SMTP_USER,
-    SMTP_GMAIL_val: process.env.SMTP_GMAIL?.substring(0, 15) + '...',
-
+    SMTP_GMAIL: !!process.env.SMTP_GMAIL,
     SMTP_APP_PASSWORD: !!process.env.SMTP_APP_PASSWORD,
+
     SMTP_APP_PASSWORD_length: process.env.SMTP_APP_PASSWORD?.length ?? 0,
     SMTP_APP_PASSWORD_has_spaces: process.env.SMTP_APP_PASSWORD?.includes(' ') ?? false,
     SMTP_FROM: !!process.env.SMTP_FROM,
