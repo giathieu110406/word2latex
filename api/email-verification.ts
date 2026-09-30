@@ -76,24 +76,38 @@ function createFirestoreStore(db: any): EmailVerificationStore {
 }
 
 export function createMailer() {
-  // Bỏ qua giá trị user nhập sai trên Vercel, ép cứng email đúng để kết hợp với App Password
-  const user = 'Giathieu110406@gmail.com';
-  const password = process.env.SMTP_APP_PASSWORD?.replace(/\s/g, '');
-  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  if (!host || !user || !password) {
-    const missing = [!host && 'SMTP_HOST', !user && 'SMTP_USER/SMTP_GMAIL', !password && 'SMTP_APP_PASSWORD']
-      .filter(Boolean).join(', ');
-    throw new EndpointError(503, 'SMTP_UNAVAILABLE', `Dịch vụ gửi email chưa được cấu hình (thiếu: ${missing}).`);
+  let transportConfig: any;
+
+  if (process.env.SMTP_URL) {
+    // Ưu tiên đọc từ 1 biến duy nhất nếu user cấu hình
+    transportConfig = process.env.SMTP_URL;
+  } else {
+    // Fallback đọc cấu hình rời rạc (cũ)
+    const user = process.env.SMTP_USER || process.env.SMTP_GMAIL;
+    const password = process.env.SMTP_APP_PASSWORD?.replace(/\s/g, '');
+    const host = process.env.SMTP_HOST || (user ? 'smtp.gmail.com' : '');
+    
+    if (!host || !user || !password) {
+      const missing = [!host && 'SMTP_HOST', !user && 'SMTP_USER', !password && 'SMTP_APP_PASSWORD']
+        .filter(Boolean).join(', ');
+      throw new EndpointError(503, 'SMTP_UNAVAILABLE', `Dịch vụ gửi email chưa được cấu hình (thiếu: ${missing}).`);
+    }
+
+    transportConfig = {
+      host,
+      port: Number(process.env.SMTP_PORT || 465),
+      secure: String(process.env.SMTP_SECURE ?? 'true').toLowerCase() === 'true',
+      auth: { user, pass: password },
+    };
   }
 
-  const port = Number(process.env.SMTP_PORT || 465);
-  const transport = nodemailer.createTransport({
-    host,
-    port,
-    secure: String(process.env.SMTP_SECURE ?? 'true').toLowerCase() === 'true',
-    auth: { user, pass: password },
-  });
-  const from = process.env.SMTP_FROM || user;
+  const transport = nodemailer.createTransport(transportConfig);
+  // Email người gửi (ưu tiên SMTP_FROM, nếu không có thì lấy phần user của URL/Username)
+  let from = process.env.SMTP_FROM;
+  if (!from && typeof transportConfig === 'object') {
+    from = transportConfig.auth?.user;
+  }
+  
   return {
     transport,
     sendMail(message: { to: string; subject: string; text: string; html: string }) {
