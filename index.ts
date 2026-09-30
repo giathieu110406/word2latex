@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import aiHandler from "./api/ai";
 import markitdownHandler from "./api/markitdown";
