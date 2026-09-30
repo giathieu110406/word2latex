@@ -35,7 +35,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     OTP_PEPPER: !!process.env.OTP_PEPPER,
     resolved_user: !!(process.env.SMTP_USER || process.env.SMTP_GMAIL),
     resolved_host: !!(process.env.SMTP_HOST || process.env.SMTP_USER || process.env.SMTP_GMAIL),
+    mailer_initialized: false,
   };
+
+  try {
+    const { createEmailVerificationHandler } = await import('./email-verification');
+    const mailer = require('./email-verification').createMailer;
+    // Call it to see if it throws
+    if (mailer) mailer();
+    reports.email_verification.mailer_initialized = true;
+  } catch (e: any) {
+    reports.email_verification.mailer_initialized = false;
+    reports.email_verification.mailer_error = e.message;
+  }
+
 
   
   // 4. Try importing @google/genai
