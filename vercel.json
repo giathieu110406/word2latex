@@ -26,6 +26,10 @@
     "api/payos-webhook.ts": {
       "memory": 512,
       "maxDuration": 30
+    },
+    "api/payos-check.ts": {
+      "memory": 512,
+      "maxDuration": 30
     }
   },
   "rewrites": [
