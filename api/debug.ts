@@ -20,6 +20,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     APPROVAL_SECRET_KEY: !!process.env.APPROVAL_SECRET_KEY,
   };
 
+  // 2b. Test PayOS Keys
+  reports.payos_keys = {
+    PAYOS_CLIENT_ID: !!process.env.PAYOS_CLIENT_ID,
+    PAYOS_API_KEY: !!process.env.PAYOS_API_KEY,
+    PAYOS_CHECKSUM_KEY: !!process.env.PAYOS_CHECKSUM_KEY,
+    PAYOS_CHECKSUM_LENGTH: process.env.PAYOS_CHECKSUM_KEY?.length || 0,
+  };
+
   // 3. Test Email Verification env vars (SMTP + OTP_PEPPER)
   reports.email_verification = {
     SMTP_HOST: !!process.env.SMTP_HOST,
