@@ -646,7 +646,7 @@ export default function App() {
   // -- PRICING STATE & MODALS --
   const [showPricingModal, setShowPricingModal] = useState<boolean>(false);
   const [selectedPricingPlan, setSelectedPricingPlan] = useState<string | null>(null);
-  const [paymentOrder, setPaymentOrder] = useState<{ id: string, amount: number, plan: string } | null>(null);
+  const [paymentOrder, setPaymentOrder] = useState<{ id: string, amount: number, plan: string, bin?: string, accountNumber?: string, qrCode?: string } | null>(null);
 
   useEffect(() => {
     if (selectedPricingPlan) {
@@ -668,8 +668,15 @@ export default function App() {
             body: JSON.stringify({ amount: amounts[selectedPricingPlan], plan: selectedPricingPlan, uid: user.uid })
           });
           const data = await response.json();
-          if (data.checkoutUrl) {
-            window.location.href = data.checkoutUrl; // Chuyển sang PayOS
+          if (data.checkoutUrl && data.bin && data.accountNumber) {
+            setPaymentOrder({
+              id: data.description,
+              amount: data.amount,
+              plan: selectedPricingPlan,
+              bin: data.bin,
+              accountNumber: data.accountNumber,
+              qrCode: data.qrCode
+            });
           } else {
             triggerToast(data.error || "Không thể tạo link thanh toán. Vui lòng thử cấu hình .env", false);
             setSelectedPricingPlan(null);
@@ -9125,11 +9132,26 @@ ${bodyHtml}
             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="bg-white rounded-3xl max-w-sm w-full p-8 flex flex-col items-center text-center relative shadow-2xl">
                 <button onClick={() => { setPaymentOrder(null); setSelectedPricingPlan(null); }} className="absolute top-4 right-4 text-slate-400 hover:bg-slate-100 rounded-full p-1 transition-colors"><X className="w-5 h-5"/></button>
-                <h3 className="text-xl font-black text-slate-800 mb-2">Đang chuyển hướng</h3>
-                <p className="text-sm text-slate-500 mb-6">Xin vui lòng đợi trong giây lát. Hệ thống đang chuyển hướng bạn đến cổng thanh toán bảo mật PayOS...</p>
-                <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold bg-indigo-50 px-4 py-8 rounded-2xl w-full animate-pulse">
-                  <span className="text-lg animate-spin">⏳</span> Đang tạo giao dịch...
-                </div>
+                {paymentOrder.id === "loading" ? (
+                  <>
+                    <h3 className="text-xl font-black text-slate-800 mb-2">Đang kết nối PayOS</h3>
+                    <p className="text-sm text-slate-500 mb-6">Xin vui lòng đợi trong giây lát. Hệ thống đang tạo mã thanh toán bảo mật...</p>
+                    <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold bg-indigo-50 px-4 py-8 rounded-2xl w-full animate-pulse">
+                      <span className="text-lg animate-spin">⏳</span> Đang tạo giao dịch...
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-xl font-black text-slate-800 mb-2">Thanh toán tự động</h3>
+                    <p className="text-sm text-slate-500 mb-6">Quét mã QR bằng ứng dụng ngân hàng. Trạng thái tự động cập nhật.</p>
+                    <div className="p-3 border-2 border-indigo-100 rounded-2xl bg-white shadow-sm mb-6 w-64 h-64 flex items-center justify-center">
+                      <img src={`https://img.vietqr.io/image/${paymentOrder.bin}-${paymentOrder.accountNumber}-compact2.png?amount=${paymentOrder.amount}&addInfo=${paymentOrder.id}`} alt="QR Code PayOS" className="w-full h-full object-contain" />
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold bg-indigo-50 px-4 py-2 rounded-full w-full animate-pulse">
+                      <span className="text-lg">⏳</span> Đang chờ bạn quét mã...
+                    </div>
+                  </>
+                )}
               </motion.div>
             </div>
           )}

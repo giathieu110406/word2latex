@@ -140,8 +140,15 @@ app.post("/api/payos/create-payment-link", async (req, res) => {
       returnUrl: `${req.headers.origin}?payment=success`,
       cancelUrl: `${req.headers.origin}?payment=cancelled`
     };
-    const paymentLinkRes = await payos.createPaymentLink(body);
-    res.json({ checkoutUrl: paymentLinkRes.checkoutUrl });
+    const paymentLinkRes = await payos.paymentRequests.create(body);
+    res.json({
+      checkoutUrl: paymentLinkRes.checkoutUrl,
+      qrCode: paymentLinkRes.qrCode,
+      bin: paymentLinkRes.bin,
+      accountNumber: paymentLinkRes.accountNumber,
+      amount: paymentLinkRes.amount,
+      description: paymentLinkRes.description
+    });
   } catch (error) {
     console.error("Lỗi tạo Payment Link:", error);
     res.status(500).json({ error: String(error) });
