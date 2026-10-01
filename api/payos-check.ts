@@ -26,8 +26,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   let payos: any = null;
-  if (process.env.PAYOS_CLIENT_ID && process.env.PAYOS_API_KEY && process.env.PAYOS_CHECKSUM_KEY) {
-    payos = new PayOS(process.env.PAYOS_CLIENT_ID, process.env.PAYOS_API_KEY, process.env.PAYOS_CHECKSUM_KEY);
+  if ((process.env.PAYOS_CLIENT_ID || process.env.Client_ID) && (process.env.PAYOS_API_KEY || process.env.Api_Key) && (process.env.PAYOS_CHECKSUM_KEY || process.env.Checksum_Key)) {
+    payos = new PayOS({ clientId: process.env.PAYOS_CLIENT_ID || process.env.Client_ID, apiKey: process.env.PAYOS_API_KEY || process.env.Api_Key, checksumKey: process.env.PAYOS_CHECKSUM_KEY || process.env.Checksum_Key });
   } else {
     return res.status(500).json({ error: "PayOS chưa cấu hình" });
   }

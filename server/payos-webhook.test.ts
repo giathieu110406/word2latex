@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 
-process.env.PAYOS_CLIENT_ID = 'test-client';
-process.env.PAYOS_API_KEY = 'test-api';
-process.env.PAYOS_CHECKSUM_KEY = 'test-checksum';
+process.env.Client_ID = 'test-client';
+process.env.Api_Key = 'test-api';
+process.env.Checksum_Key = 'test-checksum';
 process.env.FIREBASE_API_KEY = 'test-firebase';
 process.env.FIREBASE_PROJECT_ID = 'test-project';
 const { default: handler } = await import('../api/payos-webhook.ts');
