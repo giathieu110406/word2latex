@@ -38,11 +38,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const webhookData = payos.webhooks.verify(req.body);
+    const webhookData = await payos.webhooks.verify(req.body);
     console.log("PayOS Webhook Received:", webhookData);
 
     if (webhookData.code === "00") {
-      const description = webhookData.data.description || "";
+      const description = webhookData.description || "";
       if (description.startsWith("W2L")) {
         const partialUid = description.replace("W2L", "").trim().toLowerCase();
         
@@ -51,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         for (const userDoc of usersSnap.docs) {
           const uid = userDoc.id;
           if (uid.toLowerCase().startsWith(partialUid)) {
-            const amount = webhookData.data.amount;
+            const amount = webhookData.amount;
             let targetPlan = "trial";
             let durationDays = 3;
             if (amount >= 29000) {
