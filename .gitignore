@@ -14,3 +14,4 @@ mobile-view*.png
 api_usage_local.json
 scratch/
 *.png
+.worktrees/
