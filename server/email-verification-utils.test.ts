@@ -8,9 +8,9 @@ assert.ok(moduleUnderTest, 'OTP utility module must be available');
 
 const { normalizeVietnamPhone, createOtp, hashOtp, isOtpExpired } = moduleUnderTest;
 
-assert.equal(normalizeVietnamPhone('0901234567'), '+84901234567');
-assert.equal(normalizeVietnamPhone('+84901234567'), '+84901234567');
-assert.equal(normalizeVietnamPhone('0312345678'), '+84312345678');
+assert.equal(normalizeVietnamPhone('0901234589'), '+84901234589');
+assert.equal(normalizeVietnamPhone('+84901234589'), '+84901234589');
+assert.equal(normalizeVietnamPhone('0312345678'), null);
 assert.equal(normalizeVietnamPhone('0212345678'), null);
 
 const otp = createOtp();

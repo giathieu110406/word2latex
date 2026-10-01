@@ -1,19 +1,6 @@
 import { createHmac, randomInt } from 'node:crypto';
 
-const VIETNAM_MOBILE_PHONE = /^0[35789]\d{8}$/;
-
-export function normalizeVietnamPhone(value: string): string | null {
-  const compact = value.trim().replace(/[\s().-]/g, '');
-  const local = compact.startsWith('+84')
-    ? `0${compact.slice(3)}`
-    : compact;
-
-  if (!VIETNAM_MOBILE_PHONE.test(local)) {
-    return null;
-  }
-
-  return `+84${local.slice(1)}`;
-}
+export { normalizeVietnamPhone } from '../shared/phone-confirmation.js';
 
 export function createOtp(): string {
   return randomInt(0, 1_000_000).toString().padStart(6, '0');
