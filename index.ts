@@ -14,9 +14,14 @@ import * as dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import * as mammoth from "mammoth";
 import { parseFile, parseUrl } from "./markitdown";
-
+import PayOS from "@payos/node";
 
 dotenv.config();
+
+let payos: any = null;
+if (process.env.PAYOS_CLIENT_ID && process.env.PAYOS_API_KEY && process.env.PAYOS_CHECKSUM_KEY) {
+  payos = new PayOS(process.env.PAYOS_CLIENT_ID, process.env.PAYOS_API_KEY, process.env.PAYOS_CHECKSUM_KEY);
+}
 
 // Initialize Google GenAI client lazily to avoid crashing on startup if key is missing
 let aiClient: GoogleGenAI | null = null;
@@ -118,17 +123,50 @@ function generateApprovalToken(uid: string): string {
   return crypto.createHmac("sha256", SECRET_KEY).update(uid).digest("hex");
 }
 
+app.post("/api/payos/create-payment-link", async (req, res) => {
+  try {
+    if (!payos) {
+      return res.status(500).json({ error: "PayOS chưa được cấu hình trên Server (.env)" });
+    }
+    const { amount, plan, uid } = req.body;
+    if (!amount || !plan || !uid) {
+      return res.status(400).json({ error: "Thiếu dữ liệu (amount, plan, uid)" });
+    }
+    const orderCode = Number(String(Date.now()).slice(-6) + Math.floor(Math.random() * 1000));
+    const body = {
+      orderCode,
+      amount,
+      description: `W2L${uid.substring(0, 4).toUpperCase()}`, // max 25 chars
+      returnUrl: `${req.headers.origin}?payment=success`,
+      cancelUrl: `${req.headers.origin}?payment=cancelled`
+    };
+    const paymentLinkRes = await payos.createPaymentLink(body);
+    res.json({ checkoutUrl: paymentLinkRes.checkoutUrl });
+  } catch (error) {
+    console.error("Lỗi tạo Payment Link:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 app.post("/api/webhook/payos", async (req, res) => {
-  // 1. Phản hồi PayOS ngay lập tức để tránh lỗi timeout/phản hồi lâu
+  // 1. Phản hồi PayOS ngay lập tức
   res.json({ success: true });
 
   try {
-    const { data } = req.body;
+    // 2. Thử xác thực webhook data
+    let data = req.body.data;
+    if (payos && req.body.signature) {
+      try {
+        const webhookData = payos.verifyPaymentWebhookData(req.body);
+        data = webhookData;
+      } catch (e) {
+        console.error("PayOS Signature Validation Failed:", e);
+      }
+    }
+    
     if (!data || !data.description || !data.amount) return;
     
     const desc = data.description.toUpperCase();
-    
-    // 2. Tìm mã W2L kèm 4 ký tự (hỗ trợ ngân hàng tự động chèn chữ vào trước nội dung)
     const match = desc.match(/W2L([A-Z0-9]{4})/);
     if (!match) return;
     const partialUid = match[1];

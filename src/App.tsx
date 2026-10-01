@@ -650,10 +650,28 @@ export default function App() {
 
   useEffect(() => {
     if (selectedPricingPlan && user) {
-      const amounts: Record<string, number> = { trial: 9000, plus: 19000, pro: 29000 };
-      const orderId = `W2L${user.uid.substring(0, 4).toUpperCase()}${Math.floor(Date.now() / 1000).toString().slice(-4)}`;
-      setPaymentOrder({ id: orderId, amount: amounts[selectedPricingPlan], plan: selectedPricingPlan });
-      setShowPricingModal(false);
+      const fetchPayOS = async () => {
+        try {
+          triggerToast("Đang tạo link thanh toán an toàn, vui lòng đợi...", true);
+          const amounts: Record<string, number> = { trial: 9000, plus: 19000, pro: 29000 };
+          const response = await fetch("/api/payos/create-payment-link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ amount: amounts[selectedPricingPlan], plan: selectedPricingPlan, uid: user.uid })
+          });
+          const data = await response.json();
+          if (data.checkoutUrl) {
+            window.location.href = data.checkoutUrl; // Chuyển sang PayOS
+          } else {
+            triggerToast(data.error || "Không thể tạo link thanh toán. Vui lòng thử cấu hình .env", false);
+            setSelectedPricingPlan(null);
+          }
+        } catch (e) {
+          triggerToast("Lỗi kết nối PayOS", false);
+          setSelectedPricingPlan(null);
+        }
+      };
+      fetchPayOS();
     }
   }, [selectedPricingPlan, user]);
 
