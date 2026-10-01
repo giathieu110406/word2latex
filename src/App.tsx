@@ -9100,7 +9100,7 @@ ${bodyHtml}
                 <h3 className="text-xl font-black text-slate-800 mb-2">Thanh toán tự động</h3>
                 <p className="text-sm text-slate-500 mb-6">Quét mã QR bằng ứng dụng ngân hàng. Hệ thống tự động duyệt sau vài giây.</p>
                 <div className="p-3 border-2 border-indigo-100 rounded-2xl bg-white shadow-sm mb-6 w-64 h-64 flex items-center justify-center">
-                  <img src={`https://img.vietqr.io/image/tpbank-00005182996-compact2.png?amount=${paymentOrder.amount}&addInfo=${paymentOrder.id}&accountName=TRAN%20GIA%20THIEU`} alt="QR Code" className="w-full h-full object-contain" />
+                  <img src={`https://img.vietqr.io/image/mb-0335430700-compact2.png?amount=${paymentOrder.amount}&addInfo=${paymentOrder.id}&accountName=TRAN%20GIA%20THIEU`} alt="QR Code" className="w-full h-full object-contain" />
                 </div>
                 <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold bg-indigo-50 px-4 py-2 rounded-full w-full animate-pulse">
                   <span className="text-lg">⏳</span> Đang chờ thanh toán...
