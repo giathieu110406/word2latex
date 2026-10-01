@@ -121,8 +121,13 @@ app.post("/api/payos-create", async (req, res) => {
   await payosCreateHandler(req as any, res as any);
 });
 
-app.post("/api/payos-webhook", async (req, res) => {
+app.all(["/api/payos-webhook", "/api/webhook/payos"], async (req, res) => {
   await payosWebhookHandler(req as any, res as any);
+});
+
+app.post("/api/payos-check", async (req, res) => {
+  const payosCheckHandler = (await import("./api/payos-check")).default;
+  await payosCheckHandler(req as any, res as any);
 });
 
 // 1. API: Approve user directly from email link (GET)
