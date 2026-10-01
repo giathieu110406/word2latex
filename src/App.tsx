@@ -649,10 +649,18 @@ export default function App() {
   const [paymentOrder, setPaymentOrder] = useState<{ id: string, amount: number, plan: string } | null>(null);
 
   useEffect(() => {
-    if (selectedPricingPlan && user) {
+    if (selectedPricingPlan) {
+      if (!user) {
+        triggerToast("Vui lòng đăng nhập hoặc tạo tài khoản để nâng cấp gói!", false);
+        setSelectedPricingPlan(null);
+        return;
+      }
+      
+      // Kích hoạt bảng popup "Đang chuyển hướng"
+      setPaymentOrder({ id: "loading", amount: 0, plan: selectedPricingPlan });
+      
       const fetchPayOS = async () => {
         try {
-          triggerToast("Đang tạo link thanh toán an toàn, vui lòng đợi...", true);
           const amounts: Record<string, number> = { trial: 9000, plus: 19000, pro: 29000 };
           const response = await fetch("/api/payos/create-payment-link", {
             method: "POST",
