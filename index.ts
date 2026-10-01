@@ -8,7 +8,7 @@ import emailVerificationHandler from "./api/email-verification";
 
 import * as path from "path";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, updateDoc, getDoc } from "firebase/firestore";
+import { getFirestore, doc, updateDoc, getDoc, collection, getDocs } from "firebase/firestore";
 import * as crypto from "crypto";
 import * as dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -91,11 +91,23 @@ const databaseId = getCleanDatabaseId(process.env.FIREBASE_DATABASE_ID || proces
 const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
 
+import { markItDownJob } from './src/workflows/markitdown';
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// Workflow webhook endpoint (Simulated for Vercel Workflow)
+app.post('/api/workflow', async (req, res) => {
+  try {
+    const result = await markItDownJob(req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
 
 // VERCEL PROXY HANDLER (cho cả local dev và production Vercel)
 
@@ -105,6 +117,48 @@ const SECRET_KEY = process.env.APPROVAL_SECRET_KEY || "graphic-heading-0km1r-sec
 function generateApprovalToken(uid: string): string {
   return crypto.createHmac("sha256", SECRET_KEY).update(uid).digest("hex");
 }
+
+app.post("/api/webhook/payos", async (req, res) => {
+  try {
+    const { data } = req.body;
+    if (!data || !data.description || !data.amount) return res.json({ success: true });
+    
+    const desc = data.description.toUpperCase();
+    if (!desc.startsWith("W2L")) return res.json({ success: true });
+
+    let planType = "";
+    let duration = 0;
+    if (data.amount === 9000) { planType = "trial"; duration = 7; }
+    else if (data.amount === 19000) { planType = "plus"; duration = 30; }
+    else if (data.amount === 29000) { planType = "pro"; duration = 30; }
+    
+    if (!planType) return res.json({ success: true });
+
+    const partialUid = desc.substring(3, 7);
+    const usersSnap = await getDocs(collection(db, "users"));
+    
+    let targetUid = "";
+    usersSnap.forEach(docSnap => {
+      if (docSnap.id.toUpperCase().startsWith(partialUid)) {
+        targetUid = docSnap.id;
+      }
+    });
+
+    if (targetUid) {
+      const expiresAt = Date.now() + duration * 24 * 60 * 60 * 1000;
+      await updateDoc(doc(db, "users", targetUid), {
+        planType,
+        planExpiresAt: expiresAt
+      });
+      console.log(`Updated user ${targetUid} to plan ${planType}`);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Webhook error:", err);
+    res.status(500).json({ success: false });
+  }
+});
 
 // 1. API: Approve user directly from email link (GET)
 app.post("/api/ai", async (req, res) => {

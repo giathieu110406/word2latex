@@ -1,6 +1,7 @@
 import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils/logger";
 import { authFetch } from "./utils/api-client";
 import React, { useState, useRef, useEffect, startTransition } from "react";
+import { createPortal } from "react-dom";
 import {
   HelpCircle,
   FileText,
@@ -629,7 +630,53 @@ export default function App() {
   const [showFilterDropdown, setShowFilterDropdown] = useState<boolean>(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState<boolean>(false);
   const [showEditMemberModal, setShowEditMemberModal] = useState<boolean>(false);
+  const [showUserDetailsModal, setShowUserDetailsModal] = useState<boolean>(false);
+  const [selectedUserDetails, setSelectedUserDetails] = useState<any | null>(null);
+  
+  useEffect(() => {
+    if (showUserDetailsModal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+  }, [showUserDetailsModal]);
+
   const [editingUser, setEditingUser] = useState<any | null>(null);
+  
+  // -- PRICING STATE & MODALS --
+  const [showPricingModal, setShowPricingModal] = useState<boolean>(false);
+  const [selectedPricingPlan, setSelectedPricingPlan] = useState<string | null>(null);
+  const [paymentOrder, setPaymentOrder] = useState<{ id: string, amount: number, plan: string } | null>(null);
+
+  useEffect(() => {
+    if (selectedPricingPlan && user) {
+      const amounts: Record<string, number> = { trial: 9000, plus: 19000, pro: 29000 };
+      const orderId = `W2L${user.uid.substring(0, 4).toUpperCase()}${Math.floor(Date.now() / 1000).toString().slice(-4)}`;
+      setPaymentOrder({ id: orderId, amount: amounts[selectedPricingPlan], plan: selectedPricingPlan });
+      setShowPricingModal(false);
+    }
+  }, [selectedPricingPlan, user]);
+
+  useEffect(() => {
+    if (userDoc && userDoc.planType && userDoc.planType !== 'free') {
+      const now = Date.now();
+      if (userDoc.planExpiresAt && now > userDoc.planExpiresAt) {
+        updateDoc(doc(db, "users", user.uid), { planType: 'free', planExpiresAt: null }).catch(() => {});
+        triggerToast("Gói cước của bạn đã hết hạn.", false);
+      } else if (paymentOrder && userDoc.planType === paymentOrder.plan) {
+        triggerToast(`Nâng cấp thành công gói ${paymentOrder.plan.toUpperCase()}!`, true);
+        setPaymentOrder(null);
+        setSelectedPricingPlan(null);
+      }
+    }
+  }, [userDoc, paymentOrder]);
+  
+  const getLimitMultiplier = (planType?: string) => {
+    if (planType === 'pro') return 4;
+    if (planType === 'plus' || planType === 'trial') return 2;
+    return 1;
+  };
+  const currentMultiplier = getLimitMultiplier(userDoc?.planType);
   const [newMemberEmail, setNewMemberEmail] = useState<string>("");
   const [newMemberName, setNewMemberName] = useState<string>("");
   const [newMemberRole, setNewMemberRole] = useState<string>("user");
@@ -3105,9 +3152,21 @@ export default function App() {
     }
     setIsSavingSettings(true);
     try {
+      const newPhone = settingsPhoneNumber.trim();
+      const currentPhone = userDoc?.phoneNumber || "";
+      const currentHistory = userDoc?.phoneHistory || [];
+      
+      let newHistory = [...currentHistory];
+      if (newPhone && currentPhone && newPhone !== currentPhone) {
+        if (!newHistory.includes(currentPhone)) {
+          newHistory.unshift(currentPhone);
+        }
+      }
+
       await updateDoc(doc(db, "users", user.uid), {
         displayName: settingsDisplayName.trim(),
-        phoneNumber: settingsPhoneNumber.trim(),
+        phoneNumber: newPhone,
+        phoneHistory: newHistory,
         birthDate: settingsBirthDate,
       });
       triggerToast("Đã cập nhật thông tin cá nhân thành công!", true);
@@ -5352,9 +5411,9 @@ ${bodyHtml}
                   )}
               </div>
               <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                  {!isApproved && (
+                  {(!userDoc?.planType || userDoc.planType === 'free') && !isAdminUser(user, userDoc) && (
                     <button 
-                      onClick={() => setShowProUpgradeModal(true)}
+                      onClick={() => setSidebarView('pricing')}
                       className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs flex items-center justify-center gap-1.5 sm:gap-2 transition-colors border border-indigo-100 shadow-xs cursor-pointer shrink-0"
                     >
                         <Diamond className="w-3.5 h-3.5 shrink-0" />
@@ -5599,7 +5658,15 @@ ${bodyHtml}
                               <tr key={u.uid} className="hover:bg-[#FCFCFF]/60 transition-colors group">
                                 <td className="py-4 px-6">
                                   <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden font-bold text-sm shadow-sm ${u.photoURL ? 'bg-slate-100' : avatarStyle.bg + ' ' + avatarStyle.text}`}>
+                                    <div 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedUserDetails(u);
+                                        setShowUserDetailsModal(true);
+                                      }}
+                                      className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden font-bold text-sm shadow-sm cursor-pointer hover:ring-2 hover:ring-indigo-500 hover:ring-offset-2 transition-all ${u.photoURL ? 'bg-slate-100' : avatarStyle.bg + ' ' + avatarStyle.text}`}
+                                      title="Xem chi tiết thành viên"
+                                    >
                                       {u.photoURL ? (
                                         <img referrerPolicy="no-referrer" src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
                                       ) : (
@@ -5826,6 +5893,108 @@ ${bodyHtml}
                     )}
 
                   </div>
+
+                  {/* User Details Modal */}
+                  {createPortal(
+                    <AnimatePresence>
+                      {showUserDetailsModal && selectedUserDetails && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] overflow-y-auto" onClick={() => setShowUserDetailsModal(false)}>
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-white rounded-[24px] border border-[#EEF2F7] shadow-2xl w-full max-w-[400px] overflow-hidden flex flex-col p-5 gap-4 relative"
+                          >
+                            <button
+                              onClick={() => setShowUserDetailsModal(false)}
+                              className="absolute top-4 right-4 w-7 h-7 rounded-full flex items-center justify-center bg-slate-100/80 text-slate-500 hover:bg-rose-50 hover:text-rose-500 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                            
+                            <div className="flex flex-col items-center text-center">
+                              <div className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden font-bold text-xl shadow-sm mb-3 bg-indigo-50 text-indigo-600 ring-2 ring-indigo-50">
+                                {selectedUserDetails.photoURL ? (
+                                  <img referrerPolicy="no-referrer" src={selectedUserDetails.photoURL} alt={selectedUserDetails.displayName} className="w-full h-full object-cover" />
+                                ) : (
+                                  <span>{(selectedUserDetails.displayName || selectedUserDetails.email || 'U').charAt(0).toUpperCase()}</span>
+                                )}
+                              </div>
+                              <h3 className="text-lg font-extrabold text-[#1E2432] font-sans leading-tight">{selectedUserDetails.displayName || "Thành viên"}</h3>
+                              <div className="text-[13px] font-medium text-slate-500 mt-0.5">{selectedUserDetails.email || "Không có email"}</div>
+                              
+                              <div className="flex items-center gap-1.5 mt-3">
+                                {selectedUserDetails.status === "approved" ? (
+                                  <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E6F9EE] text-[#10B981] border border-emerald-100">
+                                    Đang hoạt động
+                                  </span>
+                                ) : selectedUserDetails.status === "pending" ? (
+                                  <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFFBEB] text-[#F59E0B] border border-amber-100">
+                                    Chờ duyệt
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFF1F2] text-[#F43F5E] border border-rose-100">
+                                    Bị khóa
+                                  </span>
+                                )}
+                                <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                                  {selectedUserDetails.role === "admin" ? "ADMIN" : "USER"}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 flex flex-col gap-2.5 mt-1">
+                              <div className="flex flex-col gap-1.5 w-full">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Điện thoại</span>
+                                  <span className="text-[13px] font-semibold text-slate-800">{selectedUserDetails.phoneNumber || selectedUserDetails.providerData?.[0]?.phoneNumber || "Chưa cập nhật"}</span>
+                                </div>
+                                {selectedUserDetails.phoneHistory && selectedUserDetails.phoneHistory.length > 0 && (
+                                  <div className="flex flex-col gap-1 mt-0.5 pt-1.5 border-t border-slate-200/50">
+                                    {selectedUserDetails.phoneHistory.map((oldPhone: string, idx: number) => (
+                                      <div key={idx} className="flex justify-between items-center opacity-70">
+                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Lịch sử</span>
+                                        <span className="text-[11px] font-medium text-slate-500">{oldPhone}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="h-px w-full bg-slate-200/60"></div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tham gia</span>
+                                <span className="text-[13px] font-semibold text-slate-800">
+                                  {selectedUserDetails.createdAt ? new Date(selectedUserDetails.createdAt).toLocaleDateString("vi-VN") : "Không rõ"}
+                                </span>
+                              </div>
+                              <div className="h-px w-full bg-slate-200/60"></div>
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Mã UID</span>
+                                <span className="text-[11px] font-mono text-slate-500 truncate">{selectedUserDetails.uid}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">LaTeX</span>
+                                <span className="text-lg font-black text-slate-800">{selectedUserDetails.latexCount || 0}</span>
+                              </div>
+                              <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Đề thi</span>
+                                <span className="text-lg font-black text-slate-800">{selectedUserDetails.examCount || 0}</span>
+                              </div>
+                              <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dàn AI</span>
+                                <span className="text-lg font-black text-slate-800">{selectedUserDetails.promptCount || 0}</span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        </div>
+                      )}
+                    </AnimatePresence>,
+                    document.body
+                  )}
 
                   {/* Add Member Modal */}
                   <AnimatePresence>
@@ -7264,6 +7433,19 @@ ${bodyHtml}
                       />
                     </div>
 
+                    {/* Gói Đăng Ký */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-500 flex items-center gap-1">
+                        Gói Tài Khoản Đang Dùng
+                      </label>
+                      <input
+                        type="text"
+                        disabled
+                        value={userDoc?.planType && userDoc.planType !== 'free' ? `GÓI ${userDoc.planType.toUpperCase()}` : "Tài khoản Miễn phí"}
+                        className="w-full bg-slate-50 border border-slate-200 text-indigo-600 rounded-xl px-4 py-2.5 text-xs font-bold outline-none cursor-not-allowed"
+                      />
+                    </div>
+
                     {/* Số điện thoại */}
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
@@ -7325,6 +7507,77 @@ ${bodyHtml}
                   </div>
                 </form>
               </div>
+            </div>
+          </motion.div>
+        )}
+
+        {sidebarView === 'pricing' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] bg-[#F9F9F9] flex flex-col items-center justify-center font-sans overflow-hidden">
+            <div className="w-full max-w-6xl mx-auto p-4 md:px-8 relative flex flex-col items-center justify-center h-full max-h-[900px]">
+               <button onClick={() => setSidebarView('overview')} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-800 transition-colors z-10">
+                 <X className="w-6 h-6 stroke-[1.5]" />
+               </button>
+               
+               <h2 className="text-2xl md:text-3xl font-semibold text-center mb-6 text-[#0D0D0D]">Nâng cấp gói của bạn</h2>
+
+               {/* Grid 3 cột */}
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+                 
+                 {/* Card Trial */}
+                 <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300">
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">Trial</h3>
+                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Dành cho người mới làm quen với hệ thống AI số hóa văn bản.</p>
+                    <button onClick={() => setSelectedPricingPlan('trial')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98]">Đăng ký dùng thử</button>
+                    <div className="flex items-end gap-1 mb-5">
+                       <sup className="text-lg font-medium text-gray-900 top-[-0.6em]">đ</sup>
+                       <span className="text-3xl font-semibold text-gray-900 leading-none">9.000</span>
+                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ 7 ngày</span>
+                    </div>
+                    <div className="space-y-3 flex-1 overflow-y-auto">
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Sử dụng trong 7 ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Nhân đôi (x2) hạn mức chuyển đổi</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Tối đa 60 LaTeX / ngày</span></div>
+                    </div>
+                 </div>
+
+                 {/* Card Plus */}
+                 <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 relative hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300">
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">Plus</h3>
+                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Không chỉ công thức, hãy để AI cùng bạn thao tác toàn bộ văn bản.</p>
+                    <button onClick={() => setSelectedPricingPlan('plus')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98]">Nâng cấp gói Plus</button>
+                    <div className="flex items-end gap-1 mb-5">
+                       <sup className="text-lg font-medium text-gray-900 top-[-0.6em]">đ</sup>
+                       <span className="text-3xl font-semibold text-gray-900 leading-none">19.000</span>
+                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng (đã bao gồm thuế)</span>
+                    </div>
+                    <div className="space-y-3 flex-1 overflow-y-auto">
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-600 shrink-0" /><span className="text-[13px] text-gray-800">Trí thông minh tiên tiến cho công việc phức tạp</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-600 shrink-0" /><span className="text-[13px] text-gray-800">Nhân đôi (x2) hạn mức hệ thống</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-600 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 60 LaTeX / ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-600 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 20 Đề thi / ngày</span></div>
+                    </div>
+                 </div>
+
+                 {/* Card Pro */}
+                 <div className="bg-[#f8faff] lg:bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-[#3b82f6] shadow-sm relative z-10 hover:border-blue-600 hover:shadow-[0_8px_30px_rgba(59,130,246,0.18)] transition-all duration-300">
+                    <h3 className="text-xl font-medium text-gray-900 mb-2">Pro</h3>
+                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Mức sử dụng tiêu chuẩn dành cho những ai dựa vào AI số hóa mạnh mẽ nhất.</p>
+                    <button onClick={() => setSelectedPricingPlan('pro')} className="w-full py-2.5 rounded-full bg-[#3b82f6] text-white font-medium hover:bg-blue-600 transition-colors mb-4 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98]">Nâng cấp gói Pro</button>
+                    <div className="flex items-end gap-1 mb-5">
+                       <sup className="text-lg font-medium text-gray-900 top-[-0.6em]">đ</sup>
+                       <span className="text-3xl font-semibold text-gray-900 leading-none">29.000</span>
+                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng (đã bao gồm thuế)</span>
+                    </div>
+                    <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Mô hình Pro mạnh mẽ nhất của chúng tôi</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Nhân 4 (x4) hạn mức lưu trữ & xử lý</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 120 LaTeX / ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 40 Đề thi / ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Không có quảng cáo</span></div>
+                    </div>
+                 </div>
+
+               </div>
             </div>
           </motion.div>
         )}
@@ -7434,19 +7687,19 @@ ${bodyHtml}
                   </div>
                 </div>
                 <div>
-                  <div className="text-2xl font-black text-slate-800 flex items-center gap-1.5">
-                    {isAdminUser(user, userDoc) ? "QUẢN TRỊ VIÊN" : isApproved ? "THÀNH VIÊN PRO" : "TÀI KHOẢN FREE"}
+                  <div className="text-2xl font-black text-slate-800 flex items-center gap-1.5 uppercase">
+                    {isAdminUser(user, userDoc) ? "QUẢN TRỊ VIÊN" : userDoc?.planType && userDoc.planType !== 'free' ? `TÀI KHOẢN ${userDoc.planType}` : isApproved ? "THÀNH VIÊN PRO" : "TÀI KHOẢN FREE"}
                   </div>
                   <div className="text-[10px] text-slate-500 font-semibold mt-2.5 leading-relaxed">
-                    {isAdminUser(user, userDoc) || isApproved 
-                      ? "Bạn đang sở hữu đặc quyền tối đa của hệ thống" 
+                    {isAdminUser(user, userDoc) || (userDoc?.planType && userDoc.planType !== 'free') || isApproved 
+                      ? "Bạn đang sở hữu đặc quyền của hệ thống" 
                       : "Nâng cấp lên gói PRO để nhận thêm lượt chuyển đổi."}
                   </div>
                 </div>
-                {!isApproved && !isAdminUser(user, userDoc) && (
+                {(!userDoc?.planType || userDoc.planType === 'free') && !isAdminUser(user, userDoc) && (
                   <button
                     type="button"
-                    onClick={() => setShowProUpgradeModal(true)}
+                    onClick={() => setSidebarView('pricing')}
                     className="mt-1 text-left text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
                   >
                     Nâng cấp ngay <ArrowRight className="w-3.5 h-3.5" />
@@ -8835,6 +9088,28 @@ ${bodyHtml}
           onClose={() => setIsGuideTourOpen(false)}
           pageId={sidebarView as any}
         />
+      )}
+
+      {/* Payment Modal */}
+      {createPortal(
+        <AnimatePresence>
+          {paymentOrder && (
+            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="bg-white rounded-3xl max-w-sm w-full p-8 flex flex-col items-center text-center relative shadow-2xl">
+                <button onClick={() => { setPaymentOrder(null); setSelectedPricingPlan(null); }} className="absolute top-4 right-4 text-slate-400 hover:bg-slate-100 rounded-full p-1 transition-colors"><X className="w-5 h-5"/></button>
+                <h3 className="text-xl font-black text-slate-800 mb-2">Thanh toán tự động</h3>
+                <p className="text-sm text-slate-500 mb-6">Quét mã QR bằng ứng dụng ngân hàng. Hệ thống tự động duyệt sau vài giây.</p>
+                <div className="p-3 border-2 border-indigo-100 rounded-2xl bg-white shadow-sm mb-6 w-64 h-64 flex items-center justify-center">
+                  <img src={`https://img.vietqr.io/image/tpbank-00005182996-compact2.png?amount=${paymentOrder.amount}&addInfo=${paymentOrder.id}&accountName=TRAN%20GIA%20THIEU`} alt="QR Code" className="w-full h-full object-contain" />
+                </div>
+                <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold bg-indigo-50 px-4 py-2 rounded-full w-full animate-pulse">
+                  <span className="text-lg">⏳</span> Đang chờ thanh toán...
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
       )}
     </div>
   </div>
