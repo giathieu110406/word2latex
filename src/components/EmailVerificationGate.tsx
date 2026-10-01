@@ -3,10 +3,12 @@ import { Loader2, Mail, RefreshCw, ShieldCheck, Smartphone, LogOut } from 'lucid
 import { authFetch } from '../utils/api-client';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
+import { hasPhoneConfirmation, normalizeVietnamPhone, type ConfirmedPhoneProfile } from '../../shared/phone-confirmation';
 
 interface EmailVerificationGateProps {
   email: string;
-  onVerified: (verifiedAt: string) => Promise<void> | void;
+  lockedPhone?: string;
+  onVerified: (profile: ConfirmedPhoneProfile) => Promise<void> | void;
 }
 
 type Step = 'phone' | 'code';
@@ -15,9 +17,9 @@ async function readResponse(response: Response): Promise<Record<string, unknown>
   return response.json().catch(() => ({}));
 }
 
-export function EmailVerificationGate({ email, onVerified }: EmailVerificationGateProps) {
+export function EmailVerificationGate({ email, lockedPhone, onVerified }: EmailVerificationGateProps) {
   const [step, setStep] = useState<Step>('phone');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState(lockedPhone || '');
   const [code, setCode] = useState('');
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,6 +35,10 @@ export function EmailVerificationGate({ email, onVerified }: EmailVerificationGa
 
   const requestCode = async () => {
     setError('');
+    if (!normalizeVietnamPhone(phoneNumber)) {
+      setError('Số di động Việt Nam không hợp lệ hoặc có mẫu số không được chấp nhận.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const response = await authFetch('/api/email-verification?action=send', {
@@ -69,7 +75,8 @@ export function EmailVerificationGate({ email, onVerified }: EmailVerificationGa
       if (!response.ok) {
         throw new Error(String(payload.error || 'Không thể xác thực mã.'));
       }
-      await onVerified(String(payload.emailOtpVerifiedAt));
+      if (!hasPhoneConfirmation(payload)) throw new Error('Server chưa xác nhận hồ sơ hợp lệ. Vui lòng thử lại.');
+      await onVerified(payload as unknown as ConfirmedPhoneProfile);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể xác thực mã.');
     } finally {
@@ -83,9 +90,9 @@ export function EmailVerificationGate({ email, onVerified }: EmailVerificationGa
         <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
           <ShieldCheck size={30} aria-hidden="true" />
         </div>
-        <h1 className="text-center text-2xl font-black tracking-tight text-slate-900">Xác thực tài khoản</h1>
+        <h1 className="text-center text-2xl font-black tracking-tight text-slate-900">Xác nhận số liên hệ</h1>
         <p className="mt-2 text-center text-sm leading-6 text-slate-600">
-          Nhập số điện thoại và xác nhận mã gửi đến <strong className="break-all text-slate-800">{email}</strong> để tiếp tục dùng Word2LaTeX.
+          Nhập số di động hợp lệ và mã gửi đến email <strong className="break-all text-slate-800">{email}</strong> để tiếp tục dùng Word2LaTeX.
         </p>
 
         {step === 'phone' ? (
@@ -98,12 +105,13 @@ export function EmailVerificationGate({ email, onVerified }: EmailVerificationGa
                 type="tel"
                 autoComplete="tel"
                 value={phoneNumber}
+                readOnly={!!lockedPhone}
                 onChange={(event) => setPhoneNumber(event.target.value)}
-                placeholder="0901234567"
+                placeholder="Số di động của bạn"
                 className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
               />
             </div>
-            <p className="text-xs leading-5 text-slate-500">Số sẽ được lưu ở dạng +84. Hệ thống chỉ gửi mã về email, không gửi SMS.</p>
+            <p className="text-xs leading-5 text-slate-500">{lockedPhone ? 'Số liên hệ đã khóa; hãy xác nhận lại đúng số đã lưu.' : 'Số sẽ được lưu ở dạng +84 và khóa sau khi xác nhận. Bạn không thể tự đổi hoặc xóa số.'} Mã chỉ gửi qua email, không gửi SMS và không xác minh quyền sở hữu số điện thoại.</p>
             <button type="button" onClick={requestCode} disabled={isSubmitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
               {isSubmitting ? <Loader2 className="animate-spin" size={19} /> : <Mail size={19} />}
               Gửi mã qua email
@@ -123,6 +131,7 @@ export function EmailVerificationGate({ email, onVerified }: EmailVerificationGa
               className="w-full rounded-xl border border-slate-200 px-4 py-3 text-center text-xl font-bold tracking-[0.35em] text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
             />
             <p className="text-xs leading-5 text-slate-500">Nếu chưa thấy mã, hãy kiểm tra Hộp thư rác hoặc Spam.</p>
+            <p className="text-xs leading-5 text-slate-500">Số liên hệ sẽ khóa: <strong>{normalizeVietnamPhone(phoneNumber)}</strong></p>
             <button type="button" onClick={verifyCode} disabled={isSubmitting || code.length !== 6} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
               {isSubmitting ? <Loader2 className="animate-spin" size={19} /> : <ShieldCheck size={19} />}
               Xác thực và tiếp tục
@@ -131,6 +140,7 @@ export function EmailVerificationGate({ email, onVerified }: EmailVerificationGa
               <RefreshCw size={17} aria-hidden="true" />
               {cooldownSeconds > 0 ? `Gửi lại sau ${cooldownSeconds}s` : 'Gửi lại mã'}
             </button>
+            {!lockedPhone && <button type="button" disabled={isSubmitting} onClick={() => { setStep('phone'); setCode(''); setError(''); }} className="w-full text-sm font-medium text-indigo-600">Sửa số trước khi xác nhận</button>}
           </div>
         )}
 

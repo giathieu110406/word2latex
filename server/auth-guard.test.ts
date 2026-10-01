@@ -42,7 +42,7 @@ assert.equal(verifiedMember.status, 200);
 const oldProfile = await verifyAuthAndApproval(request(), firestoreProfile({ status: 'approved', emailOtpVerifiedAt: '2026-09-30T00:00:00Z' }), async () => ({ uid: 'member-1', email: 'member@example.com' }));
 assert.equal(oldProfile.authorized, false, 'date alone cannot bypass phone confirmation');
 const originalFetch = globalThis.fetch;
-globalThis.fetch = (async () => ({ ok: false })) as typeof fetch;
+globalThis.fetch = async () => new Response(null, { status: 401 });
 const forged = `e30.${Buffer.from(JSON.stringify({ sub: 'owner-1', email: 'giathieu110406@gmail.com', aud: 'word2latex-prod-fde7b', iss: 'https://securetoken.google.com/word2latex-prod-fde7b', exp: 9999999999 })).toString('base64url')}.fake`;
 const forgedResult = await verifyAuthAndApproval({ headers: { authorization: `Bearer ${forged}` } }, firestoreProfile({ status: 'approved', emailOtpVerifiedAt: '2026-09-30T00:00:00Z' }));
 assert.equal(forgedResult.status, 401, 'unsigned token is rejected rather than decoded as authentication');

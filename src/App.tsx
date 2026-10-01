@@ -44,7 +44,10 @@ import { GuideTour } from "./components/GuideTour";
 import { LoginScreen } from "./components/LoginScreen";
 import { ZaloContactWidget } from "./components/ZaloContactWidget";
 import { EmailVerificationGate } from "./components/EmailVerificationGate";
-import { isEmailOtpVerified } from "./utils/email-verification";
+import { hasPhoneConfirmation } from "./utils/email-verification";
+import { normalizeVietnamPhone } from "../shared/phone-confirmation";
+import { getUpgradeVisibility } from "./utils/upgrade-policy";
+import { PhoneConfirmationHistory } from "./components/PhoneConfirmationHistory";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -3217,21 +3220,8 @@ export default function App() {
     }
     setIsSavingSettings(true);
     try {
-      const newPhone = settingsPhoneNumber.trim();
-      const currentPhone = userDoc?.phoneNumber || "";
-      const currentHistory = userDoc?.phoneHistory || [];
-      
-      let newHistory = [...currentHistory];
-      if (newPhone && currentPhone && newPhone !== currentPhone) {
-        if (!newHistory.includes(currentPhone)) {
-          newHistory.unshift(currentPhone);
-        }
-      }
-
       await updateDoc(doc(db, "users", user.uid), {
         displayName: settingsDisplayName.trim(),
-        phoneNumber: newPhone,
-        phoneHistory: newHistory,
         birthDate: settingsBirthDate,
       });
       triggerToast("Đã cập nhật thông tin cá nhân thành công!", true);
@@ -5237,7 +5227,8 @@ ${bodyHtml}
   const isOwner = checkIsOwnerEmail(user);
   const isApproved = isOwner || userDoc?.status === "approved";
   const isRejected = !isApproved && userDoc?.status === "rejected";
-  const needsEmailOtp = !isEmailOtpVerified(userDoc);
+  const needsEmailOtp = !hasPhoneConfirmation(userDoc);
+  const upgradeVisibility = getUpgradeVisibility(userDoc?.planType, userDoc?.planExpiresAt);
 
   const getUserAvatar = () => {
     if (user?.photoURL) {
@@ -5286,6 +5277,21 @@ ${bodyHtml}
   }
 
   // --- USER WORKSPACE ---
+
+  if (needsEmailOtp) {
+    return <>
+      <EmailVerificationGate
+        key={user.uid}
+        email={user.email || user.providerData?.[0]?.email || ""}
+        lockedPhone={normalizeVietnamPhone(String(userDoc?.confirmedPhoneNumber || "")) || undefined}
+        onVerified={async (profile) => {
+          setUserDoc((currentDoc) => ({ ...(currentDoc || {}), ...profile }));
+          await user.getIdToken(true).catch(() => console.warn('Số liên hệ đã xác nhận; token sẽ được làm mới ở lần đăng nhập tiếp theo.'));
+        }}
+      />
+      <ZaloContactWidget />
+    </>;
+  }
   
   return (
     <div 
@@ -5299,18 +5305,6 @@ ${bodyHtml}
         `
       }}
     >
-      {needsEmailOtp && (
-        <EmailVerificationGate
-          email={user.email || user.providerData?.[0]?.email || ""}
-          onVerified={async (verifiedAt) => {
-            await user.getIdToken(true);
-            setUserDoc((currentDoc) => ({
-              ...(currentDoc || {}),
-              emailOtpVerifiedAt: verifiedAt,
-            }));
-          }}
-        />
-      )}
       {/* Toast message wrapper with exit animations */}
       <AnimatePresence>
         {toast.show && (
@@ -5426,7 +5420,7 @@ ${bodyHtml}
               )}
           </div>
           
-          {!isApproved && (
+          {!isAdminUser(user, userDoc) && upgradeVisibility.sidebar && (
             <div className="p-4 mt-auto w-full shrink-0">
                 <div className="bg-[#F8F9FE] rounded-2xl p-4 border border-indigo-50 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-indigo-200/40 to-transparent rounded-full -mr-12 -mt-12"></div>
@@ -5436,7 +5430,7 @@ ${bodyHtml}
                     <div className="text-xs font-bold text-slate-800 mb-1">Mở khóa toàn bộ tính năng</div>
                     <div className="text-[10px] text-slate-500 mb-3 leading-relaxed">Trải nghiệm không giới hạn.</div>
                     <button 
-                      onClick={() => setShowProUpgradeModal(true)}
+                      onClick={() => setSidebarView('pricing')}
                       className="w-full bg-white text-indigo-600 rounded-xl py-2 text-xs font-bold shadow-sm border border-slate-100 flex justify-center items-center gap-1 hover:shadow-md transition-all group cursor-pointer animate-pulse"
                     >
                        Nâng cấp <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform"/>
@@ -5476,7 +5470,7 @@ ${bodyHtml}
                   )}
               </div>
               <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                  {(!userDoc?.planType || userDoc.planType === 'free') && !isAdminUser(user, userDoc) && (
+                  {upgradeVisibility.main && !isAdminUser(user, userDoc) && (
                     <button 
                       onClick={() => setSidebarView('pricing')}
                       className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs flex items-center justify-center gap-1.5 sm:gap-2 transition-colors border border-indigo-100 shadow-xs cursor-pointer shrink-0"
@@ -5969,7 +5963,7 @@ ${bodyHtml}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
                             onClick={(e) => e.stopPropagation()}
-                            className="bg-white rounded-[24px] border border-[#EEF2F7] shadow-2xl w-full max-w-[400px] overflow-hidden flex flex-col p-5 gap-4 relative"
+                            className="bg-white rounded-[24px] border border-[#EEF2F7] shadow-2xl w-full max-w-[400px] max-h-[90dvh] overflow-y-auto flex flex-col p-5 gap-4 relative"
                           >
                             <button
                               onClick={() => setShowUserDetailsModal(false)}
@@ -6013,10 +6007,11 @@ ${bodyHtml}
                               <div className="flex flex-col gap-1.5 w-full">
                                 <div className="flex items-center justify-between">
                                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Điện thoại</span>
-                                  <span className="text-[13px] font-semibold text-slate-800">{selectedUserDetails.phoneNumber || selectedUserDetails.providerData?.[0]?.phoneNumber || "Chưa cập nhật"}</span>
+                                  <span className="text-[13px] font-semibold text-slate-800">{selectedUserDetails.confirmedPhoneNumber || selectedUserDetails.phoneNumber || selectedUserDetails.providerData?.[0]?.phoneNumber || "Chưa cập nhật"}</span>
                                 </div>
-                                {selectedUserDetails.phoneHistory && selectedUserDetails.phoneHistory.length > 0 && (
+                                {Array.isArray(selectedUserDetails.phoneHistory) && selectedUserDetails.phoneHistory.length > 0 && (
                                   <div className="flex flex-col gap-1 mt-0.5 pt-1.5 border-t border-slate-200/50">
+                                    <span className="text-[10px] text-slate-500">Lịch sử khai báo cũ (chưa có bằng chứng OTP):</span>
                                     {selectedUserDetails.phoneHistory.map((oldPhone: string, idx: number) => (
                                       <div key={idx} className="flex justify-between items-center opacity-70">
                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Lịch sử</span>
@@ -6040,6 +6035,7 @@ ${bodyHtml}
                               </div>
                             </div>
                             
+                            <PhoneConfirmationHistory uid={selectedUserDetails.uid} />
                             <div className="grid grid-cols-3 gap-2">
                               <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
                                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">LaTeX</span>
@@ -7518,11 +7514,11 @@ ${bodyHtml}
                       </label>
                       <input
                         type="tel"
-                        placeholder="Ví dụ: 0912345678"
+                        readOnly
                         value={settingsPhoneNumber}
-                        onChange={(e) => setSettingsPhoneNumber(e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
                       />
+                      <p className="text-[10px] text-slate-500">Số liên hệ đã xác nhận qua email và được khóa. Không thể tự đổi hoặc xóa.</p>
                     </div>
 
                     {/* Ngày sinh */}
@@ -7761,7 +7757,7 @@ ${bodyHtml}
                       : "Nâng cấp lên gói PRO để nhận thêm lượt chuyển đổi."}
                   </div>
                 </div>
-                {(!userDoc?.planType || userDoc.planType === 'free') && !isAdminUser(user, userDoc) && (
+                {upgradeVisibility.main && !isAdminUser(user, userDoc) && (
                   <button
                     type="button"
                     onClick={() => setSidebarView('pricing')}

@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+const implementation = await import('./upgrade-policy.ts').catch(() => null);
+assert.ok(implementation, 'upgrade visibility policy must exist');
+const { getUpgradeVisibility } = implementation;
+assert.deepEqual(getUpgradeVisibility('free'), { sidebar: true, main: true });
+assert.deepEqual(getUpgradeVisibility('trial'), { sidebar: false, main: true });
+assert.deepEqual(getUpgradeVisibility('plus'), { sidebar: false, main: true });
+assert.deepEqual(getUpgradeVisibility('pro'), { sidebar: false, main: false });
+assert.deepEqual(getUpgradeVisibility('plus', 1000, 1001), { sidebar: true, main: true });
+assert.deepEqual(getUpgradeVisibility('plus', 2000, 1001), { sidebar: false, main: true });
+console.log('upgrade visibility policy tests passed');

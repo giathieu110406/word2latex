@@ -5,6 +5,7 @@ import { createOtp, hashOtp, normalizeVietnamPhone } from '../server/email-verif
 import { randomUUID } from 'node:crypto';
 import { ConfirmationError, createPhoneConfirmationStore, type PhoneConfirmationStore } from '../server/phone-confirmation-store.js';
 import { readPhoneHistory } from '../server/phone-history.js';
+import type { Firestore } from 'firebase-admin/firestore';
 
 export { hashOtp } from '../server/email-verification-utils.js';
 
@@ -33,7 +34,7 @@ export interface EmailOtpAuth {
 }
 
 export interface EmailVerificationHandlerDependencies {
-  getAdmin?: () => { auth: EmailOtpAuth; db: unknown };
+  getAdmin?: () => { auth: EmailOtpAuth; db: Firestore };
   createStore?: (db: any) => PhoneConfirmationStore;
   createMailer?: () => { sendMail(message: { to: string; subject: string; text: string; html: string }): Promise<unknown> };
   now?: () => Date;
@@ -147,7 +148,7 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
 
       const action = getAction(req);
       if (action === 'history') {
-        const history = await readPhoneHistory(db as any, decoded.uid, email, String(req.body?.targetUid ?? ''));
+        const history = await readPhoneHistory(db, decoded.uid, email, String(req.body?.targetUid ?? ''));
         return res.status(200).json({ success: true, ...history });
       }
       const store = (dependencies.createStore ?? createPhoneConfirmationStore)(db);
