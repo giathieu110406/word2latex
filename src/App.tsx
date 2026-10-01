@@ -673,10 +673,12 @@ export default function App() {
           } else {
             triggerToast(data.error || "Không thể tạo link thanh toán. Vui lòng thử cấu hình .env", false);
             setSelectedPricingPlan(null);
+            setPaymentOrder(null);
           }
         } catch (e) {
           triggerToast("Lỗi kết nối PayOS", false);
           setSelectedPricingPlan(null);
+          setPaymentOrder(null);
         }
       };
       fetchPayOS();
@@ -9123,13 +9125,10 @@ ${bodyHtml}
             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="bg-white rounded-3xl max-w-sm w-full p-8 flex flex-col items-center text-center relative shadow-2xl">
                 <button onClick={() => { setPaymentOrder(null); setSelectedPricingPlan(null); }} className="absolute top-4 right-4 text-slate-400 hover:bg-slate-100 rounded-full p-1 transition-colors"><X className="w-5 h-5"/></button>
-                <h3 className="text-xl font-black text-slate-800 mb-2">Thanh toán tự động</h3>
-                <p className="text-sm text-slate-500 mb-6">Quét mã QR bằng ứng dụng ngân hàng. Hệ thống tự động duyệt sau vài giây.</p>
-                <div className="p-3 border-2 border-indigo-100 rounded-2xl bg-white shadow-sm mb-6 w-64 h-64 flex items-center justify-center">
-                  <img src={`https://img.vietqr.io/image/mb-0335430700-compact2.png?amount=${paymentOrder.amount}&addInfo=${paymentOrder.id}&accountName=TRAN%20GIA%20THIEU`} alt="QR Code" className="w-full h-full object-contain" />
-                </div>
-                <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold bg-indigo-50 px-4 py-2 rounded-full w-full animate-pulse">
-                  <span className="text-lg">⏳</span> Đang chờ thanh toán...
+                <h3 className="text-xl font-black text-slate-800 mb-2">Đang chuyển hướng</h3>
+                <p className="text-sm text-slate-500 mb-6">Xin vui lòng đợi trong giây lát. Hệ thống đang chuyển hướng bạn đến cổng thanh toán bảo mật PayOS...</p>
+                <div className="flex items-center justify-center gap-2 text-indigo-600 font-bold bg-indigo-50 px-4 py-8 rounded-2xl w-full animate-pulse">
+                  <span className="text-lg animate-spin">⏳</span> Đang tạo giao dịch...
                 </div>
               </motion.div>
             </div>
