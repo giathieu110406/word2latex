@@ -119,12 +119,19 @@ function generateApprovalToken(uid: string): string {
 }
 
 app.post("/api/webhook/payos", async (req, res) => {
+  // 1. Phản hồi PayOS ngay lập tức để tránh lỗi timeout/phản hồi lâu
+  res.json({ success: true });
+
   try {
     const { data } = req.body;
-    if (!data || !data.description || !data.amount) return res.json({ success: true });
+    if (!data || !data.description || !data.amount) return;
     
     const desc = data.description.toUpperCase();
-    if (!desc.startsWith("W2L")) return res.json({ success: true });
+    
+    // 2. Tìm mã W2L kèm 4 ký tự (hỗ trợ ngân hàng tự động chèn chữ vào trước nội dung)
+    const match = desc.match(/W2L([A-Z0-9]{4})/);
+    if (!match) return;
+    const partialUid = match[1];
 
     let planType = "";
     let duration = 0;
@@ -132,9 +139,9 @@ app.post("/api/webhook/payos", async (req, res) => {
     else if (data.amount === 19000) { planType = "plus"; duration = 30; }
     else if (data.amount === 29000) { planType = "pro"; duration = 30; }
     
-    if (!planType) return res.json({ success: true });
+    if (!planType) return;
 
-    const partialUid = desc.substring(3, 7);
+    // Quét users để map partialUid (xử lý ngầm, không block response)
     const usersSnap = await getDocs(collection(db, "users"));
     
     let targetUid = "";
@@ -152,11 +159,8 @@ app.post("/api/webhook/payos", async (req, res) => {
       });
       console.log(`Updated user ${targetUid} to plan ${planType}`);
     }
-
-    res.json({ success: true });
   } catch (err) {
     console.error("Webhook error:", err);
-    res.status(500).json({ success: false });
   }
 });
 
