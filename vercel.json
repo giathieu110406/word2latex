@@ -18,6 +18,14 @@
     "api/email-verification.ts": {
       "memory": 1024,
       "maxDuration": 10
+    },
+    "api/payos-create.ts": {
+      "memory": 512,
+      "maxDuration": 30
+    },
+    "api/payos-webhook.ts": {
+      "memory": 512,
+      "maxDuration": 30
     }
   },
   "rewrites": [
