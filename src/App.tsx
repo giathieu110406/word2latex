@@ -48,6 +48,9 @@ import { hasPhoneConfirmation } from "./utils/email-verification";
 import { normalizeVietnamPhone } from "../shared/phone-confirmation";
 import { getUpgradeVisibility } from "./utils/upgrade-policy";
 import { PhoneConfirmationHistory } from "./components/PhoneConfirmationHistory";
+import { GoogleOAuthProvider } from "@react-oauth/google";
+import { GooglePickerBtn } from "./components/GooglePickerBtn";
+import { SplitViewWorkspace } from "./components/SplitViewWorkspace";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -564,6 +567,12 @@ function getTodayStr(): string {
 }
 
 export default function App() {
+  const [docId, setDocId] = useState<string | null>(null);
+
+  const handleFileSelect = (id: string) => {
+    setDocId(id);
+  };
+
   // --- AUTH & CONTROL STATE ---
   const [user, setUser] = useState<FirebaseUser | null>(() => {
     try {
@@ -5294,6 +5303,7 @@ ${bodyHtml}
   }
   
   return (
+    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || "mock-client-id"}>
     <div 
       className="h-[100dvh] w-full text-slate-800 antialiased font-sans flex flex-row overflow-hidden relative"
       style={{
@@ -5382,6 +5392,11 @@ ${bodyHtml}
                   </button>
                   <button onClick={() => handleSidebarNav('qbuilder')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'qbuilder' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <FileText className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Soạn đề thi (AI)</span>
+                  </button>
+                  <button onClick={() => handleSidebarNav('sync-hub')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'sync-hub' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                      <div className="flex items-center gap-3 truncate">
+                          <HardDrive className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Sync Hub</span>
+                      </div>
                   </button>
                   <button onClick={() => handleSidebarNav('markitdown')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'markitdown' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <div className="flex items-center gap-3 truncate">
@@ -7846,6 +7861,18 @@ ${bodyHtml}
           </motion.div>
         )}
 
+        {sidebarView === 'sync-hub' && (
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <div className="bg-white border-b border-gray-200 px-4 py-2 flex justify-between items-center shrink-0 shadow-sm z-10">
+              <h2 className="text-lg font-bold text-gray-800">Google Workspace Sync Hub</h2>
+              <GooglePickerBtn onFileSelect={handleFileSelect} />
+            </div>
+            <div className="flex-1 overflow-hidden relative">
+              <SplitViewWorkspace documentId={docId} />
+            </div>
+          </div>
+        )}
+
         {sidebarView === 'latex' && (
           <LatexConverter
             wordFont={wordFont}
@@ -9186,5 +9213,6 @@ ${bodyHtml}
       )}
     </div>
   </div>
+  </GoogleOAuthProvider>
   );
 }
