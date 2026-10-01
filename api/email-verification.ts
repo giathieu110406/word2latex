@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import nodemailer from 'nodemailer';
-import { getFirebaseAdmin } from './firebase-admin.js';
-import { createOtp, hashOtp, isOtpExpired, normalizeVietnamPhone } from './email-verification-utils.js';
+import { getFirebaseAdmin } from '../server/firebase-admin.js';
+import { createOtp, hashOtp, isOtpExpired, normalizeVietnamPhone } from '../server/email-verification-utils.js';
 
-export { hashOtp } from './email-verification-utils.js';
+export { hashOtp } from '../server/email-verification-utils.js';
 
 const OTP_TTL_MS = 10 * 60_000;
 const RESEND_COOLDOWN_MS = 60_000;

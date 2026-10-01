@@ -1,9 +1,9 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
-import { verifyAuthAndApproval } from './auth-guard.js';
+import { verifyAuthAndApproval } from '../server/auth-guard.js';
 import * as mammoth from "mammoth";
 import { FieldValue } from 'firebase-admin/firestore';
-import { getFirebaseAdmin } from './firebase-admin.js';
+import { getFirebaseAdmin } from '../server/firebase-admin.js';
 import * as fs from 'fs';
 import * as path from 'path';
 

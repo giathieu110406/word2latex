@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 process.env.OTP_PEPPER = 'test-only-otp-pepper';
 
-const moduleUnderTest = await import('./email-verification.ts').catch(() => null);
+const moduleUnderTest = await import('../api/email-verification.ts').catch(() => null);
 assert.ok(moduleUnderTest, 'email verification endpoint module must be available');
 
 const { createEmailVerificationHandler, hashOtp } = moduleUnderTest;

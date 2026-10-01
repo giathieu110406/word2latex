@@ -1,6 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
-import { verifyAuthAndApproval } from './auth-guard.js';
+import { verifyAuthAndApproval } from '../server/auth-guard.js';
 
 // Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
 let GoogleGenAISDK: any = null;
