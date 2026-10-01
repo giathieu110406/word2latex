@@ -26,6 +26,12 @@ export function isValidVerificationDate(value: unknown): boolean {
 export function hasPhoneConfirmation(profile: unknown): boolean {
   if (!profile || typeof profile !== 'object') return false;
   const data = profile as Record<string, unknown>;
+  // Keep confirmations completed under the old policy, using its original format check.
+  if (data.phoneConfirmationVersion == null && isValidVerificationDate(data.emailOtpVerifiedAt)) {
+    const compact = String(data.phoneNumber ?? '').trim().replace(/[\s().-]/g, '');
+    const local = compact.startsWith('+84') ? `0${compact.slice(3)}` : compact;
+    return /^0[35789]\d{8}$/.test(local);
+  }
   const current = normalizeVietnamPhone(String(data.phoneNumber ?? ''));
   return !!current && current === data.confirmedPhoneNumber
     && data.phoneConfirmationVersion === 1 && data.phoneConfirmationMethod === 'email_otp'

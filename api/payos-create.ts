@@ -1,5 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { PayOS } from "@payos/node";
+import { getFirebaseAdmin } from '../server/firebase-admin.js';
+import { canRegisterPlan } from '../shared/subscription-policy.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -14,9 +16,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { amount, plan, uid } = req.body;
-    if (!amount || !plan || !uid) {
-      return res.status(400).json({ error: "Thiếu dữ liệu (amount, plan, uid)" });
+    const { plan } = req.body;
+    const amount = ({ trial: 9000, plus: 19000, pro: 29000 } as Record<string, number>)[plan];
+    if (!amount) {
+      return res.status(400).json({ error: "Gói đăng ký không hợp lệ." });
+    }
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'Vui lòng đăng nhập.' });
+    const { auth, db } = getFirebaseAdmin();
+    const decoded = await auth.verifyIdToken(header.slice(7)).catch(() => null);
+    if (!decoded) return res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ.' });
+    const uid = decoded.uid;
+    const profile = (await db.collection('users').doc(uid).get()).data();
+    if (!profile) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
+    if (!canRegisterPlan(plan, profile.planType, profile.planExpiresAt)) {
+      return res.status(409).json({ error: 'Bạn đã đăng ký gói này hoặc gói cao hơn. Vui lòng chờ gói hiện tại hết hạn.' });
     }
     
     // Tạo orderCode từ Date + random

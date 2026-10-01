@@ -47,6 +47,7 @@ import { EmailVerificationGate } from "./components/EmailVerificationGate";
 import { hasPhoneConfirmation } from "./utils/email-verification";
 import { normalizeVietnamPhone } from "../shared/phone-confirmation";
 import { getUpgradeVisibility } from "./utils/upgrade-policy";
+import { canRegisterPlan, getActivePlan } from "../shared/subscription-policy";
 import { PhoneConfirmationHistory } from "./components/PhoneConfirmationHistory";
 
 // Firebase integrations
@@ -658,6 +659,10 @@ export default function App() {
         setSelectedPricingPlan(null);
         return;
       }
+      if (!canRegisterPlan(selectedPricingPlan, userDoc?.planType, userDoc?.planExpiresAt)) {
+        setSelectedPricingPlan(null);
+        return;
+      }
       
       // Kích hoạt bảng popup "Đang chuyển hướng"
       setPaymentOrder({ id: "loading", amount: 0, plan: selectedPricingPlan });
@@ -665,7 +670,7 @@ export default function App() {
       const fetchPayOS = async () => {
         try {
           const amounts: Record<string, number> = { trial: 9000, plus: 19000, pro: 29000 };
-          const response = await fetch("/api/payos-create", {
+          const response = await authFetch("/api/payos-create", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ amount: amounts[selectedPricingPlan], plan: selectedPricingPlan, uid: user.uid })
@@ -744,7 +749,28 @@ export default function App() {
     if (planType === 'plus' || planType === 'trial') return 2;
     return 1;
   };
-  const currentMultiplier = getLimitMultiplier(userDoc?.planType);
+  const activePlan = getActivePlan(userDoc?.planType, userDoc?.planExpiresAt);
+  const [planClock, setPlanClock] = useState(Date.now);
+  useEffect(() => {
+    const remaining = Number(userDoc?.planExpiresAt) - Date.now();
+    if (!(remaining > 0)) return;
+    const timer = setTimeout(() => setPlanClock(Date.now()), Math.min(remaining + 1, 2147483647));
+    return () => clearTimeout(timer);
+  }, [userDoc?.planExpiresAt, planClock]);
+  const currentMultiplier = getLimitMultiplier(activePlan);
+  const canRegister = (plan: string) => canRegisterPlan(plan, userDoc?.planType, userDoc?.planExpiresAt);
+  const reachedLimits = useRef<string[]>([]);
+  useEffect(() => {
+    if (!userDoc || !user || isAdminUser(user, userDoc) || !hasPhoneConfirmation(userDoc)) return;
+    const today = getTodayStr();
+    const reached = userDoc.lastLatexResetDate === today
+      ? (['latexCount', 'examCount', 'promptCount'] as const)
+          .filter((field, index) => Number(userDoc[field] || 0) >= [30, 10, 15][index] * currentMultiplier)
+          .map(field => `${user.uid}:${today}:${activePlan}:${field}`)
+      : [];
+    if (reached.some(key => !reachedLimits.current.includes(key))) setSidebarView('pricing');
+    reachedLimits.current = reached;
+  }, [user, userDoc, currentMultiplier, activePlan]);
   const [newMemberEmail, setNewMemberEmail] = useState<string>("");
   const [newMemberName, setNewMemberName] = useState<string>("");
   const [newMemberRole, setNewMemberRole] = useState<string>("user");
@@ -4021,6 +4047,9 @@ ${cleanedBody}
   }, [inputText, smartNewline]);
 
   const triggerToast = (msg: string, success: boolean = true) => {
+    if (!success && /(?:đã (?:tới|đạt) giới hạn|đã hết lượt|hạn mức|quota.*exceeded)/i.test(msg)) {
+      setSidebarView('pricing');
+    }
     setToast({ show: true, msg, success });
   };
 
@@ -7580,6 +7609,9 @@ ${bodyHtml}
                </button>
                
                <h2 className="text-2xl md:text-3xl font-semibold text-center mb-6 text-[#0D0D0D]">Nâng cấp gói của bạn</h2>
+               {activePlan !== 'free' && userDoc?.planExpiresAt && (
+                 <p className="text-sm text-gray-500 text-center mb-4">Gói {activePlan.toUpperCase()} đã đăng ký đến {new Date(userDoc.planExpiresAt).toLocaleDateString('vi-VN')}. Bạn có thể nâng cấp lên gói cao hơn.</p>
+               )}
 
                {/* Grid 3 cột */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
@@ -7588,9 +7620,9 @@ ${bodyHtml}
                  <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300">
                     <h3 className="text-xl font-medium text-gray-900 mb-2">Trial</h3>
                     <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Dành cho người mới làm quen với hệ thống AI số hóa văn bản.</p>
-                    <button onClick={() => setSelectedPricingPlan('trial')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98]">Đăng ký dùng thử</button>
+                    <button disabled={!canRegister('trial')} onClick={() => setSelectedPricingPlan('trial')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">{activePlan === 'trial' ? 'Đã đăng ký' : !canRegister('trial') ? 'Đã có gói cao hơn' : 'Đăng ký dùng thử'}</button>
                     <div className="flex items-end gap-1 mb-5">
-                       <sup className="text-lg font-medium text-gray-900 top-[-0.6em]">đ</sup>
+                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ</span>
                        <span className="text-3xl font-semibold text-gray-900 leading-none">9.000</span>
                        <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ 7 ngày</span>
                     </div>
@@ -7605,9 +7637,9 @@ ${bodyHtml}
                  <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 relative hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300">
                     <h3 className="text-xl font-medium text-gray-900 mb-2">Plus</h3>
                     <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Không chỉ công thức, hãy để AI cùng bạn thao tác toàn bộ văn bản.</p>
-                    <button onClick={() => setSelectedPricingPlan('plus')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98]">Nâng cấp gói Plus</button>
+                    <button disabled={!canRegister('plus')} onClick={() => setSelectedPricingPlan('plus')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">{activePlan === 'plus' ? 'Đã đăng ký' : !canRegister('plus') ? 'Đã có gói cao hơn' : 'Nâng cấp gói Plus'}</button>
                     <div className="flex items-end gap-1 mb-5">
-                       <sup className="text-lg font-medium text-gray-900 top-[-0.6em]">đ</sup>
+                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ</span>
                        <span className="text-3xl font-semibold text-gray-900 leading-none">19.000</span>
                        <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng (đã bao gồm thuế)</span>
                     </div>
@@ -7623,9 +7655,9 @@ ${bodyHtml}
                  <div className="bg-[#f8faff] lg:bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-[#3b82f6] shadow-sm relative z-10 hover:border-blue-600 hover:shadow-[0_8px_30px_rgba(59,130,246,0.18)] transition-all duration-300">
                     <h3 className="text-xl font-medium text-gray-900 mb-2">Pro</h3>
                     <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Mức sử dụng tiêu chuẩn dành cho những ai dựa vào AI số hóa mạnh mẽ nhất.</p>
-                    <button onClick={() => setSelectedPricingPlan('pro')} className="w-full py-2.5 rounded-full bg-[#3b82f6] text-white font-medium hover:bg-blue-600 transition-colors mb-4 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98]">Nâng cấp gói Pro</button>
+                    <button disabled={!canRegister('pro')} onClick={() => setSelectedPricingPlan('pro')} className="w-full py-2.5 rounded-full bg-[#3b82f6] text-white font-medium hover:bg-blue-600 transition-colors mb-4 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">{activePlan === 'pro' ? 'Đã đăng ký' : 'Nâng cấp gói Pro'}</button>
                     <div className="flex items-end gap-1 mb-5">
-                       <sup className="text-lg font-medium text-gray-900 top-[-0.6em]">đ</sup>
+                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ</span>
                        <span className="text-3xl font-semibold text-gray-900 leading-none">29.000</span>
                        <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng (đã bao gồm thuế)</span>
                     </div>
@@ -7634,7 +7666,6 @@ ${bodyHtml}
                       <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Nhân 4 (x4) hạn mức lưu trữ & xử lý</span></div>
                       <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 120 LaTeX / ngày</span></div>
                       <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 40 Đề thi / ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Không có quảng cáo</span></div>
                     </div>
                  </div>
 
