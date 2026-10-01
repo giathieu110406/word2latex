@@ -32,6 +32,17 @@ service cloud.firestore {
       return isOwnerEmail() || isAdminDoc() || isAdminRole();
     }
 
+    function confirmationFields() {
+      return ['emailOtpVerifiedAt', 'confirmedPhoneNumber', 'phoneConfirmedAt',
+        'phoneConfirmationMethod', 'phoneConfirmationVersion', 'phoneHistory'];
+    }
+
+    function preservesConfirmation() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(confirmationFields())
+        && (resource.data.get('confirmedPhoneNumber', '') == ''
+          || request.resource.data.get('phoneNumber', '') == resource.data.get('phoneNumber', ''));
+    }
+
     // Owner: full access ngoại trừ profiles và OTP records, vốn cần các ràng buộc riêng.
     match /{collection}/{document=**} {
       allow read, write: if collection != 'email_verifications' && collection != 'users' && isOwnerEmail();
@@ -50,14 +61,14 @@ service cloud.firestore {
     match /users/{userId} {
       allow get:    if isSignedIn() && (currentUid() == userId || isAdmin());
       allow list:   if isAdmin();
-      allow create: if isSignedIn() && request.resource.data.get('emailOtpVerifiedAt', null) == null && (
+      allow create: if isSignedIn() && !request.resource.data.keys().hasAny(confirmationFields()) && currentUid() == userId && (
         isAdmin() || (
           currentUid() == userId &&
           request.resource.data.get('role', 'user') == 'user' &&
           request.resource.data.get('status', 'pending') == 'pending'
         )
       );
-      allow update: if isSignedIn() && request.resource.data.get('emailOtpVerifiedAt', null) == resource.data.get('emailOtpVerifiedAt', null) && (
+      allow update: if isSignedIn() && preservesConfirmation() && (
         isAdmin() || (
           currentUid() == userId &&
           request.resource.data.get('role', 'user') == resource.data.get('role', 'user') &&
@@ -65,6 +76,11 @@ service cloud.firestore {
         )
       );
       allow delete: if isAdmin();
+
+      match /phoneConfirmations/{eventId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
     }
 
     match /feedbacks/{feedbackId} {
@@ -87,9 +103,7 @@ service cloud.firestore {
     }
 
     match /api_usage_stats/{statId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
     match /raw_ai_logs/{logId} {
       allow read, write: if isAdmin();

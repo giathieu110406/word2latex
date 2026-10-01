@@ -1,13 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import nodemailer from 'nodemailer';
 import { getFirebaseAdmin } from '../server/firebase-admin.js';
-import { createOtp, hashOtp, isOtpExpired, normalizeVietnamPhone } from '../server/email-verification-utils.js';
+import { createOtp, hashOtp, normalizeVietnamPhone } from '../server/email-verification-utils.js';
+import { randomUUID } from 'node:crypto';
+import { ConfirmationError, createPhoneConfirmationStore, type PhoneConfirmationStore } from '../server/phone-confirmation-store.js';
+import { readPhoneHistory } from '../server/phone-history.js';
 
 export { hashOtp } from '../server/email-verification-utils.js';
-
-const OTP_TTL_MS = 10 * 60_000;
-const RESEND_COOLDOWN_MS = 60_000;
-const MAX_ATTEMPTS = 5;
 
 type RecordData = Record<string, unknown>;
 
@@ -23,14 +22,6 @@ export interface ResponseLike {
   json(body: RecordData): unknown;
 }
 
-export interface EmailVerificationStore {
-  get(uid: string): Promise<RecordData | null>;
-  set(uid: string, data: RecordData): Promise<void>;
-  update(uid: string, data: RecordData): Promise<void>;
-  delete(uid: string): Promise<void>;
-  setUser(uid: string, data: RecordData): Promise<void>;
-}
-
 export interface EmailOtpAuth {
   verifyIdToken(token: string): Promise<{ uid: string; email?: string }>;
   getUser(uid: string): Promise<{
@@ -43,37 +34,12 @@ export interface EmailOtpAuth {
 
 export interface EmailVerificationHandlerDependencies {
   getAdmin?: () => { auth: EmailOtpAuth; db: unknown };
-  createStore?: (db: unknown) => EmailVerificationStore;
+  createStore?: (db: any) => PhoneConfirmationStore;
   createMailer?: () => { sendMail(message: { to: string; subject: string; text: string; html: string }): Promise<unknown> };
   now?: () => Date;
 }
 
-class EndpointError extends Error {
-  constructor(public status: number, public code: string, message: string, public details?: RecordData) {
-    super(message);
-  }
-}
-
-function createFirestoreStore(db: any): EmailVerificationStore {
-  return {
-    async get(uid) {
-      const snapshot = await db.collection('email_verifications').doc(uid).get();
-      return snapshot.exists ? snapshot.data() : null;
-    },
-    async set(uid, data) {
-      await db.collection('email_verifications').doc(uid).set(data);
-    },
-    async update(uid, data) {
-      await db.collection('email_verifications').doc(uid).update(data);
-    },
-    async delete(uid) {
-      await db.collection('email_verifications').doc(uid).delete();
-    },
-    async setUser(uid, data) {
-      await db.collection('users').doc(uid).set(data, { merge: true });
-    },
-  };
-}
+const EndpointError = ConfirmationError;
 
 export function createMailer() {
   let transportConfig: any;
@@ -130,19 +96,14 @@ function getAction(req: RequestLike): string | null {
   return typeof action === 'string' ? action : null;
 }
 
-function recordNumber(record: RecordData, key: string): number {
-  const value = record[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
 function getFirebaseAccountEmail(
   decoded: { email?: string },
   user: { email?: string; providerData?: Array<{ email?: string }> },
 ): string | null {
   const candidates = [
-    decoded.email,
     user.email,
     ...(user.providerData?.map((provider) => provider.email) ?? []),
+    decoded.email,
   ];
   return candidates.find((candidate): candidate is string => (
     typeof candidate === 'string' && /^\S+@\S+\.\S+$/.test(candidate.trim())
@@ -172,7 +133,9 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
           throw new EndpointError(503, 'ADMIN_UNAVAILABLE', `Lỗi cấu hình server: ${msg}`);
         }
       })();
-      const decoded = await auth.verifyIdToken(token);
+      const decoded = await auth.verifyIdToken(token).catch(() => {
+        throw new EndpointError(401, 'UNAUTHENTICATED', 'Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.');
+      });
       if (!decoded.uid) {
         throw new EndpointError(401, 'UNAUTHENTICATED', 'Token xác thực không có địa chỉ email hợp lệ.');
       }
@@ -183,41 +146,32 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
       }
 
       const action = getAction(req);
-      const store = (dependencies.createStore ?? createFirestoreStore)(db);
+      if (action === 'history') {
+        const history = await readPhoneHistory(db as any, decoded.uid, email, String(req.body?.targetUid ?? ''));
+        return res.status(200).json({ success: true, ...history });
+      }
+      const store = (dependencies.createStore ?? createPhoneConfirmationStore)(db);
       const mailer = dependencies.createMailer ?? createMailer;
       const currentTime = now();
 
       if (action === 'send') {
         const phoneNumber = normalizeVietnamPhone(String(req.body?.phoneNumber ?? ''));
         if (!phoneNumber) {
-          throw new EndpointError(400, 'INVALID_PHONE', 'Số điện thoại Việt Nam không hợp lệ.');
-        }
-
-        const previous = await store.get(decoded.uid);
-        const lastSentAt = typeof previous?.lastSentAt === 'string' ? Date.parse(previous.lastSentAt) : Number.NaN;
-        const remainingMs = lastSentAt + RESEND_COOLDOWN_MS - currentTime.getTime();
-        if (Number.isFinite(lastSentAt) && remainingMs > 0) {
-          throw new EndpointError(429, 'RESEND_COOLDOWN', 'Vui lòng chờ trước khi gửi lại mã.', {
-            cooldownSeconds: Math.ceil(remainingMs / 1000),
-          });
+          throw new EndpointError(400, 'INVALID_PHONE', 'Số di động Việt Nam không hợp lệ hoặc có mẫu số không được chấp nhận.');
         }
 
         const otp = createOtp();
         const otpHash = hashOtp(decoded.uid, otp);
-        const expiresAt = new Date(currentTime.getTime() + OTP_TTL_MS).toISOString();
-        await mailer().sendMail({
+        const challengeId = randomUUID();
+        const sender = mailer();
+        await store.reserveSend(decoded.uid, phoneNumber, email, challengeId, otpHash, currentTime);
+        await sender.sendMail({
           to: email,
           subject: 'Mã xác thực Word2LaTeX',
-          text: `Mã xác thực Word2LaTeX của bạn là ${otp}. Mã hết hạn sau 10 phút.`,
-          html: `<p>Mã xác thực Word2LaTeX của bạn là <strong>${otp}</strong>.</p><p>Mã hết hạn sau 10 phút.</p>`,
+          text: `Mã xác nhận Word2LaTeX của bạn là ${otp}. Mã hết hạn sau 10 phút. Số liên hệ ${phoneNumber} sẽ được khóa sau khi xác nhận qua email. Đây không phải xác minh quyền sở hữu số điện thoại.`,
+          html: `<p>Mã xác nhận Word2LaTeX của bạn là <strong>${otp}</strong>.</p><p>Mã hết hạn sau 10 phút. Số liên hệ ${phoneNumber} sẽ được khóa sau khi xác nhận qua email. Đây không phải xác minh quyền sở hữu số điện thoại.</p>`,
         });
-        await store.set(decoded.uid, {
-          phoneNumber,
-          otpHash,
-          attempts: 0,
-          lastSentAt: currentTime.toISOString(),
-          expiresAt,
-        });
+        await store.markDelivered(decoded.uid, challengeId);
 
         return res.status(200).json({ success: true, cooldownSeconds: 60 });
       }
@@ -228,47 +182,22 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
           throw new EndpointError(400, 'INVALID_OTP', 'Mã xác thực phải gồm 6 chữ số.');
         }
 
-        const record = await store.get(decoded.uid);
-        if (!record) {
-          throw new EndpointError(400, 'OTP_NOT_REQUESTED', 'Bạn cần yêu cầu một mã xác thực mới.');
-        }
-        if (isOtpExpired(String(record.expiresAt ?? ''), currentTime)) {
-          await store.delete(decoded.uid);
-          throw new EndpointError(400, 'OTP_EXPIRED', 'Mã xác thực đã hết hạn. Vui lòng yêu cầu mã mới.');
-        }
-        if (recordNumber(record, 'attempts') >= MAX_ATTEMPTS) {
-          throw new EndpointError(429, 'OTP_LOCKED', 'Bạn đã nhập sai quá số lần cho phép. Vui lòng yêu cầu mã mới.');
-        }
-        if (hashOtp(decoded.uid, code) !== record.otpHash) {
-          const attempts = recordNumber(record, 'attempts') + 1;
-          await store.update(decoded.uid, { attempts });
-          if (attempts >= MAX_ATTEMPTS) {
-            throw new EndpointError(429, 'OTP_LOCKED', 'Bạn đã nhập sai quá số lần cho phép. Vui lòng yêu cầu mã mới.');
-          }
-          throw new EndpointError(400, 'INVALID_OTP', 'Mã xác thực không đúng.');
-        }
-
-        const verifiedAt = currentTime.toISOString();
-        await store.setUser(decoded.uid, {
-          phoneNumber: record.phoneNumber,
-          emailOtpVerifiedAt: verifiedAt,
-        });
+        const profile = await store.verify(decoded.uid, email, hashOtp(decoded.uid, code), currentTime);
         await auth.setCustomUserClaims(decoded.uid, {
           ...(firebaseUser.customClaims ?? {}),
           emailOtpVerified: true,
-        });
-        await store.delete(decoded.uid);
-        return res.status(200).json({ success: true, emailOtpVerifiedAt: verifiedAt });
+        }).catch(() => console.warn('[Email verification] Profile confirmed; compatibility claim refresh failed.'));
+        return res.status(200).json({ success: true, ...profile });
       }
 
       throw new EndpointError(400, 'INVALID_ACTION', 'Thao tác xác thực không hợp lệ.');
     } catch (error: unknown) {
-      if (error instanceof EndpointError) {
+      if (error instanceof ConfirmationError) {
         return res.status(error.status).json({ error: error.message, code: error.code, ...error.details });
       }
       const msg = error instanceof Error ? error.message : 'Unknown error';
       console.error('[Email verification] Unhandled error:', msg, error);
-      return res.status(503).json({ error: `Dịch vụ xác thực email hiện không khả dụng. (${msg})` });
+      return res.status(503).json({ error: 'Dịch vụ xác nhận email hiện không khả dụng. Vui lòng thử lại sau.' });
     }
   };
 }

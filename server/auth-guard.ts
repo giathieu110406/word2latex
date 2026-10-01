@@ -1,6 +1,7 @@
 import { getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirebaseAdmin } from './firebase-admin.js';
+import { hasPhoneConfirmation, isValidVerificationDate } from '../shared/phone-confirmation.js';
 
 export interface AuthUser {
   uid: string;
@@ -24,19 +25,12 @@ type TokenResolver = (idToken: string) => Promise<{ uid: string; email: string }
 
 export function hasEmailOtpVerification(profile: unknown): boolean {
   if (!profile || typeof profile !== 'object') return false;
-  const value = (profile as { emailOtpVerifiedAt?: unknown }).emailOtpVerifiedAt;
-  if (typeof value === 'string') return value.trim().length > 0 && Number.isFinite(Date.parse(value));
-  if (value instanceof Date) return Number.isFinite(value.getTime());
-  if (value && typeof value === 'object' && 'toDate' in value) {
-    const date = (value as { toDate?: () => Date }).toDate?.();
-    return date instanceof Date && Number.isFinite(date.getTime());
-  }
-  return false;
+  return isValidVerificationDate((profile as { emailOtpVerifiedAt?: unknown }).emailOtpVerifiedAt);
 }
 
 /**
  * Trích xuất và xác thực thông tin user từ Firebase ID Token hoặc Google OAuth2 Token
- * Sử dụng cơ chế 4 tầng dự phòng để đảm bảo độ tin cậy tuyệt đối
+ * Only server-verified tokens authenticate a user; decoding JWT claims is not verification.
  */
 async function extractUserInfoFromToken(idToken: string): Promise<{ uid: string; email: string } | null> {
   if (!getApps().length && process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -104,34 +98,6 @@ async function extractUserInfoFromToken(idToken: string): Promise<{ uid: string;
     // Bỏ qua
   }
 
-  // Tầng 4: Giải mã an toàn JWT Payload (phòng ngừa sự cố timeout mạng ra bên ngoài)
-  try {
-    const parts = idToken.split('.');
-    if (parts.length === 3) {
-      const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const payloadJson = Buffer.from(payloadBase64, 'base64').toString('utf8');
-      const payload = JSON.parse(payloadJson);
-
-      const now = Math.floor(Date.now() / 1000);
-      // Cho phép độ lệch thời gian 120s
-      const isNotExpired = !payload.exp || payload.exp > (now - 120);
-      const isExpectedAudience = payload.aud === PROJECT_ID || (typeof payload.aud === 'string' && payload.aud.includes(PROJECT_ID));
-      const isExpectedIssuer = payload.iss === `https://securetoken.google.com/${PROJECT_ID}` || 
-                                payload.iss === 'https://accounts.google.com' || 
-                                payload.iss === 'accounts.google.com';
-
-      if (isNotExpired && (isExpectedAudience || isExpectedIssuer)) {
-        const uid = payload.user_id || payload.sub;
-        const email = (payload.email || "").toLowerCase().trim();
-        if (uid) {
-          return { uid, email };
-        }
-      }
-    }
-  } catch (jwtErr) {
-    console.warn("[Auth Guard] JWT parse error:", jwtErr);
-  }
-
   return null;
 }
 
@@ -177,7 +143,7 @@ export async function verifyAuthAndApproval(
     // 2. Kiểm tra trạng thái tài khoản và xác thực email trong Firestore
     let status = "";
     let role = "user";
-    let emailOtpVerifiedAt: unknown;
+    let profile: Record<string, unknown> = {};
 
     let activeFirestoreDb = firestoreDb;
     if (!activeFirestoreDb) {
@@ -196,7 +162,7 @@ export async function verifyAuthAndApproval(
           const data = typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data;
           status = data?.status || "";
           role = data?.role || "user";
-          emailOtpVerifiedAt = data?.emailOtpVerifiedAt;
+          profile = data ?? {};
         }
       } catch (sdkErr) {
         console.warn("[Auth Guard] Không thể đọc qua SDK, chuyển sang REST API:", sdkErr);
@@ -217,7 +183,7 @@ export async function verifyAuthAndApproval(
           const docData: any = await fsRes.json();
           status = docData?.fields?.status?.stringValue || "";
           role = docData?.fields?.role?.stringValue || "user";
-          emailOtpVerifiedAt = docData?.fields?.emailOtpVerifiedAt?.timestampValue || docData?.fields?.emailOtpVerifiedAt?.stringValue;
+          profile = Object.fromEntries(Object.entries(docData?.fields ?? {}).map(([key, value]: [string, any]) => [key, value.timestampValue ?? value.stringValue ?? (value.integerValue !== undefined ? Number(value.integerValue) : undefined)]));
         }
       } catch (restErr) {
         console.warn("[Auth Guard] Lỗi truy vấn Firestore REST API:", restErr);
@@ -233,11 +199,11 @@ export async function verifyAuthAndApproval(
       };
     }
 
-    if (!hasEmailOtpVerification({ emailOtpVerifiedAt })) {
+    if (!hasPhoneConfirmation(profile)) {
       return {
         authorized: false,
         status: 403,
-        error: "Bạn cần xác thực email trước khi sử dụng tính năng AI."
+        error: "Bạn cần xác nhận số liên hệ hợp lệ bằng mã gửi qua email trước khi sử dụng tính năng AI."
       };
     }
 

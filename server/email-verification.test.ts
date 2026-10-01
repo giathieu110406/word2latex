@@ -1,137 +1,56 @@
 import assert from 'node:assert/strict';
-
-process.env.OTP_PEPPER = 'test-only-otp-pepper';
-
-const moduleUnderTest = await import('../api/email-verification.ts').catch(() => null);
-assert.ok(moduleUnderTest, 'email verification endpoint module must be available');
-
-const { createEmailVerificationHandler, hashOtp } = moduleUnderTest;
-
-type RecordData = Record<string, unknown>;
-const verificationRecords = new Map<string, RecordData>();
-const userProfiles = new Map<string, RecordData>();
-const sentMessages: Array<{ to: string; text: string }> = [];
-const claims = new Map<string, Record<string, unknown>>();
-let currentTime = new Date('2026-09-30T00:00:00.000Z');
-
-const store = {
-  get: async (uid: string) => verificationRecords.get(uid) ?? null,
-  set: async (uid: string, data: RecordData) => verificationRecords.set(uid, { ...data }),
-  update: async (uid: string, data: RecordData) => verificationRecords.set(uid, { ...verificationRecords.get(uid), ...data }),
-  delete: async (uid: string) => verificationRecords.delete(uid),
-  setUser: async (uid: string, data: RecordData) => userProfiles.set(uid, { ...userProfiles.get(uid), ...data }),
-};
-
+import { initializeApp, deleteApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { createEmailVerificationHandler } from '../api/email-verification.ts';
+assert.ok(process.env.FIRESTORE_EMULATOR_HOST, 'email integration test requires emulator, never production');
+process.env.OTP_PEPPER = 'test-only-pepper';
+const app = initializeApp({ projectId: 'demo-phone-confirmation' }, 'email-endpoint-test');
+const db = getFirestore(app);
+const uid = `endpoint-${Date.now()}`;
+await db.collection('users').doc(uid).set({ planType: 'plus', phoneNumber: '' });
+const sent: Array<{ to: string; text: string }> = [];
+let smtpFails = false;
+let claimsFail = false;
+let now = new Date('2026-10-01T00:00:00Z');
 const handler = createEmailVerificationHandler({
-  getAdmin: () => ({
-    auth: {
-      verifyIdToken: async (token: string) => {
-        if (token === 'missing-email-token') return { uid: 'user-2' };
-        if (token !== 'valid-token') throw new Error('invalid token');
-        return { uid: 'user-1', email: 'member@example.com' };
-      },
-      getUser: async (uid: string) => ({
-        email: undefined,
-        providerData: uid === 'user-2' ? [{ email: 'fallback@example.com', providerId: 'google.com' }] : [],
-        customClaims: { existingClaim: true },
-      }),
-      setCustomUserClaims: async (uid: string, nextClaims: Record<string, unknown>) => claims.set(uid, nextClaims),
-    },
-    db: {},
-  }),
-  createStore: () => store,
-  createMailer: () => ({
-    sendMail: async ({ to, text }: { to: string; text: string }) => {
-      sentMessages.push({ to, text });
-    },
-  }),
-  now: () => currentTime,
+  getAdmin: () => ({ db, auth: {
+    verifyIdToken: async token => { if (token !== 'valid') throw Error('bad token'); return { uid }; },
+    getUser: async () => ({ providerData: [{ email: 'fixture@example.com' }], customClaims: { existing: true } }),
+    setCustomUserClaims: async (_uid, claims) => { assert.equal(claims.existing, true); if (claimsFail) throw Error('claim unavailable'); },
+  } }),
+  createMailer: () => ({ sendMail: async message => { if (smtpFails) throw Error('SMTP unavailable'); sent.push(message); } }),
+  now: () => now,
 });
-
-function responseRecorder() {
-  const result: { status?: number; body?: RecordData } = {};
-  return {
-    result,
-    response: {
-      status(status: number) {
-        result.status = status;
-        return this;
-      },
-      json(body: RecordData) {
-        result.body = body;
-        return body;
-      },
-    },
-  };
+async function request(action: string, body: Record<string, unknown>, token = 'valid') {
+  const result = { status: 0, body: {} as Record<string, unknown> };
+  const response = { status: (code: number) => { result.status = code; return response; }, json: (data: Record<string, unknown>) => { result.body = data; return data; } };
+  await handler({ method: 'POST', headers: { authorization: `Bearer ${token}` }, query: { action }, body }, response);
+  return result;
 }
-
-const noToken = responseRecorder();
-await handler({ method: 'POST', headers: {}, query: { action: 'send' }, body: { phoneNumber: '0901234567' } }, noToken.response);
-assert.equal(noToken.result.status, 401);
-
-const send = responseRecorder();
-await handler({ method: 'POST', headers: { authorization: 'Bearer valid-token' }, query: { action: 'send' }, body: { phoneNumber: '0901234567' } }, send.response);
-assert.equal(send.result.status, 200);
-assert.equal(send.result.body?.cooldownSeconds, 60);
-assert.equal(sentMessages.length, 1);
-const storedRecord = verificationRecords.get('user-1');
-assert.equal(storedRecord?.phoneNumber, '+84901234567');
-assert.match(String(storedRecord?.otpHash), /^[a-f0-9]{64}$/);
-const emailedOtp = sentMessages[0].text.match(/\b\d{6}\b/)?.[0];
-assert.ok(emailedOtp, 'the email must contain a six-digit OTP');
-assert.equal(String(storedRecord).includes(emailedOtp), false);
-
-const fallbackEmail = responseRecorder();
-await handler({ method: 'POST', headers: { authorization: 'Bearer missing-email-token' }, query: { action: 'send' }, body: { phoneNumber: '0901234567' } }, fallbackEmail.response);
-assert.equal(fallbackEmail.result.status, 200);
-assert.equal(sentMessages[1].to, 'fallback@example.com');
-
-currentTime = new Date('2026-09-30T00:00:30.000Z');
-const resendTooEarly = responseRecorder();
-await handler({ method: 'POST', headers: { authorization: 'Bearer valid-token' }, query: { action: 'send' }, body: { phoneNumber: '0901234567' } }, resendTooEarly.response);
-assert.equal(resendTooEarly.result.status, 429);
-assert.equal(sentMessages.length, 2);
-
-verificationRecords.set('user-1', {
-  phoneNumber: '+84901234567',
-  otpHash: hashOtp('user-1', '123456'),
-  attempts: 0,
-  lastSentAt: currentTime.toISOString(),
-  expiresAt: '2026-09-30T00:10:00.000Z',
-});
-const verify = responseRecorder();
-await handler({ method: 'POST', headers: { authorization: 'Bearer valid-token' }, query: { action: 'verify' }, body: { code: '123456' } }, verify.response);
-assert.equal(verify.result.status, 200);
-assert.equal(typeof userProfiles.get('user-1')?.emailOtpVerifiedAt, 'string');
-assert.equal(userProfiles.get('user-1')?.phoneNumber, '+84901234567');
-assert.equal(claims.get('user-1')?.emailOtpVerified, true);
-assert.equal(claims.get('user-1')?.existingClaim, true);
-
-verificationRecords.set('user-1', {
-  phoneNumber: '+84901234567',
-  otpHash: hashOtp('user-1', '123456'),
-  attempts: 0,
-  lastSentAt: currentTime.toISOString(),
-  expiresAt: '2026-09-30T00:00:00.000Z',
-});
-const expired = responseRecorder();
-await handler({ method: 'POST', headers: { authorization: 'Bearer valid-token' }, query: { action: 'verify' }, body: { code: '123456' } }, expired.response);
-assert.equal(expired.result.status, 400);
-
-verificationRecords.set('user-1', {
-  phoneNumber: '+84901234567',
-  otpHash: hashOtp('user-1', '123456'),
-  attempts: 0,
-  lastSentAt: currentTime.toISOString(),
-  expiresAt: '2026-09-30T00:10:00.000Z',
-});
-for (let attempt = 1; attempt <= 5; attempt += 1) {
-  const wrongCode = responseRecorder();
-  await handler({ method: 'POST', headers: { authorization: 'Bearer valid-token' }, query: { action: 'verify' }, body: { code: '000000' } }, wrongCode.response);
-  assert.equal(wrongCode.result.status, attempt === 5 ? 429 : 400);
-}
-const sixthWrongCode = responseRecorder();
-await handler({ method: 'POST', headers: { authorization: 'Bearer valid-token' }, query: { action: 'verify' }, body: { code: '000000' } }, sixthWrongCode.response);
-assert.equal(sixthWrongCode.result.status, 429);
-
-console.log('email verification endpoint tests passed');
+assert.equal((await request('send', { phoneNumber: '0912345689' }, '')).status, 401);
+assert.equal((await request('send', { phoneNumber: '0912345689' }, 'invalid')).status, 401);
+assert.equal((await request('send', { phoneNumber: '0312345689' })).status, 400);
+assert.equal((await request('send', { phoneNumber: '0912345689', email: 'attacker@example.com' })).status, 200);
+assert.equal(sent[0].to, 'fixture@example.com', 'recipient comes from authenticated account, never body');
+const otp = sent[0].text.match(/\b\d{6}\b/)![0];
+const record = (await db.collection('email_verifications').doc(uid).get()).data()!;
+assert.notEqual(record.otpHash, otp);
+assert.equal(record.delivered, true);
+assert.equal((await request('send', { phoneNumber: '0912345689' })).status, 429);
+assert.equal((await request('verify', { code: '12' })).status, 400);
+claimsFail = true;
+const verified = await request('verify', { code: otp });
+assert.equal(verified.status, 200, 'claim failure after commit does not reject confirmation');
+assert.equal(verified.body.confirmedPhoneNumber, '+84912345689');
+assert.equal((await db.collection('users').doc(uid).get()).data()?.planType, 'plus');
+assert.equal((await request('verify', { code: otp })).status, 400, 'OTP cannot be replayed');
+now = new Date(now.getTime() + 60000);
+assert.equal((await request('send', { phoneNumber: '0335784563' })).status, 409, 'locked number cannot change');
+smtpFails = true;
+const failed = await request('send', { phoneNumber: '0912345689' });
+assert.equal(failed.status, 503);
+assert.equal((await db.collection('email_verifications').doc(uid).get()).data()?.delivered, false);
+assert.equal((await request('verify', { code: otp })).status, 400, 'undelivered challenge is unusable');
+assert.equal((await db.collection('users').doc(uid).collection('phoneConfirmations').get()).size, 1);
+await deleteApp(app);
+console.log('email confirmation endpoint integration tests passed');
