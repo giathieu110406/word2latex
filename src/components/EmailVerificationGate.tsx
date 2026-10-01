@@ -85,7 +85,7 @@ export function EmailVerificationGate({ email, lockedPhone, onVerified }: EmailV
   };
 
   return (
-    <main className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/45 p-4 font-sans text-slate-800 backdrop-blur-sm">
+    <main className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-slate-950/45 p-4 font-sans text-slate-800 backdrop-blur-sm">
       <section className="w-full max-w-md rounded-3xl border border-indigo-100 bg-white p-6 sm:p-8 shadow-2xl shadow-indigo-900/10">
         <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
           <ShieldCheck size={30} aria-hidden="true" />

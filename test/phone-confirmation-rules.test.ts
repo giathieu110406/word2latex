@@ -27,5 +27,6 @@ const newUid = `new-${uid}`;
 const newMember = env.authenticatedContext(newUid).firestore();
 await assertFails(newMember.doc(`users/${newUid}`).set({ role: 'user', status: 'pending', confirmedPhoneNumber: '+84912345689', phoneConfirmationVersion: 1 }));
 await assertSucceeds(newMember.doc(`users/${newUid}`).set({ role: 'user', status: 'pending', phoneNumber: '' }));
+await assertSucceeds(owner.doc(`users/admin-created-${uid}`).set({ role: 'user', status: 'pending', phoneNumber: '', displayName: 'Created by admin' }));
 await env.cleanup();
 console.log('phone confirmation Firestore rules tests passed');

@@ -61,7 +61,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow get:    if isSignedIn() && (currentUid() == userId || isAdmin());
       allow list:   if isAdmin();
-      allow create: if isSignedIn() && !request.resource.data.keys().hasAny(confirmationFields()) && currentUid() == userId && (
+      allow create: if isSignedIn() && !request.resource.data.keys().hasAny(confirmationFields()) && (
         isAdmin() || (
           currentUid() == userId &&
           request.resource.data.get('role', 'user') == 'user' &&

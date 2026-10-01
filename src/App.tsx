@@ -7541,7 +7541,7 @@ ${bodyHtml}
                     <div>
                       <p className="text-xs font-bold text-indigo-900">Liên kết thông tin cá nhân & Gmail</p>
                       <p className="text-[11px] text-indigo-700/80 leading-relaxed mt-0.5">
-                        Hệ thống tự động sử dụng Tên và Ảnh đại diện từ tài khoản Google/Gmail của bạn làm ảnh đại diện mặc định để cá nhân hoá trải nghiệm. Bạn có thể tự do sửa đổi Tên hiển thị, Số điện thoại và Ngày sinh ở biểu mẫu trên bất cứ lúc nào.
+                        Hệ thống tự động sử dụng Tên và Ảnh đại diện từ tài khoản Google/Gmail của bạn làm ảnh đại diện mặc định để cá nhân hoá trải nghiệm. Bạn có thể tự do sửa đổi Tên hiển thị và Ngày sinh ở biểu mẫu trên bất cứ lúc nào. Số liên hệ được khóa sau khi xác nhận qua email.
                       </p>
                     </div>
                   </div>
