@@ -14,7 +14,7 @@ import * as dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import * as mammoth from "mammoth";
 import { parseFile, parseUrl } from "./markitdown";
-import PayOS from "@payos/node";
+import { PayOS } from "@payos/node";
 
 dotenv.config();
 
