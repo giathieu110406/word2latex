@@ -646,7 +646,7 @@ export default function App() {
   // -- PRICING STATE & MODALS --
   const [showPricingModal, setShowPricingModal] = useState<boolean>(false);
   const [selectedPricingPlan, setSelectedPricingPlan] = useState<string | null>(null);
-  const [paymentOrder, setPaymentOrder] = useState<{ id: string, amount: number, plan: string, bin?: string, accountNumber?: string, qrCode?: string } | null>(null);
+  const [paymentOrder, setPaymentOrder] = useState<{ id: string, amount: number, plan: string, bin?: string, accountNumber?: string, qrCode?: string, orderCode?: number } | null>(null);
 
   useEffect(() => {
     if (selectedPricingPlan) {
@@ -675,7 +675,8 @@ export default function App() {
               plan: selectedPricingPlan,
               bin: data.bin,
               accountNumber: data.accountNumber,
-              qrCode: data.qrCode
+              qrCode: data.qrCode,
+              orderCode: data.orderCode
             });
           } else {
             triggerToast(data.error || "Không thể tạo link thanh toán. Vui lòng thử cấu hình .env", false);
@@ -691,6 +692,35 @@ export default function App() {
       fetchPayOS();
     }
   }, [selectedPricingPlan, user]);
+
+  // Polling định kỳ kiểm tra trạng thái thanh toán từ PayOS
+  useEffect(() => {
+    if (!paymentOrder || !paymentOrder.orderCode || !user) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/payos-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderCode: paymentOrder.orderCode,
+            uid: user.uid,
+            plan: paymentOrder.plan
+          })
+        });
+        const resData = await res.json();
+        if (resData.paid) {
+          triggerToast(`Thanh toán thành công! Gói ${paymentOrder.plan.toUpperCase()} đã được kích hoạt.`, true);
+          setPaymentOrder(null);
+          setSelectedPricingPlan(null);
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [paymentOrder, user]);
 
   useEffect(() => {
     if (userDoc && userDoc.planType && userDoc.planType !== 'free') {

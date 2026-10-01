@@ -21,8 +21,13 @@ if (!getApps().length) {
 const db = getFirestore(appFirebase);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // PayOS test webhook thường gửi request GET hoặc HEAD để ping kiểm tra URL có sống không
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return res.status(200).json({ status: 'ok', message: 'PayOS webhook endpoint is active' });
+  }
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(200).json({ status: 'ok' });
   }
 
   let payos: any = null;
@@ -48,14 +53,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (uid.toLowerCase().startsWith(partialUid)) {
             const amount = webhookData.data.amount;
             let targetPlan = "trial";
-            if (amount >= 29000) targetPlan = "pro";
-            else if (amount >= 19000) targetPlan = "plus";
+            let durationDays = 3;
+            if (amount >= 29000) {
+              targetPlan = "pro";
+              durationDays = 30;
+            } else if (amount >= 19000) {
+              targetPlan = "plus";
+              durationDays = 30;
+            }
+            
+            const expiresAt = Date.now() + durationDays * 24 * 60 * 60 * 1000;
             
             await updateDoc(doc(db, "users", uid), {
+              planType: targetPlan,
               pricingPlan: targetPlan,
+              planExpiresAt: expiresAt,
               updatedAt: new Date().toISOString()
             });
-            console.log(`Updated user ${uid} to plan ${targetPlan} from Webhook`);
+            console.log(`Updated user ${uid} to plan ${targetPlan} (expires ${expiresAt}) from Webhook`);
             break;
           }
         }

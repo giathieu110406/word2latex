@@ -37,7 +37,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bin: paymentLinkRes.bin,
       accountNumber: paymentLinkRes.accountNumber,
       amount: paymentLinkRes.amount,
-      description: paymentLinkRes.description
+      description: paymentLinkRes.description,
+      orderCode: orderCode
     });
   } catch (error: any) {
     console.error("Lỗi tạo Payment Link:", error);

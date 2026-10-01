@@ -30,7 +30,11 @@
   },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/webhook/payos",
+      "destination": "/api/payos-webhook"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
