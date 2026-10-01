@@ -14,14 +14,8 @@ import * as dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import * as mammoth from "mammoth";
 import { parseFile, parseUrl } from "./markitdown";
-import { PayOS } from "@payos/node";
-
-dotenv.config();
-
-let payos: any = null;
-if (process.env.PAYOS_CLIENT_ID && process.env.PAYOS_API_KEY && process.env.PAYOS_CHECKSUM_KEY) {
-  payos = new PayOS(process.env.PAYOS_CLIENT_ID, process.env.PAYOS_API_KEY, process.env.PAYOS_CHECKSUM_KEY);
-}
+import payosCreateHandler from "./api/payos-create";
+import payosWebhookHandler from "./api/payos-webhook";
 
 // Initialize Google GenAI client lazily to avoid crashing on startup if key is missing
 let aiClient: GoogleGenAI | null = null;
@@ -123,90 +117,12 @@ function generateApprovalToken(uid: string): string {
   return crypto.createHmac("sha256", SECRET_KEY).update(uid).digest("hex");
 }
 
-app.post("/api/payos/create-payment-link", async (req, res) => {
-  try {
-    if (!payos) {
-      return res.status(500).json({ error: "PayOS chưa được cấu hình trên Server (.env)" });
-    }
-    const { amount, plan, uid } = req.body;
-    if (!amount || !plan || !uid) {
-      return res.status(400).json({ error: "Thiếu dữ liệu (amount, plan, uid)" });
-    }
-    const orderCode = Number(String(Date.now()).slice(-6) + Math.floor(Math.random() * 1000));
-    const body = {
-      orderCode,
-      amount,
-      description: `W2L${uid.substring(0, 4).toUpperCase()}`, // max 25 chars
-      returnUrl: `${req.headers.origin}?payment=success`,
-      cancelUrl: `${req.headers.origin}?payment=cancelled`
-    };
-    const paymentLinkRes = await payos.paymentRequests.create(body);
-    res.json({
-      checkoutUrl: paymentLinkRes.checkoutUrl,
-      qrCode: paymentLinkRes.qrCode,
-      bin: paymentLinkRes.bin,
-      accountNumber: paymentLinkRes.accountNumber,
-      amount: paymentLinkRes.amount,
-      description: paymentLinkRes.description
-    });
-  } catch (error) {
-    console.error("Lỗi tạo Payment Link:", error);
-    res.status(500).json({ error: String(error) });
-  }
+app.post("/api/payos-create", async (req, res) => {
+  await payosCreateHandler(req as any, res as any);
 });
 
-app.post("/api/webhook/payos", async (req, res) => {
-  // 1. Phản hồi PayOS ngay lập tức
-  res.json({ success: true });
-
-  try {
-    // 2. Thử xác thực webhook data
-    let data = req.body.data;
-    if (payos && req.body.signature) {
-      try {
-        const webhookData = payos.verifyPaymentWebhookData(req.body);
-        data = webhookData;
-      } catch (e) {
-        console.error("PayOS Signature Validation Failed:", e);
-      }
-    }
-    
-    if (!data || !data.description || !data.amount) return;
-    
-    const desc = data.description.toUpperCase();
-    const match = desc.match(/W2L([A-Z0-9]{4})/);
-    if (!match) return;
-    const partialUid = match[1];
-
-    let planType = "";
-    let duration = 0;
-    if (data.amount === 9000) { planType = "trial"; duration = 7; }
-    else if (data.amount === 19000) { planType = "plus"; duration = 30; }
-    else if (data.amount === 29000) { planType = "pro"; duration = 30; }
-    
-    if (!planType) return;
-
-    // Quét users để map partialUid (xử lý ngầm, không block response)
-    const usersSnap = await getDocs(collection(db, "users"));
-    
-    let targetUid = "";
-    usersSnap.forEach(docSnap => {
-      if (docSnap.id.toUpperCase().startsWith(partialUid)) {
-        targetUid = docSnap.id;
-      }
-    });
-
-    if (targetUid) {
-      const expiresAt = Date.now() + duration * 24 * 60 * 60 * 1000;
-      await updateDoc(doc(db, "users", targetUid), {
-        planType,
-        planExpiresAt: expiresAt
-      });
-      console.log(`Updated user ${targetUid} to plan ${planType}`);
-    }
-  } catch (err) {
-    console.error("Webhook error:", err);
-  }
+app.post("/api/payos-webhook", async (req, res) => {
+  await payosWebhookHandler(req as any, res as any);
 });
 
 // 1. API: Approve user directly from email link (GET)

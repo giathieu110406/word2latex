@@ -662,7 +662,7 @@ export default function App() {
       const fetchPayOS = async () => {
         try {
           const amounts: Record<string, number> = { trial: 9000, plus: 19000, pro: 29000 };
-          const response = await fetch("/api/payos/create-payment-link", {
+          const response = await fetch("/api/payos-create", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ amount: amounts[selectedPricingPlan], plan: selectedPricingPlan, uid: user.uid })
