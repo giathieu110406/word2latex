@@ -7516,9 +7516,9 @@ ${bodyHtml}
         )}
 
         {sidebarView === 'pricing' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] bg-[#F9F9F9] flex flex-col items-center justify-center font-sans overflow-hidden">
-            <div className="w-full max-w-6xl mx-auto p-4 md:px-8 relative flex flex-col items-center justify-center h-full max-h-[900px]">
-               <button onClick={() => setSidebarView('overview')} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-800 transition-colors z-10">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] bg-[#F9F9F9] flex flex-col items-center justify-start md:justify-center font-sans overflow-x-hidden overflow-y-auto overscroll-y-contain md:overflow-hidden">
+            <div className="w-full min-w-0 max-w-6xl mx-auto p-4 pt-16 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-4 md:px-8 relative flex flex-col items-center justify-start md:justify-center shrink-0 h-auto md:h-full max-h-none md:max-h-[900px]">
+               <button aria-label="Đóng bảng nâng cấp" onClick={() => setSidebarView('overview')} className="fixed md:absolute top-4 right-4 p-2 bg-[#F9F9F9] md:bg-transparent rounded-full text-slate-400 hover:text-slate-800 transition-colors z-20 md:z-10">
                  <X className="w-6 h-6 stroke-[1.5]" />
                </button>
                
