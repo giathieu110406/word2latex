@@ -1052,7 +1052,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       <svg className="w-3.5 h-3.5 text-indigo-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
-                      <span className="hidden xs:inline">Tải Word (.doc)</span>
+                      <span className="hidden xs:inline">Tải Word (.docx)</span>
                       <span className="xs:hidden">Tải Word</span>
                     </button>
                   </div>
@@ -1499,7 +1499,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   <HelpCircle className="w-4 h-4" />
                 </span>
                 <p className="text-[11px] text-slate-600 font-semibold leading-relaxed">
-                  Xem trước chuẩn hóa Unicode & Ký hiệu LaTeX. Khi xuất tệp MS Word (.doc), toàn bộ hệ thống công thức toán học sẽ tự động được đồng hóa thành đối tượng Math Equation chính quy.
+                  Xuất Word (.docx) với công thức Equation chỉnh sửa được. Nếu dán công thức bị sai trên máy của bạn, hãy mở file .docx rồi sao chép từ Word sang Word.
                 </p>
               </div>
             </div>
@@ -1508,4 +1508,3 @@ export const QBuilder: React.FC<QBuilderProps> = ({
       </div>
   );
 };
- 

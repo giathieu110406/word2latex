@@ -519,7 +519,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                       type="button"
                       onClick={downloadAsWord}
                       className="bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-2 sm:px-4 rounded-xl text-xs font-bold transition-all shadow-3xs cursor-pointer flex-1 sm:flex-none flex items-center justify-center whitespace-nowrap active:scale-95"
-                      title="Tải file Word (.doc) hỗ trợ MathML đầy đủ"
+                      title="Tải file Word (.docx) với công thức Equation chỉnh sửa được"
                     >
                       <span className="hidden xs:inline">Tải Word</span>
                       <span className="xs:hidden">Word</span>
@@ -649,4 +649,3 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
     </div>
   );
 };
- 

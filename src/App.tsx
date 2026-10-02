@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
+import { prepareWordEquations, buildWordClipboard, copyWordContent, downloadWordDocument } from "./utils/word-export";
 import { marked } from "marked";
 import { LatexConverter } from "./components/LatexConverter";
 import { MarkItDown } from "./components/MarkItDown";
@@ -155,132 +156,6 @@ function escapeLaTeX(text: string): string {
 
 // Module-level cache to make KaTeX MathML generation instant during Word download/copy
 const mathmlCache = new Map<string, string>();
-
-/**
- * Tạo tài liệu Word Document (.doc) chuẩn Microsoft Office Print Layout (A4, lề chuẩn 2cm, MathML to Word Equation)
- * Đảm bảo Microsoft Word mở ngay lập tức ở chế độ Print Layout trang A4 chuẩn, không mở ở chế độ Web Layout HTML
- */
-function generateOfficeWordHtml(bodyHtml: string, fontName: string = "Times New Roman"): string {
-  return `<html xmlns:v="urn:schemas-microsoft-com:vml"
-xmlns:o="urn:schemas-microsoft-com:office:office"
-xmlns:w="urn:schemas-microsoft-com:office:word"
-xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
-xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<meta name="ProgId" content="Word.Document">
-<meta name="Generator" content="Microsoft Word 15">
-<meta name="Originator" content="Microsoft Word 15">
-<!--[if gte mso 9]>
-<xml>
-  <w:WordDocument>
-    <w:View>Print</w:View>
-    <w:Zoom>100</w:Zoom>
-    <w:DoNotOptimizeForBrowser/>
-    <w:ValidateAgainstSchemas/>
-    <w:SaveIfXMLInvalid>false</w:SaveIfXMLInvalid>
-    <w:IgnoreMixedContent>false</w:IgnoreMixedContent>
-    <w:AlwaysShowPlaceholderText>false</w:AlwaysShowPlaceholderText>
-    <w:Compatibility>
-      <w:BreakWrappedTables/>
-      <w:SnapToGridInCell/>
-      <w:WrapTextWithPunct/>
-      <w:UseAsianBreakRules/>
-      <w:DontGrowAutofit/>
-    </w:Compatibility>
-  </w:WordDocument>
-</xml>
-<![endif]-->
-<style>
-  @page WordSection1 {
-      size: 595.3pt 841.9pt; /* Chuẩn A4: 21.0cm x 29.7cm */
-      margin: 56.7pt 56.7pt 56.7pt 56.7pt; /* Lề chuẩn 2cm đều 4 phía */
-      mso-header-margin: 35.4pt;
-      mso-footer-margin: 35.4pt;
-      mso-paper-source: 0;
-  }
-  div.WordSection1 {
-      page: WordSection1;
-  }
-  body {
-      font-family: '${fontName}', 'Times New Roman', serif;
-      font-size: 13pt;
-      line-height: 1.35;
-      color: #000000;
-      margin: 0;
-  }
-  p.MsoNormal, li.MsoNormal, div.MsoNormal, p {
-      mso-style-unhide: no;
-      mso-style-qformat: yes;
-      font-family: '${fontName}', 'Times New Roman', serif !important;
-      font-size: 13pt !important;
-      line-height: 1.35 !important;
-      margin-top: 0pt !important;
-      margin-bottom: 5pt !important;
-  }
-  li, span, select, tr, td, th {
-      font-family: '${fontName}', 'Times New Roman', serif !important;
-      font-size: 13pt !important;
-  }
-  div, table {
-      font-family: '${fontName}', 'Times New Roman', serif !important;
-      font-size: 13pt !important;
-      line-height: 1.2 !important;
-  }
-  div.doc-display-math, div.katex-display, .katex-custom-wrapper[data-display="true"] {
-      margin-top: 8pt !important;
-      margin-bottom: 8pt !important;
-      text-align: center !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-  }
-  table {
-      border-collapse: collapse;
-      width: 100%;
-      margin-top: 8pt !important;
-      margin-bottom: 8pt !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-  }
-  table th, table td {
-      border: 1px solid #94a3b8 !important;
-      padding: 6px 10px !important;
-  }
-  table th {
-      font-weight: bold !important;
-      background-color: #f1f5f9 !important;
-  }
-  table.doc-answer-table {
-      margin-top: 14pt !important;
-      margin-bottom: 10pt !important;
-      border: 1px solid #10b981 !important;
-      background-color: #ecfdf5 !important;
-  }
-  table.doc-answer-table th, table.doc-answer-table td {
-      border: none !important;
-      padding: 8pt !important;
-  }
-  table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
-      border: none !important;
-  }
-  table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
-      border: none !important;
-  }
-  table.doc-question-table, table.doc-question-table tr, table.doc-question-table td {
-      border: none !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      background: none !important;
-  }
-</style>
-</head>
-<body lang="VI">
-<div class="WordSection1">
-${bodyHtml}
-</div>
-</body>
-</html>`;
-}
 
 // Helper functions to protect URLs from being mangled by formatting or KaTeX regexes
 interface ProtectedUrl {
@@ -1876,61 +1751,17 @@ export default function App() {
 
     if (!docPreviewRef.current) return;
 
-    const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement;
-    injectMathML(clone);
-    injectInlineStyles(clone);
-
-    const bodyHtml = clone.innerHTML;
-
-    const wordDoc = generateOfficeWordHtml(bodyHtml, wordFont);
-
-    const tempDiv = document.createElement("div");
-    tempDiv.contentEditable = "true";
-    tempDiv.style.position = "absolute";
-    tempDiv.style.left = "-9999px";
-    tempDiv.innerHTML = bodyHtml;
-    document.body.appendChild(tempDiv);
-
-    const selection = window.getSelection();
-    if (!selection) return;
-
-    const range = document.createRange();
-    range.selectNodeContents(tempDiv);
-    selection.removeAllRanges();
-    selection.addRange(range);
-
-    const copyListener = (e: ClipboardEvent) => {
-      e.preventDefault();
-      if (e.clipboardData) {
-        e.clipboardData.setData("text/html", wordDoc);
-        e.clipboardData.setData(
-          "text/plain",
-          docPreviewRef.current?.innerText || "",
-        );
-      }
-    };
-
-    document.addEventListener("copy", copyListener);
-    let success = false;
     try {
-      success = document.execCommand("copy");
-    } catch (err) {
-      console.error(err);
+      const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement;
+      prepareWordEquations(clone);
+      injectInlineStyles(clone);
+      await copyWordContent(buildWordClipboard(clone, wordFont));
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Không thể tạo nội dung Word. Vui lòng thử lại.", false);
+      return;
     }
-    document.removeEventListener("copy", copyListener);
-
-    selection.removeAllRanges();
-    document.body.removeChild(tempDiv);
-
-    if (success) {
-      triggerToast("Đã sao chép tài liệu! Hãy mở Word và nhấn Ctrl+V.");
-      await incrementExamCount();
-    } else {
-      triggerToast(
-        "Sao chép lỗi. Vui lòng tự bôi đen ở căn lề xem trước để copy.",
-        false,
-      );
-    }
+    triggerToast("Đã sao chép tài liệu! Trong Word, chọn dán giữ nguyên định dạng nguồn. Nếu công thức bị sai, hãy tải file .docx rồi sao chép từ Word.");
+    await incrementExamCount();
   };
 
   const downloadDocAsWord = async () => {
@@ -1950,26 +1781,16 @@ export default function App() {
 
     if (!docPreviewRef.current) return;
 
-    const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement;
-    injectMathML(clone);
-    injectInlineStyles(clone);
-
-    const bodyHtml = clone.innerHTML;
-
-    const wordDoc = generateOfficeWordHtml(bodyHtml, wordFont);
-
-    const blob = new Blob(["\ufeff" + wordDoc], {
-      type: "application/vnd.ms-word;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "Tai_Lieu_Tu_Luan_Trac_Nghiem.doc";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    triggerToast("Đã tạo và tải file Word (.doc) thành công!");
+    try {
+      const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement;
+      prepareWordEquations(clone);
+      injectInlineStyles(clone);
+      await downloadWordDocument(clone, wordFont, "Tai_Lieu_Tu_Luan_Trac_Nghiem.docx");
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Không thể tạo nội dung Word. Vui lòng thử lại.", false);
+      return;
+    }
+    triggerToast("Đã tạo và tải file Word (.docx) với công thức chỉnh sửa được!");
     await incrementExamCount();
   };
 
@@ -5016,64 +4837,17 @@ ${bodyHtml}
 
     if (!previewRef.current) return;
 
-    // Create an isolated copy to parse and prepare Word specific namespaces
-    const clone = previewRef.current.cloneNode(true) as HTMLDivElement;
-    injectMathML(clone);
-    injectInlineStyles(clone);
-
-    const bodyHtml = clone.innerHTML;
-
-    const wordDoc = generateOfficeWordHtml(bodyHtml, wordFont);
-
-    const tempDiv = document.createElement("div");
-    tempDiv.contentEditable = "true";
-    tempDiv.style.position = "absolute";
-    tempDiv.style.left = "-9999px";
-    tempDiv.innerHTML = bodyHtml;
-    document.body.appendChild(tempDiv);
-
-    const selection = window.getSelection();
-    if (!selection) return;
-
-    const range = document.createRange();
-    range.selectNodeContents(tempDiv);
-    selection.removeAllRanges();
-    selection.addRange(range);
-
-    const copyListener = (e: ClipboardEvent) => {
-      e.preventDefault();
-      if (e.clipboardData) {
-        e.clipboardData.setData("text/html", wordDoc);
-        e.clipboardData.setData(
-          "text/plain",
-          previewRef.current?.innerText || "",
-        );
-      }
-    };
-
-    document.addEventListener("copy", copyListener);
-    let success = false;
     try {
-      success = document.execCommand("copy");
-    } catch (err) {
-      console.error(err);
+      const clone = previewRef.current.cloneNode(true) as HTMLDivElement;
+      prepareWordEquations(clone);
+      injectInlineStyles(clone);
+      await copyWordContent(buildWordClipboard(clone, wordFont));
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Không thể tạo nội dung Word. Vui lòng thử lại.", false);
+      return;
     }
-    document.removeEventListener("copy", copyListener);
-
-    selection.removeAllRanges();
-    document.body.removeChild(tempDiv);
-
-    if (success) {
-      triggerToast(
-        "Đã sao chép! Hãy mở Word và nhấn Ctrl+V (hoặc dán giữ nguyên định dạng gốc).",
-      );
-      await incrementLatexCount();
-    } else {
-      triggerToast(
-        "Sao chép lỗi. Vui lòng tự bôi đen ở khung xem trước và copy.",
-        false,
-      );
-    }
+    triggerToast("Đã sao chép! Trong Word, chọn dán giữ nguyên định dạng nguồn. Nếu công thức bị sai, hãy tải file .docx rồi sao chép từ Word.");
+    await incrementLatexCount();
   };
 
   const downloadAsWord = async () => {
@@ -5093,28 +4867,16 @@ ${bodyHtml}
 
     if (!previewRef.current) return;
 
-    // Create an isolated copy to parse and prepare Word specific namespaces
-    const clone = previewRef.current.cloneNode(true) as HTMLDivElement;
-    injectMathML(clone);
-    injectInlineStyles(clone);
-
-    const bodyHtml = clone.innerHTML;
-
-    const wordDoc = generateOfficeWordHtml(bodyHtml, wordFont);
-
-    // Add Byte Order Mark (BOM) for proper UTF-8 decoding in Microsoft Word
-    const blob = new Blob(["\ufeff" + wordDoc], {
-      type: "application/vnd.ms-word;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "LaTeX_Sang_Word_Equation.doc";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    triggerToast("Đã tạo và tải file Word (.doc) thành công!");
+    try {
+      const clone = previewRef.current.cloneNode(true) as HTMLDivElement;
+      prepareWordEquations(clone);
+      injectInlineStyles(clone);
+      await downloadWordDocument(clone, wordFont, "LaTeX_Sang_Word_Equation.docx");
+    } catch (error) {
+      triggerToast(error instanceof Error ? error.message : "Không thể tạo nội dung Word. Vui lòng thử lại.", false);
+      return;
+    }
+    triggerToast("Đã tạo và tải file Word (.docx) với công thức chỉnh sửa được!");
     await incrementLatexCount();
   };
 
