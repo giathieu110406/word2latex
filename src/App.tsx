@@ -4854,45 +4854,29 @@ ${bodyHtml}
           ".": "\u0323",
         };
 
-        // Recursive resolver for <mover> elements (handles nested movers like \u00e2\u0301 = \u1ea5, \u00ea\u0300 = \u1ec1, \u00f4\u0300 = \u1ed3, etc.)
-        const resolveMoverElement = (moverEl: Element): string => {
-          const children = Array.from(moverEl.children);
-          if (children.length < 2) return moverEl.textContent || "";
+        // Resolve KaTeX <mover> elements bottom-up.
+        // Only recompose known text accents (Vietnamese) to prevent breaking math accents like \\overrightarrow
+        const allMovers = Array.from(mathEl.querySelectorAll("mover"));
+        allMovers.reverse().forEach((mover) => {
+          const children = Array.from(mover.children);
+          if (children.length < 2) return;
 
           const baseChild = children[0];
-          let baseText = "";
-          if (baseChild.tagName.toLowerCase() === "mover") {
-            baseText = resolveMoverElement(baseChild);
-          } else {
-            baseText = baseChild.textContent || "";
-          }
-
-          if (baseText === "\u0131") baseText = "i"; // dotless i
-          if (baseText === "\u0237") baseText = "j"; // dotless j
-
           const accentChild = children[1];
           const accentText = accentChild.textContent?.trim() || "";
           const combining = ACCENT_TO_COMBINING[accentText];
 
-          if (combining && baseText) {
-            return (baseText + combining).normalize("NFC");
+          // Only flatten into <mtext> if it's a known text accent AND the base is simple text (or already flattened <mtext>)
+          if (combining && baseChild.children.length === 0) {
+            let baseText = baseChild.textContent || "";
+            if (baseText === "\u0131") baseText = "i"; // dotless i
+            if (baseText === "\u0237") baseText = "j"; // dotless j
+            
+            const resolvedText = (baseText + combining).normalize("NFC");
+            const newEl = document.createElement("mtext");
+            newEl.textContent = resolvedText;
+            mover.replaceWith(newEl);
           }
-          return baseText + accentText;
-        };
-
-        // Find and replace all top-level <mover> elements
-        const topMovers: Element[] = [];
-        mathEl.querySelectorAll("mover").forEach((mover) => {
-          if (!mover.parentElement?.closest("mover")) {
-            topMovers.push(mover);
-          }
-        });
-
-        topMovers.forEach((mover) => {
-          const resolvedText = resolveMoverElement(mover);
-          const newEl = document.createElement("mtext");
-          newEl.textContent = resolvedText;
-          mover.replaceWith(newEl);
         });
 
         // Merge adjacent <mtext> nodes across all container elements (math, mrow, semantics, mfrac, etc.)

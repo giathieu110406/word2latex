@@ -148,6 +148,31 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
     }
   };
 
+  const handleMainTextAreaPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData.items;
+    let hasImage = false;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        hasImage = true;
+        break;
+      }
+    }
+
+    if (hasImage) {
+      e.preventDefault();
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            await extractTextFromImage(file);
+          }
+        }
+      }
+    } else {
+      handlePasteGeneric(e, setInputText, true);
+    }
+  };
+
   return (
     <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-0 md:h-[calc(100vh-110px)] md:max-h-[calc(100vh-110px)]">
       {/* Top Control Settings Panel */}
@@ -354,7 +379,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
               id="input-text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onPaste={(e) => handlePasteGeneric(e, setInputText)}
+              onPaste={handleMainTextAreaPaste}
               disabled={isProcessingCanvas}
               className={`flex-1 min-h-0 w-full p-3.5 sm:p-4 md:p-5 resize-none overflow-y-auto border-0 focus:ring-0 focus:outline-none text-slate-800 leading-relaxed text-sm md:text-base font-normal placeholder:text-slate-400 bg-white ${isProcessingCanvas ? "opacity-50 cursor-not-allowed" : "opacity-100"} transition-opacity duration-300`}
               placeholder="Nhập hoặc sao chép nội dung chứa công thức toán ($x^2$ hoặc $$y = mx+b$$) từ AI hay tài liệu bất kỳ và dán vào đây để chuyển hóa..."
