@@ -1756,9 +1756,9 @@ export default function App() {
 
     try {
       const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement;
-      prepareWordEquations(clone);
+      injectMathML(clone);
       injectInlineStyles(clone);
-      await copyWordContent(buildWordClipboard(clone, wordFont));
+      await copyWordContent(buildWordClipboard(clone, wordFont, docPreviewRef.current.innerText), true);
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Không thể tạo nội dung Word. Vui lòng thử lại.", false);
       return;
@@ -4888,9 +4888,9 @@ ${bodyHtml}
 
     try {
       const clone = previewRef.current.cloneNode(true) as HTMLDivElement;
-      prepareWordEquations(clone);
+      injectMathML(clone);
       injectInlineStyles(clone);
-      await copyWordContent(buildWordClipboard(clone, wordFont));
+      await copyWordContent(buildWordClipboard(clone, wordFont, previewRef.current.innerText), true);
     } catch (error) {
       triggerToast(error instanceof Error ? error.message : "Không thể tạo nội dung Word. Vui lòng thử lại.", false);
       return;

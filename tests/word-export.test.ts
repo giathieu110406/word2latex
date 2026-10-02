@@ -50,8 +50,7 @@ test('reported matrix with vdots/ddots works in both clipboard and DOCX without 
   assert.equal(doc.documentElement.textContent!.split('⋮').length - 1, 4);
   assert.match(doc.documentElement.textContent!, /⋱/);
   const payload = buildWordClipboard(root, 'Times New Roman');
-  assert.match(payload.html, /<m:m>/);
-  assert.ok(payload.text.includes(source));
+  assert.match(payload.html, /<mtable/);
   const zip = await JSZip.loadAsync(await (await buildWordDocx(root, 'Times New Roman')).arrayBuffer());
   assert.match(await zip.file('word/document.xml')!.async('string'), /⋮/);
 });
@@ -146,17 +145,17 @@ test('invalid equations and unsupported structures fail explicitly', () => {
   assert.throws(() => mathmlToOfficeMath('<math><menclose notation="circle"><mi>x</mi></menclose></math>'), /circle/);
 });
 
-test('clipboard uses one native Office equation branch and source LaTeX plain text', () => {
+test('copy restores legacy .doc Office HTML with MathML and rendered text fallback', () => {
   const root = fixture(`<p>Vectơ ${equation('\\overrightarrow{DA}')} &amp; tiếng Việt.</p>`);
   const original = root.innerHTML;
   prepareWordEquations(root);
-  const payload = buildWordClipboard(root, 'Times New Roman');
-  assert.match(payload.html, /xmlns:m="http:\/\/schemas\.microsoft\.com\/office\/2004\/12\/omml"/);
-  assert.match(payload.html, /<m:acc>/);
-  assert.match(payload.html, /<m:oMath xmlns:m=/);
-  assert.doesNotMatch(payload.html, /<m:omath|<m:rpr/);
-  assert.doesNotMatch(payload.html, /<!--\[if|<math/);
-  assert.match(payload.text, /\\\(\\overrightarrow\{DA\}\\\)/);
+  const payload = buildWordClipboard(root, 'Times New Roman', 'Vectơ DA và tiếng Việt.');
+  assert.match(payload.html, /xmlns:w="urn:schemas-microsoft-com:office:word"/);
+  assert.match(payload.html, /ProgId" content="Word.Document"/);
+  assert.match(payload.html, /WordSection1/);
+  assert.match(payload.html, /<math[^>]*xmlns="http:\/\/www.w3.org\/1998\/Math\/MathML"/);
+  assert.doesNotMatch(payload.html, /<m:oMath|data-word-omml/);
+  assert.equal(payload.text, 'Vectơ DA và tiếng Việt.');
   assert.doesNotMatch(payload.html, /<img|data:image/);
   assert.ok(original.includes('katex'));
 });
@@ -304,6 +303,38 @@ test('modern Clipboard API writes both formats and rejection falls back without 
     p.remove(); selection.removeAllRanges();
   } finally {
     (globalThis as any).ClipboardItem = previous;
+    delete (navigator as any).clipboard;
+  }
+});
+
+test('legacy copy uses the synchronous copy event even when modern clipboard is available', async () => {
+  let modernWrites = 0;
+  const captured: Record<string, string> = {};
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: async () => { modernWrites++; } } });
+  const previousItem = (globalThis as any).ClipboardItem;
+  (globalThis as any).ClipboardItem = class {};
+  (document as any).execCommand = () => {
+    const event = new dom.window.Event('copy', { cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: { setData(type: string, value: string) { captured[type] = value; } } });
+    document.dispatchEvent(event);
+    return true;
+  };
+  try {
+    const payload = buildWordClipboard(fixture('<p>Văn bản <math xmlns="http://www.w3.org/1998/Math/MathML"><mi>x</mi></math></p>'), 'Times New Roman', 'Văn bản x');
+    await copyWordContent(payload, true);
+    assert.equal(modernWrites, 0);
+    assert.equal(captured['text/html'], payload.html);
+    assert.equal(captured['text/plain'], 'Văn bản x');
+    assert.equal(document.querySelector('[contenteditable="true"]'), null);
+    const app = readFileSync('src/App.tsx', 'utf8');
+    for (const handler of ['copyDocToWord', 'copyToWord']) {
+      const section = app.slice(app.indexOf(`  const ${handler} =`)).split('\n  const ')[0];
+      assert.match(section, /injectMathML\(clone\)/);
+      assert.doesNotMatch(section, /prepareWordEquations/);
+      assert.match(section, /buildWordClipboard\(clone, wordFont, .*\.innerText\), true/);
+    }
+  } finally {
+    (globalThis as any).ClipboardItem = previousItem;
     delete (navigator as any).clipboard;
   }
 });

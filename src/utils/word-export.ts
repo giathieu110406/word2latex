@@ -399,46 +399,144 @@ export async function buildWordDocx(root: HTMLElement, font: string): Promise<Bl
   return new Blob([bytes], { type: DOCX_MIME });
 }
 
-function plainText(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
-  if (node.nodeType !== Node.ELEMENT_NODE) return '';
-  const el = node as HTMLElement;
-  if (el.classList.contains('word-equation')) return el.getAttribute('data-display') === 'true' ? `\\[${el.getAttribute('data-latex')}\\]` : `\\(${el.getAttribute('data-latex')}\\)`;
-  if (el.tagName === 'BR') return '\n';
-  const text = Array.from(el.childNodes).map(plainText).join('');
-  return text + (['TD', 'TH'].includes(el.tagName) ? '\t' : isBlock(el) ? '\n' : '');
+function generateOfficeWordHtml(bodyHtml: string, fontName: string = "Times New Roman"): string {
+  return `<html xmlns:v="urn:schemas-microsoft-com:vml"
+xmlns:o="urn:schemas-microsoft-com:office:office"
+xmlns:w="urn:schemas-microsoft-com:office:word"
+xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="Microsoft Word 15">
+<meta name="Originator" content="Microsoft Word 15">
+<!--[if gte mso 9]>
+<xml>
+  <w:WordDocument>
+    <w:View>Print</w:View>
+    <w:Zoom>100</w:Zoom>
+    <w:DoNotOptimizeForBrowser/>
+    <w:ValidateAgainstSchemas/>
+    <w:SaveIfXMLInvalid>false</w:SaveIfXMLInvalid>
+    <w:IgnoreMixedContent>false</w:IgnoreMixedContent>
+    <w:AlwaysShowPlaceholderText>false</w:AlwaysShowPlaceholderText>
+    <w:Compatibility>
+      <w:BreakWrappedTables/>
+      <w:SnapToGridInCell/>
+      <w:WrapTextWithPunct/>
+      <w:UseAsianBreakRules/>
+      <w:DontGrowAutofit/>
+    </w:Compatibility>
+  </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+  @page WordSection1 {
+      size: 595.3pt 841.9pt; /* Chuẩn A4: 21.0cm x 29.7cm */
+      margin: 56.7pt 56.7pt 56.7pt 56.7pt; /* Lề chuẩn 2cm đều 4 phía */
+      mso-header-margin: 35.4pt;
+      mso-footer-margin: 35.4pt;
+      mso-paper-source: 0;
+  }
+  div.WordSection1 {
+      page: WordSection1;
+  }
+  body {
+      font-family: '${fontName}', 'Times New Roman', serif;
+      font-size: 13pt;
+      line-height: 1.35;
+      color: #000000;
+      margin: 0;
+  }
+  p.MsoNormal, li.MsoNormal, div.MsoNormal, p {
+      mso-style-unhide: no;
+      mso-style-qformat: yes;
+      font-family: '${fontName}', 'Times New Roman', serif !important;
+      font-size: 13pt !important;
+      line-height: 1.35 !important;
+      margin-top: 0pt !important;
+      margin-bottom: 5pt !important;
+  }
+  li, span, select, tr, td, th {
+      font-family: '${fontName}', 'Times New Roman', serif !important;
+      font-size: 13pt !important;
+  }
+  div, table {
+      font-family: '${fontName}', 'Times New Roman', serif !important;
+      font-size: 13pt !important;
+      line-height: 1.2 !important;
+  }
+  div.doc-display-math, div.katex-display, .katex-custom-wrapper[data-display="true"] {
+      margin-top: 8pt !important;
+      margin-bottom: 8pt !important;
+      text-align: center !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+  }
+  table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 8pt !important;
+      margin-bottom: 8pt !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+  }
+  table th, table td {
+      border: 1px solid #94a3b8 !important;
+      padding: 6px 10px !important;
+  }
+  table th {
+      font-weight: bold !important;
+      background-color: #f1f5f9 !important;
+  }
+  table.doc-answer-table {
+      margin-top: 14pt !important;
+      margin-bottom: 10pt !important;
+      border: 1px solid #10b981 !important;
+      background-color: #ecfdf5 !important;
+  }
+  table.doc-answer-table th, table.doc-answer-table td {
+      border: none !important;
+      padding: 8pt !important;
+  }
+  table.doc-options-table, table.doc-options-table th, table.doc-options-table td {
+      border: none !important;
+  }
+  table.doc-header-table, table.doc-header-table th, table.doc-header-table td {
+      border: none !important;
+  }
+  table.doc-question-table, table.doc-question-table tr, table.doc-question-table td {
+      border: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      background: none !important;
+  }
+</style>
+</head>
+<body lang="VI">
+<div class="WordSection1">
+${bodyHtml}
+</div>
+</body>
+</html>`;
 }
 
-export function buildWordClipboard(root: HTMLElement, font: string): { html: string; text: string } {
-  font = officeFont(font);
-  // Run serializer validation for copy as well, so unsupported content is not
-  // accepted by one path and silently lost by another.
-  blocks(root, font);
+
+/** Legacy .doc-compatible Office HTML used by the Copy buttons. */
+export function buildWordClipboard(root: HTMLElement, font: string, text?: string): {html: string; text: string} {
   const clone = root.cloneNode(true) as HTMLElement;
-  let marker = 'WORD_EQUATION';
-  while (clone.innerHTML.includes(marker)) marker += '_';
-  const equations: string[] = [];
-  clone.querySelectorAll<HTMLElement>('.word-equation').forEach(el => {
-    const omml = officeEquation(el);
-    // Word's HTML importer uses its legacy OMML namespace. Put one equation
-    // directly in the fragment: browser/Word conditional-comment handling can
-    // otherwise select the MathML fallback and flatten every formula.
-    const htmlMath = omml.replaceAll(MATH_NS, 'http://schemas.microsoft.com/office/2004/12/omml');
-    const content = el.getAttribute('data-display') === 'true' ? `<div style="text-align:center"><m:oMathPara>${htmlMath}</m:oMathPara></div>` : htmlMath;
-    el.replaceWith(document.createComment(`${marker}_${equations.length}`));
-    equations.push(content);
+  // Also accept a prepared equation clone without putting native DOCX metadata
+  // on the clipboard. The actual Copy callers use their original MathML path.
+  clone.querySelectorAll('.word-equation').forEach(el => {
+    const math = el.querySelector('math');
+    if (!math) throw new Error('Công thức thiếu MathML cho clipboard.');
+    el.replaceWith(math.cloneNode(true));
   });
-  // HTML DOM serialization lowercases foreign prefixed tags. Insert the XML
-  // after serializing the surrounding HTML so oMath/rPr names stay intact.
-  const content = clone.innerHTML.replace(new RegExp(`<!--${marker}_(\\d+)-->`, 'g'), (_, index) => equations[Number(index)]);
-  return {
-    html: `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="${WORD_NS}" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml"><head><meta charset="utf-8"><style>body{font-family:'${escapeXml(font)}';font-size:13pt}p{margin:0 0 4pt}table{border-collapse:collapse}</style></head><body><!--StartFragment-->${content}<!--EndFragment--></body></html>`,
-    text: plainText(root).trimEnd(),
-  };
+  return {html: generateOfficeWordHtml(clone.innerHTML, officeFont(font)), text: text ?? root.innerText ?? root.textContent ?? ''};
 }
 
-export async function copyWordContent(payload: { html: string; text: string }): Promise<void> {
-  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+export async function copyWordContent(payload: { html: string; text: string }, legacy = false): Promise<void> {
+  if (!legacy && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
     try {
       await navigator.clipboard.write([new ClipboardItem({
         'text/html': new Blob([payload.html], { type: 'text/html' }),
@@ -453,7 +551,8 @@ export async function copyWordContent(payload: { html: string; text: string }): 
   const temp = document.createElement('div');
   temp.contentEditable = 'true';
   temp.style.cssText = 'position:fixed;left:-10000px;top:0';
-  temp.textContent = payload.text;
+  if (legacy) temp.innerHTML = new DOMParser().parseFromString(payload.html, 'text/html').body.innerHTML;
+  else temp.textContent = payload.text;
   let written = false;
   const listener = (event: ClipboardEvent) => {
     if (!event.clipboardData) return;
