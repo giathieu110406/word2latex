@@ -1,3 +1,5 @@
+import { clearDriveSession } from './lib/drive-session';
+import AIWork from './components/AIWork';
 import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils/logger";
 import { authFetch } from "./utils/api-client";
 import React, { useState, useRef, useEffect, startTransition } from "react";
@@ -568,7 +570,12 @@ function getTodayStr(): string {
 }
 
 export default function App() {
+  const [syncHubMode, setSyncHubMode] = useState<'latex' | 'work'>('latex');
+  const [workPreview, setWorkPreview] = useState<React.ReactNode>(null);
+  const [workWriting, setWorkWriting] = useState(false);
+  const [documentVersion, setDocumentVersion] = useState(0);
   const [docId, setDocId] = useState<string | null>(null);
+  const [driveDocument, setDriveDocument] = useState<import('./components/GooglePickerBtn').DriveDocument | null>(null);
 
   const handleFileSelect = (id: string) => {
     setDocId(id);
@@ -1687,9 +1694,9 @@ export default function App() {
       return;
     }
     const currentPromptCount = userDoc?.promptCount || 0;
-    if (!isApproved && currentPromptCount >= 15) {
+    if (!isApproved && currentPromptCount >= 15 * currentMultiplier) {
       triggerToast(
-        "Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa 15 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa ${15 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -1790,9 +1797,9 @@ export default function App() {
 
       if (isAIShuffleEnabled) {
         const currentPromptCount = userDoc?.promptCount || 0;
-        if (!isApproved && currentPromptCount >= 15) {
+        if (!isApproved && currentPromptCount >= 15 * currentMultiplier) {
           triggerToast(
-            "Bạn đã tới giới hạn tính năng AI thay thế số liệu (tối đa 15 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+            `Bạn đã tới giới hạn tính năng AI thay thế số liệu (tối đa ${15 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
             false
           );
           setIsShuffling(false);
@@ -1859,9 +1866,9 @@ export default function App() {
     }
 
     const currentExamCount = userDoc?.examCount || 0;
-    if (!isApproved && currentExamCount >= 10) {
+    if (!isApproved && currentExamCount >= 10 * currentMultiplier) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa 10 lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa ${10 * currentMultiplier} lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -1933,9 +1940,9 @@ export default function App() {
     }
 
     const currentExamCount = userDoc?.examCount || 0;
-    if (!isApproved && currentExamCount >= 10) {
+    if (!isApproved && currentExamCount >= 10 * currentMultiplier) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa 10 lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa ${10 * currentMultiplier} lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -3228,10 +3235,18 @@ export default function App() {
     if (!editingUser) return;
     try {
       const docRef = doc(db, "users", editingUser.uid);
+      let planExpiresAt = editingUser.planExpiresAt;
+      if (editingUser.planType && editingUser.planType !== 'free' && !planExpiresAt) {
+        planExpiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+      } else if (editingUser.planType === 'free') {
+        planExpiresAt = null;
+      }
       await updateDoc(docRef, {
         displayName: editingUser.displayName || "",
         status: editingUser.status,
         role: editingUser.role,
+        planType: editingUser.planType || 'free',
+        planExpiresAt: planExpiresAt,
         latexCount: Number(editingUser.latexCount) || 0,
         examCount: Number(editingUser.examCount) || 0,
         promptCount: Number(editingUser.promptCount) || 0,
@@ -3299,6 +3314,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       setAdminTab("tool");
+      if (user?.uid) clearDriveSession(user.uid);
       await signOut(auth);
       triggerToast("Đã đăng xuất tài khoản!");
     } catch (err) {
@@ -4068,9 +4084,9 @@ ${cleanedBody}
       return;
     }
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30) {
+    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa 30 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -4185,9 +4201,9 @@ ${cleanedBody}
     // Nếu có từ 2 câu trở lên, chạy tính năng "Dán thông minh" ẩn danh (nếu không bypass)
     if (!bypassAutoProcess && cauCount >= 2) {
       const currentPromptCount = userDoc?.promptCount || 0;
-      if (!isApproved && currentPromptCount >= 15) {
+      if (!isApproved && currentPromptCount >= 15 * currentMultiplier) {
         triggerToast(
-          "Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa 15 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+          `Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa ${15 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
           false,
         );
         return;
@@ -4240,9 +4256,9 @@ ${cleanedBody}
     }
 
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30) {
+    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa 30 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -4279,9 +4295,9 @@ ${cleanedBody}
     }
 
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30) {
+    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng tải tài liệu trong ngày (tối đa 30 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã đạt giới hạn tính năng tải tài liệu trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -5006,9 +5022,9 @@ ${bodyHtml}
     }
 
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30) {
+    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa 30 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -5083,9 +5099,9 @@ ${bodyHtml}
     }
 
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30) {
+    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
       triggerToast(
-        "Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa 30 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -5131,9 +5147,9 @@ ${bodyHtml}
     }
 
     const currentPromptCount = userDoc?.promptCount || 0;
-    if (!isApproved && currentPromptCount >= 15) {
+    if (!isApproved && currentPromptCount >= 15 * currentMultiplier) {
       triggerToast(
-        "Bạn đã tới giới hạn tính năng Trợ lý AI Canvas (tối đa 15 lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!",
+        `Bạn đã tới giới hạn tính năng Trợ lý AI Canvas (tối đa ${15 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
       );
       return;
@@ -5212,6 +5228,84 @@ ${bodyHtml}
     setInputText("");
     triggerToast("Đã xóa trắng trình soạn thảo.");
   };
+
+  const qBuilderPanel = (
+          <QBuilder
+            wordFont={wordFont}
+            setWordFont={setWordFont}
+            docHeaderStyle={docHeaderStyle}
+            setDocHeaderStyle={setDocHeaderStyle}
+            docTitle={docTitle}
+            setDocTitle={setDocTitle}
+            docSubtitle={docSubtitle}
+            setDocSubtitle={setDocSubtitle}
+            docStudentInfoFormat={docStudentInfoFormat}
+            setDocStudentInfoFormat={setDocStudentInfoFormat}
+            docTimeLimit={docTimeLimit}
+            setDocTimeLimit={setDocTimeLimit}
+            docExamCode={docExamCode}
+            setDocExamCode={setDocExamCode}
+            docSchoolName={docSchoolName}
+            setDocSchoolName={setDocSchoolName}
+            docExamName={docExamName}
+            setDocExamName={setDocExamName}
+            docSubjectName={docSubjectName}
+            setDocSubjectName={setDocSubjectName}
+            editingQuestionId={editingQuestionId}
+            setEditingQuestionId={setEditingQuestionId}
+            docQuestions={docQuestions}
+            tracNghiemText={tracNghiemText}
+            setTracNghiemText={setTracNghiemText}
+            tracNghiemAnswerText={tracNghiemAnswerText}
+            setTracNghiemAnswerText={setTracNghiemAnswerText}
+            dungSaiText={dungSaiText}
+            setDungSaiText={setDungSaiText}
+            dungSaiAnswerText={dungSaiAnswerText}
+            setDungSaiAnswerText={setDungSaiAnswerText}
+            traLoiNganText={traLoiNganText}
+            setTraLoiNganText={setTraLoiNganText}
+            traLoiNganAnswerText={traLoiNganAnswerText}
+            setTraLoiNganAnswerText={setTraLoiNganAnswerText}
+            tuLuanQuestionText={tuLuanQuestionText}
+            setTuLuanQuestionText={setTuLuanQuestionText}
+            tuLuanAnswerText={tuLuanAnswerText}
+            setTuLuanAnswerText={setTuLuanAnswerText}
+            newQuestionType={newQuestionType}
+            setNewQuestionType={setNewQuestionType}
+            setShowSmartPasteModal={setShowSmartPasteModal}
+            newTracNghiemColumns={newTracNghiemColumns}
+            setNewTracNghiemColumns={setNewTracNghiemColumns}
+            handleAddQuestion={handleAddQuestion}
+            savedQuestionTab={savedQuestionTab}
+            setSavedQuestionTab={(tab: string) => setSavedQuestionTab(tab as any)}
+            tracNghiemList={tracNghiemList}
+            dungSaiList={dungSaiList}
+            traLoiNganList={traLoiNganList}
+            tuLuanList={tuLuanList}
+            handleStartEditQuestion={handleStartEditQuestion}
+            handleDeleteQuestion={handleDeleteQuestion}
+            handleMoveQuestion={handleMoveQuestion}
+            handleUpdateQuestionColumns={handleUpdateQuestionColumns}
+            downloadDocAsWord={downloadDocAsWord}
+            setShowShuffleConfirm={setShowShuffleConfirm}
+            showShuffleConfirm={showShuffleConfirm}
+            isShuffling={isShuffling}
+            isAIShuffleEnabled={isAIShuffleEnabled}
+            setIsAIShuffleEnabled={setIsAIShuffleEnabled}
+            handleShuffleExam={handleShuffleExam}
+            docPreviewRef={docPreviewRef}
+            labelTracNghiem={labelTracNghiem}
+            labelDungSai={labelDungSai}
+            labelTraLoiNgan={labelTraLoiNgan}
+            labelTuLuan={labelTuLuan}
+            parseMultipleChoice={parseMultipleChoice}
+            getCleanQuestionBody={getCleanQuestionBody}
+            hasQuestionPrefix={hasQuestionPrefix}
+            renderContentWithMath={renderContentWithMath}
+            triggerToast={triggerToast}
+            handlePasteGeneric={handlePasteGeneric}
+          />
+  );
 
   // --- CONDITIONAL STATE SCREENS ---
   if (authLoading) {
@@ -5422,11 +5516,13 @@ ${bodyHtml}
                   <button onClick={() => handleSidebarNav('qbuilder')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'qbuilder' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <FileText className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Soạn đề thi (AI)</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('sync-hub')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'sync-hub' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  {activePlan === 'pro' && (
+<button onClick={() => handleSidebarNav('sync-hub')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'sync-hub' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <div className="flex items-center gap-3 truncate">
                           <HardDrive className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Sync Hub</span>
                       </div>
                   </button>
+)}
                   <button onClick={() => handleSidebarNav('markitdown')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'markitdown' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <div className="flex items-center gap-3 truncate">
                           <Layout className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">MarkItDown AI</span>
@@ -5792,94 +5888,45 @@ ${bodyHtml}
                                   <div className="text-slate-400 text-[11px] mt-0.5 font-medium">Tham gia: {u.createdAt ? new Date(u.createdAt).toLocaleDateString("vi-VN") : "29/06/2026"}</div>
                                 </td>
                                 <td className="py-4 px-6">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    {u.status === "pending" && (
-                                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFFBEB] text-[#F59E0B] border border-amber-100/50">
-                                        CHỜ DUYỆT
-                                      </span>
-                                    )}
-                                    {u.status === "rejected" && (
-                                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFF1F2] text-[#F43F5E] border border-rose-100/50">
-                                        BỊ KHÓA
-                                      </span>
-                                    )}
-                                    {(u.status === "pending" || u.status === "rejected") && (
-                                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200/50">
-                                        {isAdmin ? "ADMIN" : "USER"}
-                                      </span>
-                                    )}
-                                    
-                                    {isApproved && (
-                                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E6F9EE] text-[#10B981] border border-emerald-100/50">
-                                        {isAdmin ? "ADMIN" : "USER"}
-                                      </span>
-                                    )}
+                                  <div className="flex flex-col gap-1">
+                                    <span className={`inline-flex items-center w-fit px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider ${
+                                      u.planType === 'pro' ? 'bg-[#F3F1FF] text-[#6B5CFF] border border-[#ECE8FF]' :
+                                      u.planType === 'plus' ? 'bg-[#E6F9EE] text-[#10B981] border border-[#d1f5de]' :
+                                      u.planType === 'trial' ? 'bg-[#FFFBEB] text-[#F59E0B] border border-[#fef3c7]' :
+                                      'bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]'
+                                    }`}>
+                                      {u.planType && u.planType !== 'free' ? u.planType : 'User'}
+                                    </span>
                                   </div>
                                 </td>
-                                <td className="py-4 px-6 text-[12px]">
-                                  {(() => {
-                                    const isReset = u.lastLatexResetDate !== currentTodayStr;
-                                    const dailyCount = isReset ? 0 : ((Number(u.latexCount) || 0) + (Number(u.examCount) || 0) + (Number(u.promptCount) || 0));
-                                    return (isApproved || isAdmin) ? (
-                                      <div className="flex flex-col">
-                                        <span className="text-[#22C55E] font-bold text-sm">Không giới hạn</span>
-                                        <div className="text-indigo-600 font-extrabold text-[11px] mt-0.5">Dùng hôm nay: {dailyCount} lượt</div>
-                                        <div className="text-slate-400 font-medium text-[10px]">Tất cả thời gian: {u.queryCount || 0}</div>
-                                      </div>
-                                    ) : (
-                                      <div className="flex flex-col gap-0.5 text-slate-600 font-semibold text-[11px]">
-                                        <div className="text-indigo-600 font-extrabold text-[11px] mb-0.5">Dùng hôm nay: {dailyCount} lượt</div>
-                                        <div>LaTeX: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.latexCount || 0)} / 30</span></div>
-                                        <div>Đề thi: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.examCount || 0)} / 10</span></div>
-                                        <div>Dàn AI: <span className="font-extrabold text-[#1E2432]">{isReset ? 0 : (u.promptCount || 0)} / 15</span></div>
-                                      </div>
-                                    );
-                                  })()}
+                                <td className="py-4 px-6">
+                                  <div className="flex flex-col gap-1 text-[11px] text-slate-500 font-medium">
+                                    <div>LaTeX: <span className="text-[#1E2432] font-bold">{u.latexCount || 0}</span>/{u.planType === 'pro' ? 120 : u.planType === 'plus' || u.planType === 'trial' ? 60 : 30}</div>
+                                    <div>AI: <span className="text-[#1E2432] font-bold">{u.promptCount || 0}</span>/{u.planType === 'pro' ? 60 : u.planType === 'plus' || u.planType === 'trial' ? 30 : 15}</div>
+                                    <div>Đề thi: <span className="text-[#1E2432] font-bold">{u.examCount || 0}</span>/{u.planType === 'pro' ? 40 : u.planType === 'plus' || u.planType === 'trial' ? 20 : 10}</div>
+                                  </div>
                                 </td>
-                                <td className="py-4 px-6 w-[18%] min-w-[160px]">
-                                  <div className="flex items-center justify-end gap-2">
-                                    {u.status === "pending" && (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => { e.stopPropagation(); handleUpdateUserStatus(u.uid, "approved"); }}
-                                          className="w-8 h-8 rounded-full flex items-center justify-center bg-[#E6F9EE] text-[#10B981] hover:bg-[#d1f5de] transition-all duration-200 border border-emerald-100/50 shadow-xs cursor-pointer"
-                                          title="Phê duyệt"
-                                        >
-                                          <Check className="w-4 h-4 pointer-events-none" strokeWidth={3} />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => { e.stopPropagation(); handleUpdateUserStatus(u.uid, "rejected"); }}
-                                          className="w-8 h-8 rounded-full flex items-center justify-center bg-[#FFF1F2] text-[#F43F5E] hover:bg-[#ffe4e6] transition-all duration-200 border border-rose-100/50 shadow-xs cursor-pointer"
-                                          title="Từ chối"
-                                        >
-                                          <X className="w-4 h-4 pointer-events-none" strokeWidth={3} />
-                                        </button>
-                                      </>
-                                    )}
-                                    
-                                    {(isApproved || u.status === "rejected") && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const isReset = u.lastLatexResetDate !== getTodayStr();
-                                          setEditingUser({
-                                            ...u,
-                                            latexCount: isReset ? 0 : (u.latexCount || 0),
-                                            examCount: isReset ? 0 : (u.examCount || 0),
-                                            promptCount: isReset ? 0 : (u.promptCount || 0),
-                                            lastLatexResetDate: getTodayStr()
-                                          });
-                                          setShowEditMemberModal(true);
-                                        }}
-                                        className="w-8 h-8 rounded-full flex items-center justify-center bg-white text-slate-500 hover:text-slate-700 hover:bg-[#F9F9FF] border border-[#E8EBF3] transition-all duration-200 shadow-xs cursor-pointer"
-                                        title="Chỉnh sửa"
-                                      >
-                                        <Pencil className="w-3.5 h-3.5 pointer-events-none" />
-                                      </button>
-                                    )}
+                                <td className="py-4 px-6 text-right">
+                                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const isReset = u.lastLatexResetDate !== getTodayStr();
+                                        setEditingUser({
+                                          ...u,
+                                          latexCount: isReset ? 0 : (u.latexCount || 0),
+                                          examCount: isReset ? 0 : (u.examCount || 0),
+                                          promptCount: isReset ? 0 : (u.promptCount || 0),
+                                          lastLatexResetDate: getTodayStr()
+                                        });
+                                        setShowEditMemberModal(true);
+                                      }}
+                                      className="w-8 h-8 rounded-full flex items-center justify-center bg-white text-slate-500 hover:text-slate-700 hover:bg-[#F9F9FF] border border-[#E8EBF3] transition-all duration-200 shadow-xs cursor-pointer"
+                                      title="Chỉnh sửa"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 pointer-events-none" />
+                                    </button>
 
                                     <button
                                       type="button"
@@ -5893,7 +5940,7 @@ ${bodyHtml}
                                           try {
                                             await deleteDoc(doc(db, "users", u.uid));
                                             triggerToast("Xóa thành viên thành công!");
-                                          } catch (e: any) {
+                                          } catch (e) {
                                             triggerToast("Có lỗi khi xóa: " + e.message, false);
                                           }
                                         }
@@ -6104,7 +6151,7 @@ ${bodyHtml}
                   {/* Add Member Modal */}
                   <AnimatePresence>
                     {showAddMemberModal && (
-                      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+                      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] overflow-y-auto">
                         <motion.div
                           initial={{ opacity: 0, scale: 0.95 }}
                           animate={{ opacity: 1, scale: 1 }}
@@ -6207,7 +6254,8 @@ ${bodyHtml}
                   </AnimatePresence>
 
                   {/* Edit Member Modal */}
-                  <AnimatePresence>
+                  {createPortal(
+                    <AnimatePresence>
                     {showEditMemberModal && editingUser && (
                       <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
                         <motion.div
@@ -6272,7 +6320,21 @@ ${bodyHtml}
                             </div>
 
                             <div className="border-t border-[#EEF2F7] pt-3 flex flex-col gap-3">
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức sử dụng (Lượt đã dùng)</span>
+                              <div className="flex flex-col gap-1.5 mt-2">
+                              <label className="text-xs font-bold text-[#1E2432]">Gói đăng ký</label>
+                              <select
+                                value={editingUser.planType || "free"}
+                                onChange={(e) => setEditingUser({ ...editingUser, planType: e.target.value })}
+                                className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
+                              >
+                                <option value="free">Miễn phí (Free)</option>
+                                <option value="trial">Dùng thử (Trial)</option>
+                                <option value="plus">Gói Cơ bản (Plus)</option>
+                                <option value="pro">Gói Chuyên nghiệp (Pro)</option>
+                              </select>
+                            </div>
+
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức sử dụng (Lượt đã dùng)</span>
                               
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="flex flex-col gap-1.5">
@@ -6347,7 +6409,9 @@ ${bodyHtml}
                         </motion.div>
                       </div>
                     )}
-                  </AnimatePresence>
+                  </AnimatePresence>,
+                    document.body
+                  )}
                 </div>
               );
             })()}
@@ -7436,7 +7500,7 @@ ${bodyHtml}
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div
                           className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, ((userDoc?.latexCount || 0) / 30) * 100)}%` }}
+                          style={{ width: `${Math.min(100, ((userDoc?.latexCount || 0) / (30 * currentMultiplier)) * 100)}%` }}
                         ></div>
                       </div>
                     )}
@@ -7450,7 +7514,7 @@ ${bodyHtml}
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div
                           className="bg-violet-600 h-1.5 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / 10) * 100)}%` }}
+                          style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / (10 * currentMultiplier)) * 100)}%` }}
                         ></div>
                       </div>
                     )}
@@ -7464,7 +7528,7 @@ ${bodyHtml}
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div
                           className="bg-rose-600 h-1.5 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 15) * 100)}%` }}
+                          style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / (15 * currentMultiplier)) * 100)}%` }}
                         ></div>
                       </div>
                     )}
@@ -7740,7 +7804,7 @@ ${bodyHtml}
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div
                       className="bg-indigo-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.latexCount || 0) / 30) * 100)}%` }}
+                      style={{ width: `${Math.min(100, ((userDoc?.latexCount || 0) / (30 * currentMultiplier)) * 100)}%` }}
                     ></div>
                   </div>
                 </div>
@@ -7759,7 +7823,7 @@ ${bodyHtml}
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div
                       className="bg-violet-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / 10) * 100)}%` }}
+                      style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / (10 * currentMultiplier)) * 100)}%` }}
                     ></div>
                   </div>
                 </div>
@@ -7778,7 +7842,7 @@ ${bodyHtml}
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div
                       className="bg-pink-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / 15) * 100)}%` }}
+                      style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / (15 * currentMultiplier)) * 100)}%` }}
                     ></div>
                   </div>
                 </div>
@@ -7893,13 +7957,49 @@ ${bodyHtml}
         )}
 
         {sidebarView === 'sync-hub' && (
-          <div className="flex-1 flex flex-col h-full overflow-hidden">
-            <div className="bg-white border-b border-gray-200 px-4 py-2 flex justify-between items-center shrink-0 shadow-sm z-10">
-              <h2 className="text-lg font-bold text-gray-800">Google Workspace Sync Hub</h2>
-              <GooglePickerBtn onFileSelect={handleFileSelect} />
+          <div className="sync-hub-page">
+            <div className="sync-hub-header">
+              <div><p className="text-xs font-semibold text-blue-600 mb-1">GOOGLE WORKSPACE</p><h2 className="text-xl font-bold text-slate-900">Sync Hub</h2><p className="text-sm text-slate-500 mt-1">Soạn công thức và làm việc cùng tài liệu Google Docs.</p></div>
+              <GooglePickerBtn onFileSelect={handleFileSelect} onDocumentChange={setDriveDocument} accountId={user?.uid} disabled={workWriting} />
             </div>
             <div className="flex-1 overflow-hidden relative">
-              <SplitViewWorkspace documentId={docId} />
+              <SplitViewWorkspace documentId={docId} document={driveDocument} workPreview={workPreview} documentVersion={documentVersion}>
+                <div className="sync-mode-tabs" role="group" aria-label="Chức năng Sync Hub">
+                  <button type="button" disabled={workWriting} aria-pressed={syncHubMode === 'latex'} onClick={() => setSyncHubMode('latex')}>Biên dịch LaTeX</button>
+                  <button type="button" disabled={workWriting} aria-pressed={syncHubMode === 'work'} onClick={() => setSyncHubMode('work')}>AI Work</button>
+                </div>
+                <div className="sync-tool-content">
+                {syncHubMode === 'work' ? <AIWork document={driveDocument} accountId={user?.uid || 'anonymous'} onPreviewChange={setWorkPreview} onBusyChange={setWorkWriting} onDocumentWritten={() => setDocumentVersion(version => version + 1)} /> : (
+                <LatexConverter
+                  wordFont={wordFont}
+                  setWordFont={setWordFont}
+                  inputText={inputText}
+                  setInputText={setInputText}
+                  hasUnclosedDollar={hasUnclosedDollar}
+                  showAiCanvas={showAiCanvas}
+                  setShowAiCanvas={setShowAiCanvas}
+                  isProcessingCanvas={isProcessingCanvas}
+                  handleCallAiCanvas={handleCallAiCanvas}
+                  aiCanvasPrompt={aiCanvasPrompt}
+                  setAiCanvasPrompt={setAiCanvasPrompt}
+                  activeTab={activeTab}
+                  setActiveTab={(tab: string) => setActiveTab(tab as any)}
+                  copyToWord={copyToWord}
+                  downloadAsWord={downloadAsWord}
+                  copyRawLaTeX={copyRawLaTeX}
+                  downloadAsPdf={downloadAsPdf}
+                  overleafCode={overleafCode}
+                  processedHtml={processedHtml}
+                  previewRef={previewRef}
+                  textareaRef={textareaRef}
+                  triggerToast={triggerToast}
+                  handlePasteGeneric={handlePasteGeneric}
+                  handleClear={handleClear}
+                  isPro={isApproved || isAdminUser(user, userDoc)}
+                />
+                )}
+                </div>
+              </SplitViewWorkspace>
             </div>
           </div>
         )}
@@ -7933,83 +8033,7 @@ ${bodyHtml}
             isPro={isApproved || isAdminUser(user, userDoc)}
           />
         )}
-        {sidebarView === 'qbuilder' && (
-          <QBuilder
-            wordFont={wordFont}
-            setWordFont={setWordFont}
-            docHeaderStyle={docHeaderStyle}
-            setDocHeaderStyle={setDocHeaderStyle}
-            docTitle={docTitle}
-            setDocTitle={setDocTitle}
-            docSubtitle={docSubtitle}
-            setDocSubtitle={setDocSubtitle}
-            docStudentInfoFormat={docStudentInfoFormat}
-            setDocStudentInfoFormat={setDocStudentInfoFormat}
-            docTimeLimit={docTimeLimit}
-            setDocTimeLimit={setDocTimeLimit}
-            docExamCode={docExamCode}
-            setDocExamCode={setDocExamCode}
-            docSchoolName={docSchoolName}
-            setDocSchoolName={setDocSchoolName}
-            docExamName={docExamName}
-            setDocExamName={setDocExamName}
-            docSubjectName={docSubjectName}
-            setDocSubjectName={setDocSubjectName}
-            editingQuestionId={editingQuestionId}
-            setEditingQuestionId={setEditingQuestionId}
-            docQuestions={docQuestions}
-            tracNghiemText={tracNghiemText}
-            setTracNghiemText={setTracNghiemText}
-            tracNghiemAnswerText={tracNghiemAnswerText}
-            setTracNghiemAnswerText={setTracNghiemAnswerText}
-            dungSaiText={dungSaiText}
-            setDungSaiText={setDungSaiText}
-            dungSaiAnswerText={dungSaiAnswerText}
-            setDungSaiAnswerText={setDungSaiAnswerText}
-            traLoiNganText={traLoiNganText}
-            setTraLoiNganText={setTraLoiNganText}
-            traLoiNganAnswerText={traLoiNganAnswerText}
-            setTraLoiNganAnswerText={setTraLoiNganAnswerText}
-            tuLuanQuestionText={tuLuanQuestionText}
-            setTuLuanQuestionText={setTuLuanQuestionText}
-            tuLuanAnswerText={tuLuanAnswerText}
-            setTuLuanAnswerText={setTuLuanAnswerText}
-            newQuestionType={newQuestionType}
-            setNewQuestionType={setNewQuestionType}
-            setShowSmartPasteModal={setShowSmartPasteModal}
-            newTracNghiemColumns={newTracNghiemColumns}
-            setNewTracNghiemColumns={setNewTracNghiemColumns}
-            handleAddQuestion={handleAddQuestion}
-            savedQuestionTab={savedQuestionTab}
-            setSavedQuestionTab={(tab: string) => setSavedQuestionTab(tab as any)}
-            tracNghiemList={tracNghiemList}
-            dungSaiList={dungSaiList}
-            traLoiNganList={traLoiNganList}
-            tuLuanList={tuLuanList}
-            handleStartEditQuestion={handleStartEditQuestion}
-            handleDeleteQuestion={handleDeleteQuestion}
-            handleMoveQuestion={handleMoveQuestion}
-            handleUpdateQuestionColumns={handleUpdateQuestionColumns}
-            downloadDocAsWord={downloadDocAsWord}
-            setShowShuffleConfirm={setShowShuffleConfirm}
-            showShuffleConfirm={showShuffleConfirm}
-            isShuffling={isShuffling}
-            isAIShuffleEnabled={isAIShuffleEnabled}
-            setIsAIShuffleEnabled={setIsAIShuffleEnabled}
-            handleShuffleExam={handleShuffleExam}
-            docPreviewRef={docPreviewRef}
-            labelTracNghiem={labelTracNghiem}
-            labelDungSai={labelDungSai}
-            labelTraLoiNgan={labelTraLoiNgan}
-            labelTuLuan={labelTuLuan}
-            parseMultipleChoice={parseMultipleChoice}
-            getCleanQuestionBody={getCleanQuestionBody}
-            hasQuestionPrefix={hasQuestionPrefix}
-            renderContentWithMath={renderContentWithMath}
-            triggerToast={triggerToast}
-            handlePasteGeneric={handlePasteGeneric}
-          />
-        )}
+        {sidebarView === 'qbuilder' && qBuilderPanel}
 
         
         {sidebarView === 'markitdown' && (

@@ -15,6 +15,7 @@ import { PDFDocument } from "pdf-lib";
 interface MarkItDownProps {
   triggerToast: (msg: string, success?: boolean) => void;
   isPro: boolean;
+  currentMultiplier?: number;
   userDoc?: any;
   onMarkItDownUsage?: () => Promise<void>;
 }
@@ -29,7 +30,7 @@ export interface ChunkItem {
   retryCount: number;
 }
 
-export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, userDoc, onMarkItDownUsage }) => {
+export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, userDoc, onMarkItDownUsage, currentMultiplier = 1 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [outputMarkdown, setOutputMarkdown] = useState("");
   const [inputType, setInputType] = useState<"file" | "url">("file");
@@ -396,11 +397,11 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       const markItDownCount = userDoc?.markItDownCount || 0;
       const promptCount = userDoc?.promptCount || 0;
 
-      if (markItDownCount >= 1) {
+      if (markItDownCount >= 1 * currentMultiplier) {
         triggerToast("Bạn đã hết lượt dùng thử MarkItDown AI miễn phí hôm nay. Hãy nâng cấp gói PRO để sử dụng không giới hạn!", false);
         return;
       }
-      if (promptCount >= 15) {
+      if (promptCount >= 15 * currentMultiplier) {
         triggerToast("Bạn đã hết lượt sử dụng AI hôm nay. Hãy nâng cấp gói PRO!", false);
         return;
       }
@@ -419,11 +420,11 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       const markItDownCount = userDoc?.markItDownCount || 0;
       const promptCount = userDoc?.promptCount || 0;
 
-      if (markItDownCount >= 1) {
+      if (markItDownCount >= 1 * currentMultiplier) {
         triggerToast("Bạn đã hết lượt dùng thử MarkItDown AI miễn phí hôm nay. Hãy nâng cấp gói PRO!", false);
         return;
       }
-      if (promptCount >= 15) {
+      if (promptCount >= 15 * currentMultiplier) {
         triggerToast("Bạn đã hết lượt sử dụng AI hôm nay. Hãy nâng cấp gói PRO!", false);
         return;
       }

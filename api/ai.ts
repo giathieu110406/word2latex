@@ -1,3 +1,5 @@
+import { waitUntil } from "@vercel/functions";
+import { aiWorkJob } from "../src/workflows/ai-work-job.js";
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 import { verifyAuthAndApproval } from '../server/auth-guard.js';
@@ -6,6 +8,8 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getFirebaseAdmin } from '../server/firebase-admin.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { validateProposal, type WorkBlock } from '../shared/ai-work.js';
+import { getActivePlan } from '../shared/subscription-policy.js';
 
 let db: FirebaseFirestore.Firestore | null = null;
 try {
@@ -105,11 +109,11 @@ async function getDynamicSystemPrompt(service: string, actionName: string, defau
 }
 
 // Chuỗi fallback cố định theo thứ tự ưu tiên (đã xác thực khả dụng 100% với Google GenAI)
-// 2.5-flash (mặc định) → 3.6-flash → 2.5-flash-lite
+// 3.7-flash (mặc định) → 3.6-flash → 3.5-flash-lite
 const DEFAULT_FALLBACK_CHAIN = [
-  "gemini-2.5-flash",
+  "gemini-3.7-flash",
   "gemini-3.6-flash",
-  "gemini-2.5-flash-lite",
+  "gemini-3.5-flash-lite",
 ];
 
 // Các lỗi hạ tầng — được phép fallback sang model tiếp theo
@@ -333,6 +337,8 @@ function readUsageLocally(sevenDaysAgoStr: string): any[] {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { action } = req.query;
+  let workUserId: string | undefined;
+  let workIsAdmin = false;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -344,10 +350,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!authCheck.authorized) {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
+    workUserId = authCheck.user?.uid;
+    workIsAdmin = authCheck.user?.isOwner === true || authCheck.user?.role === 'admin';
   }
 
   try {
     await loadGenAISDK();
+
+    if (action === 'ai-work') {
+      const { task, blocks, documentId } = req.body || {};
+      if (typeof task !== 'string' || !task.trim() || task.length > 4000 || !Array.isArray(blocks) || !blocks.length || blocks.length > 400) return res.status(400).json({ error: 'Yêu cầu tối đa 4.000 ký tự và 400 đoạn. Chọn phạm vi nhỏ hơn.' });
+      
+      const ids = new Set<string>();
+      let size = 0;
+      for (const block of blocks) {
+        if (typeof block?.id !== 'string' || block.id.length > 200 || ids.has(block.id) || typeof block.text !== 'string' || block.text.length > 20000) return res.status(400).json({ error: 'Dữ liệu đoạn văn không hợp lệ.' });
+        ids.add(block.id); size += block.text.length;
+      }
+      if (size > 80000) return res.status(400).json({ error: 'Phạm vi quá dài (tối đa 80.000 ký tự). Chọn một đoạn.' });
+      
+      if (!workIsAdmin) {
+        if (!db || !workUserId) return res.status(503).json({ error: 'Chưa kết nối hệ thống hạn mức AI Work.' });
+        const day = new Date(Date.now() + 2 * 3600000).toISOString().slice(0, 10);
+        const allowed = await db.runTransaction(async transaction => {
+          const ref = db!.collection('users').doc(workUserId!);
+          const data = (await transaction.get(ref)).data() || {};
+          const plan = getActivePlan(data.planType, data.planExpiresAt);
+          const limit = plan === 'pro' ? 60 : plan === 'plus' || plan === 'trial' ? 30 : 15;
+          const count = data.aiWorkDay === day ? Number(data.aiWorkCount) || 0 : 0;
+          if (count >= limit) return false;
+          transaction.set(ref, { aiWorkDay: day, aiWorkCount: count + 1 }, { merge: true });
+          return true;
+        });
+        if (!allowed) return res.status(429).json({ error: 'Đã hết hạn mức AI Work hôm nay. Nâng cấp gói hoặc chờ đến 05:00.' });
+      }
+      
+      // Khởi chạy Vercel Workflow Background Job
+      waitUntil(aiWorkJob({ 
+        accountId: workUserId || 'anonymous', 
+        documentId: documentId || 'unknown_doc', 
+        task, 
+        blocks 
+      }).catch(err => console.error("Background job error:", err)));
+      
+      return res.status(202).json({ 
+        success: true,
+        message: 'Đã đưa vào hàng đợi xử lý ngầm (Vercel Workflow)',
+        runId: Date.now().toString() 
+      });
+    }
 
     if (action === 'log-usage') {
       const { feature, durationMinutes } = req.body;
