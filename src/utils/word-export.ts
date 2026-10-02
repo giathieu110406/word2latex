@@ -1,6 +1,5 @@
 import katex from 'katex';
 import JSZip from 'jszip';
-import { mml2omml } from 'mathml2omml';
 
 const MATH_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
 const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -15,10 +14,19 @@ function parseXml(text: string): XMLDocument {
   return parsed;
 }
 
-/** Normalize only text accents; never merge separate mathematical arguments. */
+/** Normalize KaTeX layout struts and text accents without merging arguments. */
 function normalizeMath(math: Element): void {
   math.setAttribute('xmlns', MML_NS);
   math.querySelectorAll('annotation, annotation-xml').forEach(el => el.remove());
+  // KaTeX encodes negative thin spacing as thin-space + invisible separator.
+  // Treat it as negative spacing instead of emitting a visible positive space.
+  for (const text of Array.from(math.querySelectorAll('mtext'))) {
+    if (text.textContent === '\u2009\u2063') {
+      const space = math.ownerDocument.createElementNS(MML_NS, 'mspace');
+      space.setAttribute('width', '-0.1667em');
+      text.replaceWith(space);
+    }
+  }
   for (const padding of Array.from(math.querySelectorAll('mpadded')).reverse()) {
     const attrs = Array.from(padding.attributes).map(attr => attr.name);
     const space = padding.firstElementChild;
@@ -61,8 +69,7 @@ function normalizeMath(math: Element): void {
     if (mark?.localName !== 'mo') continue;
     if (mark.textContent === '\u203e') mark.textContent = el.localName === 'munder' ? '_' : '\u00af';
     if (el.localName === 'munder' && el.getAttribute('accentunder') === 'true' && mark.textContent !== '_' && mark.textContent !== '\u0332') {
-      // The library maps accentunder to an above accent. A below group
-      // character keeps its position and stretch instead.
+      // Group characters below a base must stay below it in native math.
       el.setAttribute('accentunder', 'false');
       if (base.localName !== 'mrow') {
         const row = math.ownerDocument.createElementNS(MML_NS, 'mrow');
@@ -84,60 +91,152 @@ function normalizeMath(math: Element): void {
   }
 }
 
+const officeFont = (font: string) => font.split(',')[0].trim().replace(/^['"]|['"]$/g, '') || 'Times New Roman';
+
+function naryBase(node: Element): Element | undefined {
+  let base = node;
+  if (['msub', 'msup', 'msubsup', 'munder', 'mover', 'munderover'].includes(node.localName)) base = node.children[0];
+  while (['mrow', 'mstyle'].includes(base.localName) && base.children.length === 1) base = base.firstElementChild!;
+  return base.localName === 'mo' && /^[∑∏∐∫∬∭∮∯∰⋀⋁⋂⋃]$/.test(base.textContent || '') && node.getAttribute('accent') !== 'true' && node.getAttribute('accentunder') !== 'true' ? base : undefined;
+}
+
+/** Convert presentation groups explicitly: Word requires growing delimiters,
+ * valid math styles and a non-empty operand inside each n-ary operator. */
+function officeMathNodes(nodes: Element[], variant = ''): string {
+  let output = '';
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const kind = node.localName;
+    const children = Array.from(node.children);
+    const inherited = node.getAttribute('mathvariant') || variant;
+    const convert = (el: Element | undefined) => el ? officeMathNodes([el], inherited) : '';
+    const arg = (name: string, el: Element | undefined) => `<m:${name}>${convert(el)}</m:${name}>`;
+    let base = node;
+    if (['msub', 'msup', 'msubsup', 'munder', 'mover', 'munderover'].includes(kind)) base = children[0];
+    while (['mrow', 'mstyle'].includes(base.localName) && base.children.length === 1) base = base.firstElementChild!;
+    const nary = naryBase(node);
+    if (nary) {
+      const below = ['msub', 'msubsup', 'munder', 'munderover'].includes(kind) ? children[1] : undefined;
+      const above = ['msup', 'mover'].includes(kind) ? children[1] : ['msubsup', 'munderover'].includes(kind) ? children[2] : undefined;
+      // Presentation MathML gives operators and operands as siblings. Stop at
+      // the next additive term or relation. Explicit mrow groups and
+      // consecutive nested sums/integrals remain inside the operand.
+      let end = i + 1;
+      while (end < nodes.length) {
+        const next = nodes[end], previous = nodes[end - 1];
+        const unary = end === i + 1 || !!naryBase(previous) || (previous.localName === 'mo' && /^[+−×⋅/÷]$/.test(previous.textContent || ''));
+        if (next.localName === 'mo' && (/^[=<>≤≥≠≈≡⇒⇔,;]$/.test(next.textContent || '') || (!unary && /^[+−±∓]$/.test(next.textContent || '')))) break;
+        end++;
+      }
+      const body = officeMathNodes(nodes.slice(i + 1, end), variant) || mathRun('\u200b', 'normal');
+      output += `<m:nary><m:naryPr><m:chr m:val="${escapeXml(base.textContent!)}"/><m:limLoc m:val="${['munder', 'mover', 'munderover'].includes(kind) ? 'undOvr' : 'subSup'}"/><m:grow m:val="1"/><m:subHide m:val="${below ? '0' : '1'}"/><m:supHide m:val="${above ? '0' : '1'}"/></m:naryPr>${arg('sub', below)}${arg('sup', above)}<m:e>${body}</m:e></m:nary>`;
+      i = end - 1;
+      continue;
+    }
+    switch (kind) {
+      case 'math': case 'semantics': case 'mstyle': case 'mtd':
+        output += officeMathNodes(children, inherited); break;
+      case 'mrow': {
+        const first = children[0], last = children.at(-1);
+        const opening = first?.localName === 'mo' && first.getAttribute('fence') === 'true';
+        const closing = last?.localName === 'mo' && last.getAttribute('fence') === 'true' && first !== last;
+        if (opening || closing) {
+          output += `<m:d><m:dPr><m:begChr m:val="${escapeXml(opening ? first.textContent || '' : '')}"/><m:endChr m:val="${escapeXml(closing ? last.textContent || '' : '')}"/><m:grow m:val="1"/></m:dPr><m:e>${officeMathNodes(children.slice(opening ? 1 : 0, closing ? -1 : undefined), inherited)}</m:e></m:d>`;
+        } else output += officeMathNodes(children, inherited);
+        break;
+      }
+      case 'mi': case 'mn': case 'mo': case 'mtext': case 'ms':
+        output += mathRun(node.textContent || '', inherited || (kind === 'mi' && (node.textContent || '').length === 1 ? 'italic' : 'normal'), kind === 'mtext' || kind === 'ms'); break;
+      case 'mspace': {
+        const width = node.getAttribute('width') || '0em';
+        if (!/^-?\d*\.?\d+em$/.test(width)) throw new Error(`Khoảng cách công thức chưa hỗ trợ: ${width}.`);
+        const em = parseFloat(width);
+        if (em < 0) output += mathRun('\u200b', 'normal', true).replace('</w:rPr>', `<w:spacing w:val="${Math.round(em * 260)}"/></w:rPr>`);
+        else if (em >= 1) output += mathRun('\u2003'.repeat(Math.floor(em)) + (em % 1 ? '\u2009' : ''), 'normal', true);
+        else if (em > 0) output += mathRun(em <= 0.17 ? '\u2006' : em <= 0.23 ? '\u205f' : em <= 0.28 ? '\u2005' : em <= 0.34 ? '\u2004' : '\u2002', 'normal', true);
+        break;
+      }
+      case 'mfrac':
+        output += `<m:f><m:fPr><m:type m:val="${/^0(?:px|em|pt)?$/.test(node.getAttribute('linethickness') || '') ? 'noBar' : 'bar'}"/></m:fPr>${arg('num', children[0])}${arg('den', children[1])}</m:f>`; break;
+      case 'msqrt': case 'mroot':
+        output += `<m:rad><m:radPr><m:degHide m:val="${kind === 'msqrt' ? '1' : '0'}"/></m:radPr><m:deg>${kind === 'mroot' ? convert(children[1]) : ''}</m:deg><m:e>${kind === 'msqrt' ? officeMathNodes(children, inherited) : convert(children[0])}</m:e></m:rad>`; break;
+      case 'msub': case 'msup': case 'msubsup': {
+        const type = kind === 'msub' ? 'sSub' : kind === 'msup' ? 'sSup' : 'sSubSup';
+        output += `<m:${type}>${arg('e', children[0])}${kind !== 'msup' ? arg('sub', children[1]) : ''}${kind !== 'msub' ? arg('sup', children[kind === 'msubsup' ? 2 : 1]) : ''}</m:${type}>`; break;
+      }
+      case 'munder': case 'mover': case 'munderover': {
+        const mark = children[1]?.textContent || '';
+        const isUnder = kind === 'munder';
+        const accent = node.getAttribute(isUnder ? 'accentunder' : 'accent') === 'true';
+        const marks: Record<string, string> = { '→': '\u20d7', '←': '\u20d6', '↔': '\u20e1', '^': '\u0302', 'ˆ': '\u0302', '~': '\u0303', '˜': '\u0303', '˙': '\u0307', '¨': '\u0308' };
+        if (!accent && base.localName === 'mo' && /^[←→↔⇌⇋⟵⟶⟷]$/.test(base.textContent || '')) {
+          const above = kind !== 'munder';
+          const label = children[kind === 'munderover' ? 2 : 1];
+          let arrow = `<m:groupChr><m:groupChrPr><m:chr m:val="${escapeXml(base.textContent!)}"/><m:pos m:val="${above ? 'bot' : 'top'}"/><m:vertJc m:val="${above ? 'top' : 'bot'}"/></m:groupChrPr>${arg('e', label)}</m:groupChr>`;
+          if (kind === 'munderover') arrow = `<m:limLow><m:e>${arrow}</m:e>${arg('lim', children[1])}</m:limLow>`;
+          output += arrow;
+        } else if (children[1]?.localName === 'mo' && ['¯', '‾', '_', '\u0332', '\u0305'].includes(mark)) {
+          output += `<m:bar><m:barPr><m:pos m:val="${isUnder ? 'bot' : 'top'}"/></m:barPr>${arg('e', children[0])}</m:bar>`;
+        } else if (accent && !isUnder && kind !== 'munderover' && !['⏞', '⏟'].includes(mark)) {
+          output += `<m:acc><m:accPr><m:chr m:val="${escapeXml(marks[mark] || mark)}"/></m:accPr>${arg('e', children[0])}</m:acc>`;
+        } else if (children[1]?.localName === 'mo' && ['⏞', '⏟'].includes(mark)) {
+          output += `<m:groupChr><m:groupChrPr><m:chr m:val="${mark}"/><m:pos m:val="${isUnder ? 'bot' : 'top'}"/><m:vertJc m:val="${isUnder ? 'top' : 'bot'}"/></m:groupChrPr>${arg('e', children[0])}</m:groupChr>`;
+        } else {
+          let value = convert(children[0]);
+          if (kind !== 'mover') value = `<m:limLow><m:e>${value}</m:e>${arg('lim', children[1])}</m:limLow>`;
+          if (kind !== 'munder') value = `<m:limUpp><m:e>${value}</m:e>${arg('lim', children[kind === 'munderover' ? 2 : 1])}</m:limUpp>`;
+          output += value;
+        }
+        break;
+      }
+      case 'mtable': {
+        const columns = Math.max(1, ...children.map(row => row.children.length));
+        const alignment = (node.getAttribute('columnalign') || 'center').split(/\s+/);
+        const columnProps = Array.from({ length: columns }, (_, index) => `<m:mc><m:mcPr><m:count m:val="1"/><m:mcJc m:val="${['left', 'right'].includes(alignment[index] || alignment[0]) ? alignment[index] || alignment[0] : 'center'}"/></m:mcPr></m:mc>`).join('');
+        output += `<m:m><m:mPr><m:baseJc m:val="center"/><m:plcHide m:val="1"/><m:mcs>${columnProps}</m:mcs></m:mPr>${children.map(row => `<m:mr>${Array.from({ length: columns }, (_, index) => `<m:e>${convert(row.children[index])}</m:e>`).join('')}</m:mr>`).join('')}</m:m>`; break;
+      }
+      case 'mmultiscripts': {
+        let value = convert(children[0]);
+        const pre = children.findIndex(el => el.localName === 'mprescripts');
+        for (let index = 1; index < children.length; index += 2) {
+          if (index === pre) index++;
+          if (index >= children.length) break;
+          const type = pre >= 0 && index > pre ? 'sPre' : 'sSubSup';
+          const scripts = `${arg('sub', children[index])}${arg('sup', children[index + 1])}`;
+          value = `<m:${type}>${type === 'sPre' ? scripts : ''}<m:e>${value}</m:e>${type !== 'sPre' ? scripts : ''}</m:${type}>`;
+        }
+        output += value; break;
+      }
+      case 'none': case 'mprescripts': break;
+      case 'menclose': {
+        const notation = node.getAttribute('notation') || 'box';
+        const sides = ['Top', 'Bot', 'Left', 'Right'].map((side, index) => `<m:hide${side} m:val="${notation === 'box' || notation === ['top', 'bottom', 'left', 'right'][index] ? '0' : '1'}"/>`).join('');
+        const strikes: Record<string, string> = { updiagonalstrike: 'strikeBLTR', downdiagonalstrike: 'strikeTLBR', verticalstrike: 'strikeV', horizontalstrike: 'strikeH' };
+        output += `<m:borderBox><m:borderBoxPr>${sides}${strikes[notation] ? `<m:${strikes[notation]} m:val="1"/>` : ''}</m:borderBoxPr><m:e>${officeMathNodes(children, inherited)}</m:e></m:borderBox>`; break;
+      }
+      default: throw new Error(`Cấu trúc ${kind} chưa hỗ trợ Equation của Word.`);
+    }
+  }
+  return output;
+}
+
+function mathRun(text: string, variant: string, normalText = false): string {
+  const scripts: Record<string, string> = { 'double-struck': 'double-struck', 'script': 'script', 'bold-script': 'script', 'fraktur': 'fraktur', 'bold-fraktur': 'fraktur', 'sans-serif': 'sans-serif', 'sans-serif-bold': 'sans-serif', 'sans-serif-italic': 'sans-serif', 'sans-serif-bold-italic': 'sans-serif', 'monospace': 'monospace' };
+  const bold = variant.includes('bold');
+  const italic = variant.includes('italic');
+  const style = bold ? italic ? 'bi' : 'b' : italic ? 'i' : 'p';
+  return `<m:r><m:rPr>${normalText ? '<m:nor/>' : ''}${scripts[variant] ? `<m:scr m:val="${scripts[variant]}"/>` : ''}<m:sty m:val="${style}"/></m:rPr><w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/></w:rPr><m:t xml:space="preserve">${escapeXml(text)}</m:t></m:r>`;
+}
+
 export function mathmlToOfficeMath(input: string): string {
   const container = document.createElement('div');
   container.innerHTML = input;
   const math = container.querySelector('math');
   if (!math) throw new Error('Không tìm thấy cấu trúc MathML của công thức.');
   normalizeMath(math);
-  const safeMath = math.cloneNode(true) as Element;
-  let prefix = '\ue000WORDTEXT';
-  while (input.includes(prefix)) prefix += 'X';
-  const protectedText: Array<[string, string]> = [];
-  // This converter decodes input entities but writes raw XML text. Double-escape
-  // token text before conversion so &, < and > remain valid XML afterward.
-  safeMath.querySelectorAll('mi, mn, mo, mtext, ms').forEach(el => {
-    if (el.children.length) throw new Error(`Cấu trúc ${el.localName} lồng nhau chưa được hỗ trợ.`);
-    if (el.localName === 'mtext') {
-      // The library trims token edges. Preserve all original text/whitespace
-      // via placeholders, then restore it through the XML DOM after conversion.
-      const key = `${prefix}${protectedText.length}\ue001`;
-      protectedText.push([key, el.textContent || '']);
-      el.textContent = key;
-    } else el.textContent = escapeXml(el.textContent || '');
-  });
-  const raw = mml2omml(new XMLSerializer().serializeToString(safeMath));
-  const office = parseXml(raw.replace('<m:oMath ', `<m:oMath xmlns:w="${WORD_NS}" `));
-  if (office.documentElement.localName !== 'oMath') throw new Error('Không chuyển được công thức thành Equation của Word.');
-  for (const text of Array.from(office.getElementsByTagNameNS(MATH_NS, 't'))) {
-    for (const [key, original] of protectedText) text.textContent = (text.textContent || '').replaceAll(key, original);
-  }
-  for (const bar of Array.from(office.getElementsByTagNameNS(MATH_NS, 'bar'))) {
-    const argument = Array.from(bar.children).find(el => el.localName === 'e');
-    const script = argument?.firstElementChild;
-    // The dependency inserts a spurious empty script in every bar argument,
-    // including an invalid m:sub under m:sSup. Keep only the true base argument.
-    if (script && ['sSub', 'sSup'].includes(script.localName)) {
-      const base = Array.from(script.children).find(el => el.localName === 'e');
-      if (base) argument!.replaceWith(base);
-    }
-  }
-  for (const chr of Array.from(office.getElementsByTagNameNS(MATH_NS, 'chr'))) {
-    if (chr.getAttribute('m:val') === '↔') chr.setAttribute('m:val', '\u20e1');
-    const pos = chr.getAttribute('m:pos');
-    if (pos) {
-      chr.removeAttribute('m:pos');
-      const position = office.createElementNS(MATH_NS, 'm:pos');
-      position.setAttribute('m:val', pos);
-      chr.parentElement!.appendChild(position);
-    }
-  }
-  Array.from(office.getElementsByTagNameNS(MATH_NS, 'r')).forEach(run => {
-    if (run.namespaceURI !== MATH_NS) return;
-    const mathPr = Array.from(run.children).find(el => el.namespaceURI === MATH_NS && el.localName === 'rPr');
-    if (mathPr) run.insertBefore(mathPr, run.firstChild);
-  });
-  return new XMLSerializer().serializeToString(office.documentElement);
+  const result = `<m:oMath xmlns:m="${MATH_NS}" xmlns:w="${WORD_NS}">${officeMathNodes(Array.from(math.children))}</m:oMath>`;
+  parseXml(result);
+  return result;
 }
 
 /** Called on an isolated clone, before QBuild's table/style transformations. */
@@ -280,6 +379,7 @@ function table(el: HTMLElement, font: string, style: TextStyle): string {
 }
 
 export async function buildWordDocx(root: HTMLElement, font: string): Promise<Blob> {
+  font = officeFont(font);
   const body = blocks(root, font);
   const zip = new JSZip();
   const declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -310,23 +410,29 @@ function plainText(node: Node): string {
 }
 
 export function buildWordClipboard(root: HTMLElement, font: string): { html: string; text: string } {
+  font = officeFont(font);
   // Run serializer validation for copy as well, so unsupported content is not
   // accepted by one path and silently lost by another.
   blocks(root, font);
   const clone = root.cloneNode(true) as HTMLElement;
+  let marker = 'WORD_EQUATION';
+  while (clone.innerHTML.includes(marker)) marker += '_';
+  const equations: string[] = [];
   clone.querySelectorAll<HTMLElement>('.word-equation').forEach(el => {
     const omml = officeEquation(el);
-    const math = el.querySelector('math');
-    if (!math) throw new Error('Công thức thiếu MathML cho clipboard.');
-    const container = document.createElement(el.getAttribute('data-display') === 'true' ? 'div' : 'span');
-    if (el.getAttribute('data-display') === 'true') container.style.textAlign = 'center';
-    // Conditional comments keep Word's native math and other consumers' MathML
-    // mutually exclusive. Neither branch contains an equation image.
-    container.innerHTML = `<!--[if gte mso 12]>${omml}<![endif]--><!--[if !(gte mso 12)]><!-->${math.outerHTML}<!--<![endif]-->`;
-    el.replaceWith(container);
+    // Word's HTML importer uses its legacy OMML namespace. Put one equation
+    // directly in the fragment: browser/Word conditional-comment handling can
+    // otherwise select the MathML fallback and flatten every formula.
+    const htmlMath = omml.replaceAll(MATH_NS, 'http://schemas.microsoft.com/office/2004/12/omml');
+    const content = el.getAttribute('data-display') === 'true' ? `<div style="text-align:center"><m:oMathPara>${htmlMath}</m:oMathPara></div>` : htmlMath;
+    el.replaceWith(document.createComment(`${marker}_${equations.length}`));
+    equations.push(content);
   });
+  // HTML DOM serialization lowercases foreign prefixed tags. Insert the XML
+  // after serializing the surrounding HTML so oMath/rPr names stay intact.
+  const content = clone.innerHTML.replace(new RegExp(`<!--${marker}_(\\d+)-->`, 'g'), (_, index) => equations[Number(index)]);
   return {
-    html: `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="${WORD_NS}" xmlns:m="${MATH_NS}"><head><meta charset="utf-8"><style>body{font-family:'${escapeXml(font)}';font-size:13pt}p{margin:0 0 4pt}table{border-collapse:collapse}</style></head><body><!--StartFragment-->${clone.innerHTML}<!--EndFragment--></body></html>`,
+    html: `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="${WORD_NS}" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml"><head><meta charset="utf-8"><style>body{font-family:'${escapeXml(font)}';font-size:13pt}p{margin:0 0 4pt}table{border-collapse:collapse}</style></head><body><!--StartFragment-->${content}<!--EndFragment--></body></html>`,
     text: plainText(root).trimEnd(),
   };
 }

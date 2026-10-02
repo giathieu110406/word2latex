@@ -59,7 +59,7 @@ test('reported matrix with vdots/ddots works in both clipboard and DOCX without 
 test('KaTeX padded arrow labels preserve above/below arguments and Vietnamese text', () => {
   for (const source of [String.raw`\xrightarrow{n\to\infty}`, String.raw`\xleftarrow{\text{Kẹp giữa}}`, String.raw`\xrightleftharpoons[\text{H}_2\text{SO}_4]{\text{phản ứng thuận nghịch}}`]) {
     const doc = xml(mathmlToOfficeMath(mml(source)));
-    assert.ok(doc.getElementsByTagName('m:lim').length > 0);
+    assert.ok(doc.getElementsByTagName('m:groupChr').length > 0);
     assert.ok(doc.documentElement.textContent!.length > 2);
     if (source.includes('Kẹp')) assert.match(doc.documentElement.textContent!.replace(/\u00a0/g, ' '), /Kẹp giữa/);
     if (source.includes('SO')) {
@@ -146,18 +146,76 @@ test('invalid equations and unsupported structures fail explicitly', () => {
   assert.throws(() => mathmlToOfficeMath('<math><menclose notation="circle"><mi>x</mi></menclose></math>'), /circle/);
 });
 
-test('clipboard has exclusive Office OMML/non-Office MathML and source LaTeX plain text', () => {
+test('clipboard uses one native Office equation branch and source LaTeX plain text', () => {
   const root = fixture(`<p>Vectơ ${equation('\\overrightarrow{DA}')} &amp; tiếng Việt.</p>`);
   const original = root.innerHTML;
   prepareWordEquations(root);
   const payload = buildWordClipboard(root, 'Times New Roman');
-  assert.match(payload.html, /\[if gte mso 12\]/);
+  assert.match(payload.html, /xmlns:m="http:\/\/schemas\.microsoft\.com\/office\/2004\/12\/omml"/);
   assert.match(payload.html, /<m:acc>/);
-  assert.match(payload.html, /\[if !\(gte mso 12\)\]/);
-  assert.match(payload.html, /<math/);
+  assert.match(payload.html, /<m:oMath xmlns:m=/);
+  assert.doesNotMatch(payload.html, /<m:omath|<m:rpr/);
+  assert.doesNotMatch(payload.html, /<!--\[if|<math/);
   assert.match(payload.text, /\\\(\\overrightarrow\{DA\}\\\)/);
   assert.doesNotMatch(payload.html, /<img|data:image/);
   assert.ok(original.includes('katex'));
+});
+
+test('braces and extended reaction arrows keep native positions and both labels', () => {
+  const doc = xml(mathmlToOfficeMath(mml(String.raw`\underbrace{x+y}_{\text{dưới}}+\overbrace{a+b}^{\text{trên}}+A\xrightleftharpoons[\text{dưới}]{\text{trên}}B`)));
+  const groups = Array.from(doc.getElementsByTagName('m:groupChr'));
+  assert.equal(groups.length, 3);
+  assert.equal(groups[0].getElementsByTagName('m:pos')[0].getAttribute('m:val'), 'bot');
+  assert.equal(groups[1].getElementsByTagName('m:pos')[0].getAttribute('m:val'), 'top');
+  assert.equal(groups[2].getElementsByTagName('m:chr')[0].getAttribute('m:val'), '⇌');
+  assert.match(doc.documentElement.textContent!.replace(/\u00a0/g, ' '), /dưới.*trên.*trên.*dưới/);
+});
+
+test('Word glyphs, growing fences and n-ary bodies match mathematical structure', () => {
+  const doc = xml(mathmlToOfficeMath(mml(String.raw`\mathbb{R}+\left(\begin{matrix}1&2\\3&4\end{matrix}\right)+\sum_{k=0}^{n}\frac{1}{k+1}=\int_0^1 x^2\,dx`)));
+  assert.doesNotMatch(doc.documentElement.outerHTML, /undefined/);
+  assert.equal(doc.getElementsByTagName('m:d').length, 1);
+  assert.equal(doc.getElementsByTagName('m:nary').length, 2);
+  for (const nary of Array.from(doc.getElementsByTagName('m:nary'))) {
+    const body = Array.from(nary.children).find(el => el.localName === 'e')!;
+    assert.ok(body.textContent!.length > 0, 'no blank operand boxes');
+  }
+  assert.ok(doc.getElementsByTagName('m:scr').length > 0, 'double-struck R');
+  for (const run of Array.from(doc.getElementsByTagName('m:r'))) {
+    assert.equal(run.getElementsByTagName('w:rFonts')[0]?.getAttribute('w:ascii'), 'Cambria Math');
+  }
+});
+
+test('independent sums stay siblings while explicitly grouped and consecutive sums stay nested', () => {
+  for (const [source, nested] of [
+    [String.raw`\sum_{i=1}^{2} i + \sum_{j=1}^{3} j`, false],
+    [String.raw`\sum_i {i+\sum_j j}`, true],
+    [String.raw`\sum_i\sum_j ij`, true],
+    [String.raw`\sum_i\sum_j -x`, true],
+  ] as const) {
+    const doc = xml(mathmlToOfficeMath(mml(source)));
+    const first = doc.getElementsByTagName('m:nary')[0];
+    assert.equal(first.getElementsByTagName('m:nary').length > 0, nested, source);
+    if (source.includes('-x')) assert.match(first.getElementsByTagName('m:nary')[0].textContent!, /−x/);
+  }
+});
+
+test('one-sided cases fences grow and deliberate spacing stays distinct', () => {
+  const doc = xml(mathmlToOfficeMath(mml(String.raw`\left\{\begin{array}{rcl}x&=&1\\y&=&2\end{array}\right.`)));
+  assert.equal(doc.getElementsByTagName('m:begChr')[0]?.getAttribute('m:val'), '{');
+  assert.equal(doc.getElementsByTagName('m:endChr')[0]?.getAttribute('m:val'), '');
+  const narrow = mathmlToOfficeMath(mml(String.raw`a\!b`));
+  const wide = mathmlToOfficeMath(mml(String.raw`a\quad b`));
+  assert.notEqual(narrow, wide);
+  assert.match(narrow, /w:spacing w:val="-/);
+  assert.match(wide, /\u2003/);
+});
+
+test('DOCX font names contain a font family rather than a CSS fallback list', async () => {
+  const root = fixture('<p>Tiếng Việt</p>');
+  const zip = await JSZip.loadAsync(await (await buildWordDocx(root, "'Times New Roman', Times, serif")).arrayBuffer());
+  const doc = xml(await zip.file('word/document.xml')!.async('string'));
+  assert.equal(doc.getElementsByTagName('w:rFonts')[0].getAttribute('w:ascii'), 'Times New Roman');
 });
 
 test('DOCX is a real ZIP with native math, A4 and QBuild table structure', async () => {
