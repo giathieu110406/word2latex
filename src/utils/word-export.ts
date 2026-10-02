@@ -19,6 +19,29 @@ function parseXml(text: string): XMLDocument {
 function normalizeMath(math: Element): void {
   math.setAttribute('xmlns', MML_NS);
   math.querySelectorAll('annotation, annotation-xml').forEach(el => el.remove());
+  for (const padding of Array.from(math.querySelectorAll('mpadded')).reverse()) {
+    const attrs = Array.from(padding.attributes).map(attr => attr.name);
+    const space = padding.firstElementChild;
+    // KaTeX's \vdots includes an invisible zero-width strut to set browser
+    // metrics. Word calculates matrix row metrics itself; the ⋮ token is a
+    // separate sibling and must be retained.
+    const dotsStrut = attrs.every(name => ['height', 'voffset'].includes(name)) &&
+      padding.getAttribute('height') === '0em' && padding.getAttribute('voffset') === '0em' &&
+      padding.children.length === 1 && space?.localName === 'mspace' &&
+      space.getAttribute('width') === '0em' && space.getAttribute('height') === '1.5em' &&
+      !space.children.length && !space.textContent;
+    if (dotsStrut) { padding.remove(); continue; }
+    // Extended-arrow labels have symmetric horizontal padding. Native Office
+    // limit arguments provide centering; preserve the complete label group.
+    const arrowLabel = attrs.every(name => ['width', 'lspace'].includes(name)) &&
+      padding.getAttribute('width') === '+0.6em' && padding.getAttribute('lspace') === '0.3em' &&
+      ['mover', 'munder', 'munderover'].includes(padding.parentElement?.localName || '');
+    if (arrowLabel) {
+      const group = math.ownerDocument.createElementNS(MML_NS, 'mrow');
+      group.append(...Array.from(padding.childNodes));
+      padding.replaceWith(group);
+    }
+  }
   const accents: Record<string, string> = { '´': '\u0301', 'ˊ': '\u0301', '\u0301': '\u0301', '`': '\u0300', 'ˋ': '\u0300', '\u0300': '\u0300', '^': '\u0302', 'ˆ': '\u0302', '\u0302': '\u0302', '~': '\u0303', '˜': '\u0303', '\u0303': '\u0303', '˘': '\u0306', '\u0306': '\u0306', '\u0309': '\u0309', '\u0323': '\u0323' };
   for (const mover of Array.from(math.querySelectorAll('mover')).reverse()) {
     const [base, accent] = Array.from(mover.children);
@@ -48,7 +71,7 @@ function normalizeMath(math: Element): void {
       }
     }
   }
-  // KaTeX may emit mpadded for overset/phantoms; don't silently discard its layout.
+  // Other padding/phantom layouts still fail explicitly rather than flattening.
   for (const node of [math, ...Array.from(math.querySelectorAll('*'))]) {
     if (!supportedMath.has(node.localName)) throw new Error(`Công thức chứa cấu trúc chưa hỗ trợ: ${node.localName}.`);
     const arity: Record<string, number> = { mfrac: 2, mroot: 2, msub: 2, msup: 2, msubsup: 3, munder: 2, mover: 2, munderover: 3 };

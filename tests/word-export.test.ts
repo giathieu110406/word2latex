@@ -39,6 +39,38 @@ function xml(input: string) {
 }
 const mml = (source: string) => katex.renderToString(source, { output: 'mathml', throwOnError: true, strict: 'ignore' });
 
+test('reported matrix with vdots/ddots works in both clipboard and DOCX without losing cells', async () => {
+  const source = String.raw`M=\begin{pmatrix}1&a_1&a_1^2&\cdots&a_1^n\\1&a_2&a_2^2&\cdots&a_2^n\\\vdots&\vdots&\vdots&\ddots&\vdots\\1&a_n&a_n^2&\cdots&a_n^n\end{pmatrix}`;
+  const root = fixture(equation(source, true));
+  prepareWordEquations(root);
+  const omml = root.querySelector('.word-equation')!.getAttribute('data-word-omml')!;
+  const doc = xml(omml);
+  assert.equal(doc.getElementsByTagName('m:mr').length, 4);
+  for (const row of Array.from(doc.getElementsByTagName('m:mr'))) assert.equal(row.children.length, 5);
+  assert.equal(doc.documentElement.textContent!.split('⋮').length - 1, 4);
+  assert.match(doc.documentElement.textContent!, /⋱/);
+  const payload = buildWordClipboard(root, 'Times New Roman');
+  assert.match(payload.html, /<m:m>/);
+  assert.ok(payload.text.includes(source));
+  const zip = await JSZip.loadAsync(await (await buildWordDocx(root, 'Times New Roman')).arrayBuffer());
+  assert.match(await zip.file('word/document.xml')!.async('string'), /⋮/);
+});
+
+test('KaTeX padded arrow labels preserve above/below arguments and Vietnamese text', () => {
+  for (const source of [String.raw`\xrightarrow{n\to\infty}`, String.raw`\xleftarrow{\text{Kẹp giữa}}`, String.raw`\xrightleftharpoons[\text{H}_2\text{SO}_4]{\text{phản ứng thuận nghịch}}`]) {
+    const doc = xml(mathmlToOfficeMath(mml(source)));
+    assert.ok(doc.getElementsByTagName('m:lim').length > 0);
+    assert.ok(doc.documentElement.textContent!.length > 2);
+    if (source.includes('Kẹp')) assert.match(doc.documentElement.textContent!.replace(/\u00a0/g, ' '), /Kẹp giữa/);
+    if (source.includes('SO')) {
+      assert.match(doc.documentElement.textContent!.replace(/\u00a0/g, ' '), /phản ứng thuận nghịch/);
+      assert.match(doc.documentElement.textContent!, /H2SO4/);
+    }
+  }
+  // Arbitrary overlays/smashes must still fail; never flatten unknown padding.
+  assert.throws(() => mathmlToOfficeMath(mml(String.raw`\smash{x}`)), /mpadded/);
+});
+
 test('vectors preserve accent over the entire DA/DC/DB/zero base', () => {
   for (const base of ['DA', 'DC', 'DB', '0']) {
     const doc = xml(mathmlToOfficeMath(mml(`\\overrightarrow{${base}}`)));
