@@ -1,5 +1,6 @@
 import { logApiUsage } from "../utils/logger";
 import { authFetch } from "../utils/api-client";
+import { getActivePlan } from "../../shared/subscription-policy";
 import React, { useState, useRef } from "react";
 import { 
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 

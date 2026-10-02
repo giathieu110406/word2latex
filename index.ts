@@ -16,6 +16,7 @@ import * as mammoth from "mammoth";
 import { parseFile, parseUrl } from "./markitdown";
 import payosCreateHandler from "./api/payos-create";
 import payosWebhookHandler from "./api/payos-webhook";
+import { getFirebaseAdmin } from "./server/firebase-admin.js";
 
 // Initialize Google GenAI client lazily to avoid crashing on startup if key is missing
 let aiClient: GoogleGenAI | null = null;
@@ -301,6 +302,199 @@ app.get("/api/approve-user", async (req, res) => {
 });
 
 // 2. API: Notify admin of access registration (POST) - SMTP removed by request
+
+app.get("/api/admin/payments", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing token' });
+    }
+    const token = authHeader.split('Bearer ')[1];
+    const { auth: adminAuth, db } = getFirebaseAdmin();
+    const decodedToken = await adminAuth.verifyIdToken(token);
+    
+    // Check if user is admin
+    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+    const isOwner = decodedToken.email === 'giathieu110406@gmail.com';
+    const isAdmin = isOwner || userDoc.data()?.role === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const snapshot = await db.collection('payosPayments').get();
+    const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    payments.sort((a: any, b: any) => (b.activatedAt || 0) - (a.activatedAt || 0));
+    return res.json(payments);
+  } catch (error: any) {
+    console.error("Lỗi /api/admin/payments:", error);
+    return res.status(500).json({ error: error?.message || 'Internal Server Error' });
+  }
+});
+
+app.post("/api/admin/grant-plan", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing token' });
+    }
+    const token = authHeader.split('Bearer ')[1];
+    const { auth: adminAuth, db } = getFirebaseAdmin();
+    const decodedToken = await adminAuth.verifyIdToken(token);
+    
+    // Check if requester is admin
+    const adminUserDoc = await db.collection('users').doc(decodedToken.uid).get();
+    const isOwner = decodedToken.email === 'giathieu110406@gmail.com';
+    const isAdmin = isOwner || adminUserDoc.data()?.role === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { targetUid, plan, durationDays, note } = req.body;
+    if (!targetUid || !plan) {
+      return res.status(400).json({ error: 'Thiếu thông tin targetUid hoặc plan' });
+    }
+
+    const targetUserRef = db.collection('users').doc(targetUid);
+    const targetUserSnap = await targetUserRef.get();
+    if (!targetUserSnap.exists) {
+      return res.status(404).json({ error: 'Không tìm thấy người dùng' });
+    }
+
+    const now = Date.now();
+    let planExpiresAt: number | null = null;
+    if (plan !== 'free') {
+      const days = Number(durationDays) || (plan === 'trial' ? 7 : 30);
+      planExpiresAt = now + days * 86400000;
+    }
+
+    // Cập nhật tài khoản người dùng
+    await targetUserRef.update({
+      planType: plan,
+      pricingPlan: plan,
+      planExpiresAt: planExpiresAt,
+      status: 'approved',
+      updatedAt: new Date(now).toISOString(),
+    });
+
+    // Ghi nhận vào lịch sử thanh toán với số tiền 0đ (Admin cấp, không thu tiền)
+    const orderCode = `ADMIN_${Date.now()}`;
+    await db.collection('payosPayments').doc(orderCode).set({
+      uid: targetUid,
+      amount: 0,
+      plan: plan,
+      activatedAt: now,
+      method: 'admin_grant',
+      grantedBy: decodedToken.email || decodedToken.uid,
+      note: note || 'Cấp bởi Quản trị viên',
+    });
+
+    return res.json({
+      success: true,
+      message: `Đã cấp gói ${plan.toUpperCase()} thành công và ghi nhận vào lịch sử thanh toán (0đ).`,
+      orderCode,
+      planExpiresAt,
+    });
+  } catch (error: any) {
+    console.error("Lỗi /api/admin/grant-plan:", error);
+    return res.status(500).json({ error: error?.message || 'Internal Server Error' });
+  }
+});
+
+app.post("/api/user/update-phone", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing token' });
+    }
+    const token = authHeader.split('Bearer ')[1];
+    const { auth: adminAuth, db } = getFirebaseAdmin();
+    const decodedToken = await adminAuth.verifyIdToken(token);
+    const uid = decodedToken.uid;
+
+    const { phoneNumber } = req.body;
+    if (!phoneNumber || typeof phoneNumber !== 'string') {
+      return res.status(400).json({ error: 'Vui lòng cung cấp số điện thoại' });
+    }
+
+    const cleaned = phoneNumber.trim().replace(/[\s().-]/g, '');
+    const local = cleaned.startsWith('+84') ? `0${cleaned.slice(3)}` : cleaned;
+    if (!/^0[35789]\d{8}$/.test(local)) {
+      return res.status(400).json({ error: 'Số điện thoại không đúng định dạng di động Việt Nam (gồm 10 số, bắt đầu bằng 03, 05, 07, 08, 09).' });
+    }
+
+    const userRef = db.collection('users').doc(uid);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: 'Không tìm thấy thông tin tài khoản' });
+    }
+
+    const userData = userSnap.data() || {};
+    const oldPhone = userData.phoneNumber || userData.confirmedPhoneNumber || '';
+    const now = new Date().toISOString();
+
+    // Lưu giữ số cũ vào lịch sử: không bao giờ bị xóa hay ghi đè
+    const existingHistory = Array.isArray(userData.phoneHistory) ? userData.phoneHistory : [];
+    const newHistory = [...existingHistory];
+    if (oldPhone && !newHistory.some((h: any) => (typeof h === 'string' ? h === oldPhone : h.phone === oldPhone))) {
+      newHistory.push({
+        phone: oldPhone,
+        recordedAt: userData.phoneConfirmedAt || userData.createdAt || now,
+        type: 'previous'
+      });
+    }
+
+    newHistory.push({
+      phone: local,
+      recordedAt: now,
+      type: 'current'
+    });
+
+    const allPhones = Array.isArray(userData.allPhoneNumbers) ? userData.allPhoneNumbers : [];
+    if (oldPhone && !allPhones.includes(oldPhone)) allPhones.push(oldPhone);
+    if (!allPhones.includes(local)) allPhones.push(local);
+
+    const updateData: any = {
+      phoneNumber: local,
+      confirmedPhoneNumber: `+84${local.slice(1)}`,
+      phoneHistory: newHistory,
+      allPhoneNumbers: allPhones,
+      phoneConfirmedAt: now,
+      phoneConfirmationMethod: userData.phoneConfirmationMethod || 'verified',
+      phoneConfirmationVersion: 1,
+      updatedAt: now
+    };
+
+    if (!userData.emailOtpVerifiedAt && (decodedToken.email_verified || userData.emailVerified)) {
+      updateData.emailOtpVerifiedAt = now;
+    }
+
+    await userRef.update(updateData);
+
+    // Lưu vĩnh viễn vào subcollection phoneConfirmations
+    await userRef.collection('phoneConfirmations').add({
+      phoneNumber: local,
+      canonicalPhone: `+84${local.slice(1)}`,
+      previousPhoneNumber: oldPhone,
+      updatedAt: now,
+      updatedBy: uid,
+      source: 'user_profile'
+    });
+
+    return res.json({
+      success: true,
+      message: 'Cập nhật số điện thoại thành công!',
+      phoneNumber: local,
+      phoneHistory: newHistory
+    });
+  } catch (error: any) {
+    console.error('Lỗi /api/user/update-phone:', error);
+    return res.status(500).json({ error: error?.message || 'Internal Server Error' });
+  }
+});
+
+
+
+
 app.post("/api/notify-approval", async (req, res) => {
   const { uid, email } = req.body;
 

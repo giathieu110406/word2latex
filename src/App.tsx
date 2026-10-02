@@ -43,11 +43,14 @@ import { LatexConverter } from "./components/LatexConverter";
 import { MarkItDown } from "./components/MarkItDown";
 import { QBuilder } from "./components/QBuilder";
 import { AdminAnalyticsDashboard } from "./components/AdminAnalyticsDashboard";
+import { Banknote } from "lucide-react";
+import { AdminPayments } from "./components/AdminPayments";
 import { GuideTour } from "./components/GuideTour";
 import { LoginScreen } from "./components/LoginScreen";
 import { ZaloContactWidget } from "./components/ZaloContactWidget";
 import { EmailVerificationGate } from "./components/EmailVerificationGate";
-import { hasPhoneConfirmation } from "./utils/email-verification";
+import { MandatoryPhoneGate } from "./components/MandatoryPhoneGate";
+import { hasPhoneConfirmation, isEmailOtpVerified } from "./utils/email-verification";
 import { normalizeVietnamPhone } from "../shared/phone-confirmation";
 import { getUpgradeVisibility } from "./utils/upgrade-policy";
 import { canRegisterPlan, getActivePlan } from "../shared/subscription-policy";
@@ -3074,6 +3077,24 @@ export default function App() {
         queryCount: Number(editingUser.queryCount) || 0,
         lastLatexResetDate: editingUser.lastLatexResetDate || getTodayStr(),
       });
+      // Ghi nhận vào thanh toán (0đ) nếu cấp gói trả phí
+      const origUser = allUsers.find(u => u.uid === editingUser.uid);
+      if (editingUser.planType && editingUser.planType !== 'free' && origUser?.planType !== editingUser.planType) {
+        user?.getIdToken().then(tok => {
+          if (tok) {
+            fetch('/api/admin/grant-plan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
+              body: JSON.stringify({
+                targetUid: editingUser.uid,
+                plan: editingUser.planType,
+                durationDays: editingUser.planType === 'trial' ? 7 : 30,
+                note: 'Cấp qua Quản lý thành viên'
+              })
+            }).catch(console.error);
+          }
+        });
+      }
       triggerToast("Cập nhật thông tin thành viên thành công!");
       setShowEditMemberModal(false);
       setEditingUser(null);
@@ -3083,19 +3104,47 @@ export default function App() {
     }
   };
 
+  const isValidVietnamPhone = (phone: string | undefined | null): boolean => {
+  if (!phone || typeof phone !== 'string') return false;
+  const clean = phone.trim().replace(/[\s().-]/g, '');
+  const local = clean.startsWith('+84') ? ('0' + clean.slice(3)) : clean;
+  return /^0[35789]\d{8}$/.test(local);
+};
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
       triggerToast("Vui lòng đăng nhập để lưu cài đặt.", false);
       return;
     }
+    const phoneInput = settingsPhoneNumber.trim();
+    if (!isValidVietnamPhone(phoneInput)) {
+      triggerToast("Số điện thoại không đúng định dạng di động Việt Nam (gồm 10 số, bắt đầu bằng 03, 05, 07, 08, 09).", false);
+      return;
+    }
+
     setIsSavingSettings(true);
     try {
+      // Cập nhật số điện thoại qua backend API (lưu chết số cũ vào lịch sử, không bao giờ bị xóa/ghi đè)
+      const token = await user.getIdToken();
+      const phoneRes = await fetch("/api/user/update-phone", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: JSON.stringify({ phoneNumber: phoneInput })
+      });
+      const phoneData = await phoneRes.json();
+      if (!phoneRes.ok) {
+        throw new Error(phoneData.error || "Không thể cập nhật số điện thoại");
+      }
+
       await updateDoc(doc(db, "users", user.uid), {
         displayName: settingsDisplayName.trim(),
         birthDate: settingsBirthDate,
       });
-      triggerToast("Đã cập nhật thông tin cá nhân thành công!", true);
+      triggerToast("Đã cập nhật thông tin cá nhân và số điện thoại thành công!", true);
     } catch (err: any) {
       console.error("Lỗi cập nhật cài đặt:", err);
       triggerToast("Cập nhật cài đặt thất bại: " + err.message, false);
@@ -5105,7 +5154,16 @@ ${bodyHtml}
   const isOwner = checkIsOwnerEmail(user);
   const isApproved = isOwner || userDoc?.status === "approved";
   const isRejected = !isApproved && userDoc?.status === "rejected";
-  const needsEmailOtp = !hasPhoneConfirmation(userDoc);
+  const isEmailVerified = Boolean(
+    isEmailOtpVerified(userDoc) ||
+    userDoc?.emailOtpVerifiedAt ||
+    userDoc?.emailVerified ||
+    user?.emailVerified ||
+    userDoc?.confirmedPhoneNumber ||
+    isOwner
+  );
+  const currentPhone = userDoc?.phoneNumber || userDoc?.confirmedPhoneNumber || "";
+  const hasValidPhone = isValidVietnamPhone(currentPhone);
   const upgradeVisibility = getUpgradeVisibility(userDoc?.planType, userDoc?.planExpiresAt);
 
   const getUserAvatar = () => {
@@ -5156,7 +5214,8 @@ ${bodyHtml}
 
   // --- USER WORKSPACE ---
 
-  if (needsEmailOtp) {
+  // 1. Nếu chưa xác thực email -> bắt buộc xác thực email OTP
+  if (!isEmailVerified) {
     return <>
       <EmailVerificationGate
         key={user.uid}
@@ -5166,6 +5225,28 @@ ${bodyHtml}
           setUserDoc((currentDoc) => ({ ...(currentDoc || {}), ...profile }));
           await user.getIdToken(true).catch(() => console.warn('Số liên hệ đã xác nhận; token sẽ được làm mới ở lần đăng nhập tiếp theo.'));
         }}
+      />
+      <ZaloContactWidget />
+    </>;
+  }
+
+  // 2. Nếu đã xác thực email nhưng chưa có sđt hoặc sđt không đúng/rỗng -> Bắt buộc nhập sđt mới cho dùng tiếp
+  if (!hasValidPhone) {
+    return <>
+      <MandatoryPhoneGate
+        key={user.uid}
+        user={user}
+        userDoc={userDoc}
+        onPhoneUpdated={(newPhone) => {
+          setUserDoc((currentDoc) => ({
+            ...(currentDoc || {}),
+            phoneNumber: newPhone,
+            confirmedPhoneNumber: '+84' + newPhone.slice(1),
+            phoneConfirmedAt: new Date().toISOString()
+          }));
+          triggerToast("Đã lưu số điện thoại vào cài đặt cá nhân thành công!", true);
+        }}
+        onLogout={handleLogout}
       />
       <ZaloContactWidget />
     </>;
@@ -5287,6 +5368,9 @@ ${bodyHtml}
               {isAdminUser(user, userDoc) && (
                 <div className="w-full shrink-0 flex flex-col gap-1">
                   <div className="text-[10px] font-bold text-slate-400 tracking-wider mb-1 mt-2 px-3 uppercase truncate">Quản trị</div>
+                  <button onClick={() => handleSidebarNav('payments')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'payments' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                      <Banknote className="w-4 h-4 shrink-0 text-emerald-600" /> <span className="truncate whitespace-nowrap">Thanh toán</span>
+                  </button>
                   <button onClick={() => handleSidebarNav('members')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'members' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <Users className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Thành viên</span>
                   </button>
@@ -5396,7 +5480,7 @@ ${bodyHtml}
 
       <div className="flex-1 flex flex-col">
       <div className="max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-10 py-2 md:py-4 flex-1 flex flex-col gap-4 md:gap-6 overflow-x-hidden">
-        {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics") && isAdminUser(user, userDoc) && (
+        {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics" || sidebarView === "payments") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 
             id="admin-panel-viewport"
@@ -7168,6 +7252,10 @@ ${bodyHtml}
               );
             })()}
 
+                        {sidebarView === "payments" && (
+              <AdminPayments allUsers={allUsers} />
+            )}
+
             {sidebarView === "analytics" && (
               <AdminAnalyticsDashboard allUsers={allUsers} />
             )}
@@ -7364,15 +7452,16 @@ ${bodyHtml}
                     {/* Số điện thoại */}
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
-                        Số điện thoại
+                        Số điện thoại <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="tel"
-                        readOnly
+                        required
+                        placeholder="Nhập số điện thoại (VD: 0912345678)"
                         value={settingsPhoneNumber}
+                        onChange={(e) => setSettingsPhoneNumber(e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
                       />
-                      <p className="text-[10px] text-slate-500">Số liên hệ đã xác nhận qua email và được khóa. Không thể tự đổi hoặc xóa.</p>
                     </div>
 
                     {/* Ngày sinh */}
@@ -7395,7 +7484,7 @@ ${bodyHtml}
                     <div>
                       <p className="text-xs font-bold text-indigo-900">Liên kết thông tin cá nhân & Gmail</p>
                       <p className="text-[11px] text-indigo-700/80 leading-relaxed mt-0.5">
-                        Hệ thống tự động sử dụng Tên và Ảnh đại diện từ tài khoản Google/Gmail của bạn làm ảnh đại diện mặc định để cá nhân hoá trải nghiệm. Bạn có thể tự do sửa đổi Tên hiển thị và Ngày sinh ở biểu mẫu trên bất cứ lúc nào. Số liên hệ được khóa sau khi xác nhận qua email.
+                        Hệ thống tự động sử dụng Tên và Ảnh đại diện từ tài khoản Google/Gmail của bạn làm ảnh đại diện mặc định để cá nhân hoá trải nghiệm. Bạn có thể tự do sửa đổi Tên hiển thị và Ngày sinh ở biểu mẫu trên bất cứ lúc nào.
                       </p>
                     </div>
                   </div>

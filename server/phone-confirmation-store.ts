@@ -9,10 +9,8 @@ export class ConfirmationError extends Error {
 }
 
 function checkLockedPhone(profile: Record<string, unknown>, phone: string) {
-  const locked = normalizeVietnamPhone(String(profile.confirmedPhoneNumber ?? ''));
-  if (locked && locked !== phone) {
-    throw new ConfirmationError(409, 'PHONE_LOCKED', 'Số liên hệ đã khóa. Vui lòng xác nhận đúng số đã lưu hoặc liên hệ quản trị viên.');
-  }
+  // Cho phép người dùng đổi số điện thoại tự do
+  return;
 }
 
 export function createPhoneConfirmationStore(db: Firestore) {
