@@ -57,6 +57,11 @@ div.katex-custom-wrapper {
 }
 
 /* Hide background scrollbars styling but keep functionality */
+.doc-options-container .katex-custom-wrapper,
+.doc-options-container .katex {
+  white-space: nowrap;
+}
+
 .katex-custom-wrapper::-webkit-scrollbar,
 .katex::-webkit-scrollbar,
 .katex-display::-webkit-scrollbar {
@@ -255,4 +260,4 @@ html, body {
   .no-print {
     display: none !important;
   }
-} 
+}

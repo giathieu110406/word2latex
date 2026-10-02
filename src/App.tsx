@@ -1,3 +1,4 @@
+import { renderLatexContent, maskProtectedContent, parseMultipleChoice, escHtml, applySmartFormatting, normalizeLaTeX, convertTabTableToMarkdown } from './utils/latex-content';
 import { clearDriveSession } from './lib/drive-session';
 import AIWork from './components/AIWork';
 import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils/logger";
@@ -38,7 +39,6 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
 import { prepareWordEquations, buildWordClipboard, copyWordContent, downloadWordDocument } from "./utils/word-export";
-import { marked } from "marked";
 import { LatexConverter } from "./components/LatexConverter";
 import { MarkItDown } from "./components/MarkItDown";
 import { QBuilder } from "./components/QBuilder";
@@ -138,16 +138,6 @@ function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Helper to escape HTML safely for attributes
-function escHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 // LaTeX special character escape for normal text blocks in the Overleaf document template
 function escapeLaTeX(text: string): string {
   return text
@@ -160,159 +150,6 @@ function escapeLaTeX(text: string): string {
 // Module-level cache to make KaTeX MathML generation instant during Word download/copy
 const mathmlCache = new Map<string, string>();
 
-// Helper functions to protect URLs from being mangled by formatting or KaTeX regexes
-interface ProtectedUrl {
-  placeholder: string;
-  original: string;
-  isBare: boolean;
-}
-
-function protectUrls(text: string): {
-  protectedText: string;
-  urls: ProtectedUrl[];
-} {
-  if (!text) return { protectedText: "", urls: [] };
-
-  const urls: ProtectedUrl[] = [];
-  const URL_RE = /https?:\/\/[^\s<>\"{}]+[^.,;:!?\s<>\"){}]/gi;
-
-  let match;
-  let lastIndex = 0;
-  let protectedText = "";
-
-  URL_RE.lastIndex = 0;
-  while ((match = URL_RE.exec(text)) !== null) {
-    const original = match[0];
-    const index = match.index;
-
-    const beforeStr = text.slice(Math.max(0, index - 10), index);
-    const isBare =
-      !beforeStr.endsWith("](") &&
-      !beforeStr.includes("href=") &&
-      !beforeStr.includes("src=") &&
-      !beforeStr.endsWith("<");
-
-    const placeholder = `@@@URL_PLACE_HOLDER_${urls.length}@@@`;
-    urls.push({ placeholder, original, isBare });
-
-    protectedText += text.slice(lastIndex, index) + placeholder;
-    lastIndex = URL_RE.lastIndex;
-  }
-  protectedText += text.slice(lastIndex);
-
-  return { protectedText, urls };
-}
-
-function restoreUrls(
-  text: string,
-  urls: ProtectedUrl[],
-  forceOriginal: boolean = false,
-): string {
-  let restored = text;
-  for (const item of urls) {
-    if (item.isBare && !forceOriginal) {
-      // Convert bare URLs into Markdown links so marked can render them as clickable links
-      restored = restored.replace(
-        item.placeholder,
-        `[${item.original}](${item.original})`,
-      );
-    } else {
-      // Restore as original for pre-existing markdown links, html, or if forced
-      restored = restored.replace(item.placeholder, item.original);
-    }
-  }
-  return restored;
-}
-
-// Smart formatting to fix run-on sentences or stuck equations, numbers, percentages, quotes, etc.
-function applySmartFormatting(text: string): string {
-  if (!text) return "";
-
-  // 1. Mask math blocks and code blocks first to protect them from being modified
-  const placeholders: string[] = [];
-  const PROTECT_RE = /```[\s\S]*?```|`[^`\n]+`|\$\{[\s\S]*?\}|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\\ref\{[^}]+\}|\\label\{[^}]+\}|\$(?!\$)[\s\S]*?(?<!\\)\$/g;
-
-  let protectedText = text.replace(PROTECT_RE, (match) => {
-    const ph = `___SMART_FORMAT_PLACEHOLDER_${placeholders.length}___`;
-    placeholders.push(match);
-    return ph;
-  });
-
-  // 2. Original formatting rules:
-  // - Nhận dạng in đậm thiếu dấu sao ở đầu: *Đáp án đúng:** -> **Đáp án đúng**
-  protectedText = protectedText.replace(/(?<!\*)\*(?!\s)([^\*\n]+?)\*\*/g, '**$1**');
-
-  // - Nhận dạng in nghiêng thiếu dấu sao ở đầu cho mục danh sách: * Nội dung*: -> * *Nội dung*:
-  protectedText = protectedText.replace(/^(\s*\*\s+)([^\*\n]+?)\*(?!\*)/gm, '$1*$2*');
-
-  // 3. AUTO-RECOGNIZE EXPONENTS (SUPERSCRIPTS) AND SUBSCRIPTS ON NORMAL LETTERS:
-  
-  // A. Unicode superscript characters on single letters (or simple variable names):
-  // Superscript characters: ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ
-  const supMap: { [key: string]: string } = {
-    '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '⁺': '+', '⁻': '-', 'ⁿ': 'n'
-  };
-  protectedText = protectedText.replace(/([a-zA-Z])([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ]+)/g, (match, letter, sups) => {
-    let power = '';
-    for (let i = 0; i < sups.length; i++) {
-      power += supMap[sups[i]] || sups[i];
-    }
-    const formattedPower = power.length > 1 ? `{${power}}` : power;
-    return `$${letter}^${formattedPower}$`;
-  });
-
-  // B. Unicode subscript characters on single letters (or simple variable names):
-  // Subscript characters: ₀₁₂₃₄₅₆₇₈₉₊₋ₐₑₒₓᵢⱼᵤᵥ
-  const subMap: { [key: string]: string } = {
-    '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
-    '₊': '+', '₋': '-', 'ₐ': 'a', 'ₑ': 'e', 'ₒ': 'o', 'ₓ': 'x', 'ᵢ': 'i', 'ⱼ': 'j', 'ᵤ': 'u', 'ᵥ': 'v'
-  };
-  protectedText = protectedText.replace(/([a-zA-Z])([₀₁₂₃₄₅₆₇₈₉₊₋ₐₑₒₓᵢⱼᵤᵥ]+)/g, (match, letter, subs) => {
-    let index = '';
-    for (let i = 0; i < subs.length; i++) {
-      index += subMap[subs[i]] || subs[i];
-    }
-    const formattedIndex = index.length > 1 ? `{${index}}` : index;
-    return `$${letter}_${formattedIndex}$`;
-  });
-
-  // C. Plain text caret/underscore notation: e.g. x^2, x_1, y_n, a_{i+1}, a^x, etc.
-  protectedText = protectedText.replace(/\b([a-zA-Z])\^([0-9a-zA-Z+\-]+|\{[^}]+\})/g, (match, letter, power) => {
-    return `$${letter}^${power}$`;
-  });
-
-  protectedText = protectedText.replace(/\b([a-zA-Z])_([0-9a-zA-Z+\-]+|\{[^}]+\})/g, (match, letter, index) => {
-    return `$${letter}_${index}$`;
-  });
-
-  // D. Very common plain combinations (single math letters followed immediately by a digit, e.g. x1, x2, y1, y2, u1, v2, a1, b2, c0...)
-  // We strictly target typical math variables (x, y, z, t, u, v, a, b, c, s, n, m) to avoid false positives.
-  protectedText = protectedText.replace(/\b([xyztuvabcnsm])([0-9])\b/gi, (match, letter, digit) => {
-    return `$${letter}_${digit}$`;
-  });
-
-  // 4. Restore the masked math/code blocks
-  let restoredText = protectedText;
-  for (let i = 0; i < placeholders.length; i++) {
-    restoredText = restoredText.replace(`___SMART_FORMAT_PLACEHOLDER_${i}___`, placeholders[i]);
-  }
-
-  return restoredText;
-}
-
-// Bộ lọc tối ưu hóa kiểm tra xem một cụm có thực sự là công thức toán học cần LaTeX không
-// hay chỉ là các con số đơn lẻ, ngày tháng, phần trăm hoặc ký tự thông thường vô lý.
-function isRealMathLaTeX(str: string): boolean {
-  // Always recognize inline math enclosed by $...$ as a math equation directly, with no error-correction blocks
-  return str.trim().length > 0;
-}
-
-// Normalize LaTeX helper inside mathematical formulas for MS Word rendering and KaTeX compatibility
-function normalizeLaTeX(latex: string, isInline: boolean = false): string {
-  // Do not perform automatic normalization/manipulation to preserve exact user latex formulas
-  return latex;
-}
-
 // Check for unclosed/unpaired dollar tags ($) in input text
 function hasUnclosedDollar(text: string): boolean {
   if (!text) return false;
@@ -321,109 +158,6 @@ function hasUnclosedDollar(text: string): boolean {
   cleaned = cleaned.replace(/\\\$/g, "");
   const matches = cleaned.match(/\$/g);
   return matches ? matches.length % 2 !== 0 : false;
-}
-
-interface ParsedQuestion {
-  questionBody: string;
-  options: { label: string; text: string }[];
-}
-
-function parseMultipleChoice(text: string): ParsedQuestion {
-  if (!text) return { questionBody: "", options: [] };
-
-  const lines = text.split("\n");
-  const questionLines: string[] = [];
-  const options: { label: string; text: string }[] = [];
-
-  const optionRegex = /^\s*([A-D])[\.\)\/]\s*(.*)$/;
-  // Các dòng bắt đầu bằng đánh số danh sách, bullet, ký hiệu đặc biệt hoặc từ khóa đề mục
-  const nonOptionContinuationRegex =
-    /^\s*(?:\d+[\.\)\/\s-]|[\-\*•]|\b(?:Bài|Yêu cầu|Biết rằng|Ghi chú|Lưu ý|Chú ý|Đề số|Mã số|Thời gian)\b)/i;
-
-  let currentOption: { label: string; text: string } | null = null;
-  const postQuestionLines: string[] = []; // Chứa các dòng không phải option nằm sau khi các option bắt đầu
-
-  for (const line of lines) {
-    const match = line.match(optionRegex);
-    if (match) {
-      if (currentOption) {
-        options.push(currentOption);
-      }
-      currentOption = {
-        label: match[1].toUpperCase(),
-        text: match[2].trim(),
-      };
-    } else {
-      if (currentOption) {
-        // Nếu đã có option đang chạy, nhưng dòng hiện tại trống hoặc bắt đầu bằng số/bullet/từ khóa đề mục
-        // thì ta ngắt option đó và coi dòng này thuộc về phần nội dung sau option (sẽ được nối vào questionBody)
-        if (!line.trim() || nonOptionContinuationRegex.test(line)) {
-          options.push(currentOption);
-          currentOption = null;
-          postQuestionLines.push(line);
-        } else {
-          // Ngược lại thì vẫn tiếp tục gộp vào option hiện tại
-          currentOption.text += "\n" + line.trim();
-        }
-      } else {
-        if (options.length > 0) {
-          // Đã xong các option trước đó, dòng này là nội dung xuất hiện sau các option
-          postQuestionLines.push(line);
-        } else {
-          // Chưa bắt đầu option nào, dòng này thuộc về đề bài
-          questionLines.push(line);
-        }
-      }
-    }
-  }
-
-  if (currentOption) {
-    options.push(currentOption);
-  }
-
-  let questionBody = questionLines.join("\n").trim();
-  if (postQuestionLines.length > 0) {
-    questionBody += "\n\n" + postQuestionLines.join("\n").trim();
-  }
-
-  if (options.length >= 2) {
-    return {
-      questionBody: questionBody.trim(),
-      options,
-    };
-  }
-
-  // If we couldn't parse 2 distinct options from separate lines, try inline parsing (e.g., A. $1$ B. $2$ C. $3$ D. $4$)
-  const inlineRegex =
-    /([A-D])[\.\)\/]\s*([\s\S]*?)(?=\s*[A-D][\.\)\/]|(?:\s*$))/g;
-  const plainText = text;
-  const firstOptionIdx = plainText.search(/\b[A-D][\.\)\/]/);
-
-  if (firstOptionIdx !== -1) {
-    const questionBodyInline = plainText.substring(0, firstOptionIdx).trim();
-    const optionsPart = plainText.substring(firstOptionIdx);
-
-    const foundOptions: { label: string; text: string }[] = [];
-    let m;
-    while ((m = inlineRegex.exec(optionsPart)) !== null) {
-      foundOptions.push({
-        label: m[1].toUpperCase(),
-        text: m[2].trim(),
-      });
-    }
-
-    if (foundOptions.length >= 2) {
-      return {
-        questionBody: questionBodyInline,
-        options: foundOptions,
-      };
-    }
-  }
-
-  return {
-    questionBody: text.trim(),
-    options: [],
-  };
 }
 
 function checkIsOwnerEmail(user: any): boolean {
@@ -1397,13 +1131,14 @@ export default function App() {
     qText: string,
     fallbackType: "trac_nghiem" | "trac_nghiem_dung_sai" | "trac_nghiem_tra_loi_ngan" | "tu_luan"
   ): "trac_nghiem" | "trac_nghiem_dung_sai" | "trac_nghiem_tra_loi_ngan" | "tu_luan" => {
+    qText = maskProtectedContent(qText).masked;
     const cleanText = qText.trim().toLowerCase();
     
     // Check for A., B., C., D. options (for Multiple Choice)
-    const hasA = /^[A-D][.\s\)-]/m.test(qText) || /(?:\s|^|\n)A[.\s\)-]/m.test(qText) || /a\.\s/i.test(qText);
-    const hasB = /^[A-D][.\s\)-]/m.test(qText) || /(?:\s|^|\n)B[.\s\)-]/m.test(qText) || /b\.\s/i.test(qText);
-    const hasC = /^[A-D][.\s\)-]/m.test(qText) || /(?:\s|^|\n)C[.\s\)-]/m.test(qText) || /c\.\s/i.test(qText);
-    const hasD = /^[A-D][.\s\)-]/m.test(qText) || /(?:\s|^|\n)D[.\s\)-]/m.test(qText) || /d\.\s/i.test(qText);
+    const hasA = /^[A][.\s\)-]/m.test(qText) || /(?:\s|^|\n)A[.\s\)-]/m.test(qText) || /a\.\s/i.test(qText);
+    const hasB = /^[B][.\s\)-]/m.test(qText) || /(?:\s|^|\n)B[.\s\)-]/m.test(qText) || /b\.\s/i.test(qText);
+    const hasC = /^[C][.\s\)-]/m.test(qText) || /(?:\s|^|\n)C[.\s\)-]/m.test(qText) || /c\.\s/i.test(qText);
+    const hasD = /^[D][.\s\)-]/m.test(qText) || /(?:\s|^|\n)D[.\s\)-]/m.test(qText) || /d\.\s/i.test(qText);
     
     // If we have at least A, B, C, D options, it's definitely trac_nghiem
     if (hasA && hasB && hasC && hasD) {
@@ -1466,7 +1201,8 @@ export default function App() {
       return result;
     };
 
-    const fixedText = fixMarkdown(formattedText);
+    const protectedContent = maskProtectedContent(formattedText);
+    const fixedText = fixMarkdown(protectedContent.masked);
     const lines = fixedText.split('\n');
     
     let blocks: {text: string, typeContext: "trac_nghiem" | "trac_nghiem_dung_sai" | "trac_nghiem_tra_loi_ngan" | "tu_luan"}[] = [];
@@ -1534,13 +1270,13 @@ export default function App() {
             }
         }
         
-        const questionContent = qLines.join('\n').trim();
+        const questionContent = protectedContent.restore(qLines.join('\n').trim());
         const detectedType = detectQuestionTypeFromBlockContent(questionContent, blockObj.typeContext);
         
         return {
            type: detectedType,
            q: questionContent,
-           a: aLines.join('\n').trim()
+           a: protectedContent.restore(aLines.join('\n').trim())
         };
     });
     
@@ -1829,6 +1565,8 @@ export default function App() {
   const getCleanQuestionBody = (text: string): string => {
     if (!text) return "";
     let clean = mergeAdjacentBoldBlocks(normalizeInputText(text)).trim();
+    const protectedQuestion = maskProtectedContent(clean);
+    clean = protectedQuestion.masked;
     
     // Clean any leading list bullets or punctuation that appear before the question prefix
     const qMatch = clean.match(/(?:Câu|Bài)\s*(?:\d+|[IVXLCDM]+)\b/i);
@@ -1910,7 +1648,7 @@ export default function App() {
     }
     
     clean = clean.replace(/^\s*\*\*\s*\*\*\s*/, "").trim();
-    return clean;
+    return protectedQuestion.restore(clean);
   };
 
   const getCleanAnswerBody = (text: string): string => {
@@ -1951,7 +1689,8 @@ export default function App() {
       return result;
     };
 
-    const fixedText = fixMarkdown(formattedText);
+    const protectedContent = maskProtectedContent(formattedText);
+    const fixedText = fixMarkdown(protectedContent.masked);
     const lines = fixedText.split('\n');
     
     let blocks: {text: string, typeContext: "trac_nghiem" | "trac_nghiem_dung_sai" | "trac_nghiem_tra_loi_ngan" | "tu_luan"}[] = [];
@@ -2018,13 +1757,13 @@ export default function App() {
             }
         }
         
-        const questionContent = qLines.join('\n').trim();
+        const questionContent = protectedContent.restore(qLines.join('\n').trim());
         const detectedType = detectQuestionTypeFromBlockContent(questionContent, blockObj.typeContext);
         
         return {
            type: detectedType,
            q: questionContent,
-           a: aLines.join('\n').trim()
+           a: protectedContent.restore(aLines.join('\n').trim())
         };
     });
     
@@ -2062,241 +1801,7 @@ export default function App() {
     });
   };
 
-  const convertTabTableToMarkdown = (text: string): string => {
-    if (!text) return "";
-    const lines = text.split("\n");
-    const result: string[] = [];
-    let inTable = false;
-    let tableRows: string[][] = [];
-
-    const renderCurrentTable = (rows: string[][]): string => {
-      if (rows.length === 0) return "";
-      const maxCols = Math.max(...rows.map((r) => r.length));
-      if (maxCols < 2) {
-        // If it has only 1 column, it is not a real table, return as plain text lines
-        return rows.map((r) => r.join(" ")).join("\n");
-      }
-
-      const header = rows[0].map((c) => c || " ");
-      while (header.length < maxCols) header.push(" ");
-
-      const separator = Array(maxCols).fill("---");
-
-      let md = "\n| " + header.join(" | ") + " |\n";
-      md += "| " + separator.join(" | ") + " |\n";
-
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i].map((c) => c || " ");
-        while (row.length < maxCols) row.push(" ");
-        md += "| " + row.join(" | ") + " |\n";
-      }
-      md += "\n";
-      return md;
-    };
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const hasTabs = line.includes("\t");
-
-      if (hasTabs) {
-        inTable = true;
-        const cols = line.split("\t").map((c) => c.trim());
-        tableRows.push(cols);
-      } else {
-        if (inTable && tableRows.length > 0) {
-          result.push(renderCurrentTable(tableRows));
-          tableRows = [];
-          inTable = false;
-        }
-        result.push(line);
-      }
-    }
-
-    if (inTable && tableRows.length > 0) {
-      result.push(renderCurrentTable(tableRows));
-    }
-
-    return result.join("\n");
-  };
-
-  const renderContentWithMath = (text: string): string => {
-    if (!text) return "";
-
-    // Bước 1: Normalize input (NFC, loại bỏ BOM, chuẩn hoá smart quotes)
-    let normalizedInput = text
-      .replace(/\r\n/g, "\n")
-      .replace(/\r/g, "\n")
-      .replace(/^\uFEFF/, "")
-      .normalize("NFC")
-      .replace(/[\u2018\u2019]/g, "'")
-      .replace(/[\u201C\u201D]/g, '"')
-      .replace(/\u2013/g, "--")
-      .replace(/\u2014/g, "---")
-      .replace(/\u2026/g, "...")
-      .replace(/\u00A0/g, " ")
-      .replace(/\u200B/g, "")
-      .replace(/\u200C/g, "");
-
-    // Auto convert tab-separated values pasted from Word/Excel to markdown tables
-    let convertedText = convertTabTableToMarkdown(normalizedInput);
-
-    // Protect URLs from being mangled or broken by applySmartFormatting or KaTeX parsing
-    const { protectedText, urls } = protectUrls(convertedText);
-    let input = protectedText;
-
-    const codeRanges: [number, number][] = [];
-    const CODE_BLOCK_REGEX = /```[\s\S]*?```|`[^`\n]+`/g;
-    let codeMatch;
-    CODE_BLOCK_REGEX.lastIndex = 0;
-    while ((codeMatch = CODE_BLOCK_REGEX.exec(input)) !== null) {
-      codeRanges.push([codeMatch.index, codeMatch.index + codeMatch[0].length]);
-    }
-
-    const DISPLAY_MATH_REGEX =
-       "\\$\\$([\\s\\S]*?)\\$\\$|\\\\\\[([\\s\\S]*?)\\\\\\]|\\\\begin\\{(equation|align|gather|multline|eqnarray|alignat|flalign|split|cases|aligned|alignedat|pmatrix|bmatrix|vmatrix|Bmatrix|Vmatrix|matrix|array)(\\*?)\\}([\\s\\S]*?)\\\\end\\{(?:equation|align|gather|multline|eqnarray|alignat|flalign|split|cases|aligned|alignedat|pmatrix|bmatrix|vmatrix|Bmatrix|Vmatrix|matrix|array)\\*?\\}";
-    const INLINE_MATH_REGEX =
-      "(?<!\\$)\\$(?!\\$)((?:[^$\\n\\\\]|\\\\[\\s\\S])*?)(?<!\\$)\\$(?!\\$)";
-    const INLINE_PAREN_REGEX = "\\\\\\([\\s\\S]*?\\\\\\)";
-
-    const MATH_COMBINED_RE = new RegExp(
-      `${DISPLAY_MATH_REGEX}|${INLINE_PAREN_REGEX}|${INLINE_MATH_REGEX}`,
-      "g",
-    );
-
-    const mathBlocks: string[] = [];
-    let mdText = "";
-    let lastIdx = 0;
-    let m;
-
-    MATH_COMBINED_RE.lastIndex = 0;
-    while ((m = MATH_COMBINED_RE.exec(input)) !== null) {
-      const isInsideCode = codeRanges.some(
-        ([start, end]) => m!.index >= start && m!.index < end,
-      );
-
-      if (isInsideCode) {
-        if (m.index > lastIdx) {
-          mdText += input.slice(lastIdx, m.index + m[0].length);
-        } else if (m.index === lastIdx) {
-          mdText += m[0];
-        }
-        lastIdx = m.index + m[0].length;
-        continue;
-      }
-
-      if (m.index > lastIdx) {
-        mdText += input.slice(lastIdx, m.index);
-      }
-
-      const raw = m[0];
-      const isDisplay =
-        raw.startsWith("$$") ||
-        raw.startsWith("\\[") ||
-        raw.startsWith("\\begin");
-      let latex = "";
-
-      if (raw.startsWith("$$")) latex = raw.slice(2, -2);
-      else if (raw.startsWith("\\[")) latex = raw.slice(2, -2);
-      else if (raw.startsWith("\\(")) latex = raw.slice(2, -2);
-      else if (raw.startsWith("\\begin"))
-        latex = raw; // KaTeX cần toàn bộ thẻ \begin...\end
-      else latex = raw.slice(1, -1);
-
-      // Nếu không phải là block math và là inline math bọc bởi dấu '$' đơn
-      // đồng thời nội dung bên trong KHÔNG PHẢI là một công thức toán thực sự (ví dụ: chỉ là số 10, 20%, ngày tháng, bài toán...)
-      if (!isDisplay && raw.startsWith("$") && !isRealMathLaTeX(latex)) {
-        mdText += "$";
-        MATH_COMBINED_RE.lastIndex = m.index + 1;
-        lastIdx = m.index + 1;
-        continue;
-      }
-
-      let mathHtml = "";
-      try {
-        let normalized = normalizeLaTeX
-          ? normalizeLaTeX(latex.trim(), !isDisplay)
-          : latex.trim();
-        normalized = restoreUrls(normalized, urls, true);
-        const rendered = katex.renderToString(normalized, {
-          displayMode: isDisplay,
-          output: "html",
-          throwOnError: false,
-          errorColor: "#f43f5e",
-          strict: "ignore",
-          trust: true,
-        });
-
-        const tag = "span";
-        mathHtml = `<${tag} class="katex-custom-wrapper" data-latex="${escHtml(normalized)}" data-display="${isDisplay}" style="${isDisplay ? "display: block; text-align: center; margin: 0.8em 0;" : ""}">${rendered}</${tag}>`;
-      } catch (e: any) {
-        mathHtml = `<span style="color:#f43f5e">${escHtml(raw)}</span>`;
-      }
-
-      const blockIdx = mathBlocks.length;
-      mathBlocks.push(mathHtml);
-        if (isDisplay) {
-        mdText += `\n\n@@@MATH_BLOCK_${blockIdx}@@@\n\n`;
-      } else {
-        mdText += `@@@MATH_BLOCK_${blockIdx}@@@`;
-      }
-      lastIdx = m.index + raw.length;
-    }
-
-    if (lastIdx < input.length) {
-      mdText += input.slice(lastIdx);
-    }
-
-    if (smartNewline) {
-      mdText = applySmartFormatting(mdText);
-    }
-
-    // Restore URLs with linkification for bare ones just before passing to marked.parse
-    mdText = restoreUrls(mdText, urls, false);
-
-    // Parse Markdown synchronously using marked
-    let htmlContent = "";
-    try {
-      htmlContent = marked.parse(mdText) as string;
-    } catch {
-      htmlContent = mdText;
-    }
-
-    // Ensure all links open in a new tab and are styled beautifully
-    htmlContent = htmlContent.replace(
-      /<a\s+href=/g,
-      '<a target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline cursor-pointer font-medium" href=',
-    );
-
-  // Khôi phục công thức khối và loại bỏ thẻ <p> bao ngoài nếu đứng riêng lẻ
-    htmlContent = htmlContent.replace(
-      /<p>(?:\s|<br\s*\/?>)*@@@MATH_BLOCK_(\d+)@@@(?:\s|<br\s*\/?>)*<\/p>/g,
-      (match, idStr) => {
-        const block = mathBlocks[+idStr] || "";
-        const isDisplay = block.includes('data-display="true"');
-        return isDisplay ? block : match;
-      }
-    );
-
-    // Replace equations back an toàn không tiêu thụ ký tự kế tiếp
-    htmlContent = htmlContent.replace(
-      /@@@MATH_BLOCK_(\d+)@@@/g,
-      (match, idStr, offset, fullStr) => {
-        const block = mathBlocks[+idStr] || "";
-        if (!block) return "";
-        const isDisplay = block.includes('data-display="true"');
-        if (isDisplay) return block;
-        // Thêm khoảng cách nếu inline math liền kề với từ thông thường phía sau
-        const nextSlice = fullStr.slice(offset + match.length);
-        const nextWordMatch = nextSlice.match(/^(?:[\s\u00a0\u200b]|&nbsp;)*([^.,;:!?\)\}\]”’"`\s<@])/);
-        if (nextWordMatch && !nextSlice.startsWith(" ")) {
-          return block + " ";
-        }
-        return block;
-      },
-    );
-
-    return htmlContent;
-  };
+  const renderContentWithMath = (text: string, promoteStandaloneMath = true): string => renderLatexContent(text, smartNewline, promoteStandaloneMath);
 
   // --- SYNCHRONIZE LOCAL CACHE ---
   useEffect(() => {
@@ -3734,211 +3239,18 @@ ${cleanedBody}
 \\end{document}`;
   };
 
-  // Perform processing whenever inputs or settings change
+  // Convert and Qbuild share the same renderer, including Word equation metadata.
   useEffect(() => {
-    // Bước 1: Normalize input (NFC, loại bỏ BOM, chuẩn hoá smart quotes) - Dựa theo thuật toán từ tài liệu
-    let normalizedInput = inputText;
-    if (normalizedInput) {
-      normalizedInput = normalizedInput
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n")
-        .replace(/^\uFEFF/, "")
-        .normalize("NFC")
-        .replace(/[\u2018\u2019]/g, "'")
-        .replace(/[\u201C\u201D]/g, '"')
-        .replace(/\u2013/g, "--")
-        .replace(/\u2014/g, "---")
-        .replace(/\u2026/g, "...")
-        .replace(/\u00A0/g, " ")
-        .replace(/\u200B/g, "")
-        .replace(/\u200C/g, "");
-    }
-
-    // Protect URLs from being mangled or broken by applySmartFormatting or KaTeX parsing
-    const { protectedText, urls } = protectUrls(normalizedInput);
-    let input = protectedText;
-
     if (!inputText.trim()) {
-      setProcessedHtml(
-        '<p class="text-slate-400 italic font-medium">Kết quả học thuật sẽ hiển thị trực quan tại đây...</p>',
-      );
+      setProcessedHtml('<p class="text-slate-400 italic font-medium">Kết quả học thuật sẽ hiển thị trực quan tại đây...</p>');
       setOverleafCode("");
       return;
     }
-
-    // Bước 2: Loại bỏ LaTeX trong code blocks
-    const codeRanges: [number, number][] = [];
-    const CODE_BLOCK_REGEX = /```[\s\S]*?```|`[^`\n]+`/g;
-    let codeMatch;
-    // We must reset lastIndex in case it was used elsewhere
-    CODE_BLOCK_REGEX.lastIndex = 0;
-    while ((codeMatch = CODE_BLOCK_REGEX.exec(input)) !== null) {
-      codeRanges.push([codeMatch.index, codeMatch.index + codeMatch[0].length]);
-    }
-
-    // Bước 3: Thuật toán nhận diện LaTeX tiên tiến (hỗ trợ nested environments và tránh greedy fail)
-    const DISPLAY_MATH_REGEX =
-       "\\$\\$([\\s\\S]*?)\\$\\$|\\\\\\[([\\s\\S]*?)\\\\\\]|\\\\begin\\{(equation|align|gather|multline|eqnarray|alignat|flalign|split|cases|aligned|alignedat|pmatrix|bmatrix|vmatrix|Bmatrix|Vmatrix|matrix|array)(\\*?)\\}([\\s\\S]*?)\\\\end\\{(?:equation|align|gather|multline|eqnarray|alignat|flalign|split|cases|aligned|alignedat|pmatrix|bmatrix|vmatrix|Bmatrix|Vmatrix|matrix|array)\\*?\\}";
-    const INLINE_MATH_REGEX =
-      "(?<!\\$)\\$(?!\\$)((?:[^$\\n\\\\]|\\\\[\\s\\S]|\\n(?!\\s*\\n))*?)(?<!\\$)\\$(?!\\$)";
-    const INLINE_PAREN_REGEX = "\\\\\\([\\s\\S]*?\\\\\\)";
-
-    const MATH_COMBINED_RE = new RegExp(
-      `${DISPLAY_MATH_REGEX}|${INLINE_PAREN_REGEX}|${INLINE_MATH_REGEX}`,
-      "g",
-    );
-
-    const mathBlocks: string[] = [];
-    let mdText = "";
-    let lastIdx = 0;
-    let m;
-
-    MATH_COMBINED_RE.lastIndex = 0;
-    while ((m = MATH_COMBINED_RE.exec(input)) !== null) {
-      const isInsideCode = codeRanges.some(
-        ([start, end]) => m!.index >= start && m!.index < end,
-      );
-
-      if (isInsideCode) {
-        if (m.index > lastIdx) {
-          mdText += input.slice(lastIdx, m.index + m[0].length);
-        } else if (m.index === lastIdx) {
-          mdText += m[0];
-        }
-        lastIdx = m.index + m[0].length;
-        continue;
-      }
-
-      if (m.index > lastIdx) {
-        mdText += input.slice(lastIdx, m.index);
-      }
-
-      const raw = m[0];
-      let isDisplay =
-        raw.startsWith("$$") ||
-        raw.startsWith("\\[") ||
-        raw.startsWith("\\begin");
-
-      // Tự động nâng cấp công thức đứng riêng một dòng thành Display Math
-      if (!isDisplay && raw.startsWith("$") && !raw.startsWith("$$")) {
-        const textBefore = input.slice(0, m.index);
-        const textAfter = input.slice(m.index + raw.length);
-        const isStartOfLine = /(?:^|\n)[ \t]*$/.test(textBefore);
-        const isEndOfLine = /^[ \t]*(?:\r?\n|$)/.test(textAfter);
-        if (isStartOfLine && isEndOfLine) {
-          isDisplay = true;
-        }
-      }
-      let latex = "";
-
-      if (raw.startsWith("$$")) latex = raw.slice(2, -2);
-      else if (raw.startsWith("\\[")) latex = raw.slice(2, -2);
-      else if (raw.startsWith("\\(")) latex = raw.slice(2, -2);
-      else if (raw.startsWith("\\begin"))
-        latex = raw; // KaTeX cần toàn bộ thẻ \begin...\end
-      else latex = raw.slice(1, -1);
-
-      // Nếu không phải là block math và là inline math bọc bởi dấu '$' đơn
-      // đồng thời nội dung bên trong KHÔNG PHẢI là một công thức toán thực sự (ví dụ: chỉ là số 10, 20%, ngày tháng, bài toán...)
-      if (!isDisplay && raw.startsWith("$") && !isRealMathLaTeX(latex)) {
-        mdText += "$";
-        MATH_COMBINED_RE.lastIndex = m.index + 1;
-        lastIdx = m.index + 1;
-        continue;
-      }
-
-      let mathHtml = "";
-      try {
-        let normalized = normalizeLaTeX(latex.trim(), !isDisplay);
-        normalized = restoreUrls(normalized, urls, true);
-        const rendered = katex.renderToString(normalized, {
-          displayMode: isDisplay,
-          output: "html",
-          throwOnError: false,
-          errorColor: "#f43f5e",
-          strict: "ignore",
-          trust: true,
-        });
-
-        const tag = "span";
-        mathHtml = `<${tag} class="katex-custom-wrapper" data-latex="${escHtml(normalized)}" data-display="${isDisplay}" style="${isDisplay ? "display: block; text-align: center; margin: 0.8em 0;" : ""}">${rendered}</${tag}>`;
-      } catch (e: any) {
-        mathHtml = `<span style="color:#f43f5e" title="${escHtml(e.message || "Error")}">${escHtml(raw)}</span>`;
-      }
-
-      const blockIdx = mathBlocks.length;
-      mathBlocks.push(mathHtml);
-        if (isDisplay) {
-        mdText += `\n\n@@@MATH_BLOCK_${blockIdx}@@@\n\n`;
-      } else {
-        mdText += `@@@MATH_BLOCK_${blockIdx}@@@`;
-      }
-      lastIdx = m.index + raw.length;
-    }
-
-    if (lastIdx < input.length) {
-      mdText += input.slice(lastIdx);
-    }
-
-    if (smartNewline) {
-      mdText = applySmartFormatting(mdText);
-    }
-
-    // Restore URLs with linkification for bare ones just before passing to marked.parse
-    mdText = restoreUrls(mdText, urls, false);
-
-    // Parse Markdown synchronously using marked with breaks and gfm enabled
-    let htmlContent = "";
-    try {
-      marked.use({
-        breaks: true,
-        gfm: true,
-      });
-      htmlContent = marked.parse(mdText) as string;
-    } catch {
-      htmlContent = mdText;
-    }
-
-    // Ensure all links open in a new tab and are styled beautifully
-    htmlContent = htmlContent.replace(
-      /<a\s+href=/g,
-      '<a target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline cursor-pointer font-medium" href=',
-    );
-
-  // Khôi phục công thức khối và loại bỏ thẻ <p> bao ngoài nếu đứng riêng lẻ
-    htmlContent = htmlContent.replace(
-      /<p>(?:\s|<br\s*\/?>)*@@@MATH_BLOCK_(\d+)@@@(?:\s|<br\s*\/?>)*<\/p>/g,
-      (match, idStr) => {
-        const block = mathBlocks[+idStr] || "";
-        const isDisplay = block.includes('data-display="true"');
-        return isDisplay ? block : match;
-      }
-    );
-
-    // Replace equations back an toàn không tiêu thụ ký tự kế tiếp
-    htmlContent = htmlContent.replace(
-      /@@@MATH_BLOCK_(\d+)@@@/g,
-      (match, idStr, offset, fullStr) => {
-        const block = mathBlocks[+idStr] || "";
-        if (!block) return "";
-        const isDisplay = block.includes('data-display="true"');
-        if (isDisplay) return block;
-        const nextSlice = fullStr.slice(offset + match.length);
-        const nextWordMatch = nextSlice.match(/^(?:[\s\u00a0\u200b]|&nbsp;)*([^.,;:!?\)\}\]”’"`\s<@])/);
-        if (nextWordMatch && !nextSlice.startsWith(" ")) {
-          return block + " ";
-        }
-        return block;
-      },
-    );
-
+    const htmlContent = renderLatexContent(inputText, smartNewline);
     setProcessedHtml(htmlContent);
-
-    // Make temporary element to calculate Overleaf output
     const tempContainer = document.createElement("div");
     tempContainer.innerHTML = htmlContent;
-    const generatedLaTeXBody = nodeToLaTeX(tempContainer);
-    setOverleafCode(generateOverleafDocument(generatedLaTeXBody));
+    setOverleafCode(generateOverleafDocument(nodeToLaTeX(tempContainer)));
   }, [inputText, smartNewline]);
 
   const triggerToast = (msg: string, success: boolean = true) => {
@@ -4039,7 +3351,8 @@ ${cleanedBody}
       .replace(/\u200B/g, "")
       .replace(/\u200C/g, "");
 
-    markdown = markdown.replace(/\n{3,}/g, "\n\n");
+    const pastedContent = maskProtectedContent(markdown);
+    markdown = pastedContent.masked.replace(/\n{3,}/g, "\n\n");
 
     // Auto convert tab-separated values pasted from Word/Excel to markdown tables
     markdown = convertTabTableToMarkdown(markdown);
@@ -4057,7 +3370,7 @@ ${cleanedBody}
       .join("\n");
 
     // Auto-apply smart formatting on paste to fix stuck words/numbers/delimiters instantly
-    markdown = applySmartFormatting(markdown);
+    markdown = applySmartFormatting(pastedContent.restore(markdown));
 
     // Xử lý thông minh: Nếu người dùng dán nhiều câu hỏi cùng lúc, tự động phân tách và nạp vào đề!
     const lines = markdown.split('\n');

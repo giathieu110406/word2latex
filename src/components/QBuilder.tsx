@@ -78,7 +78,7 @@ interface QBuilderProps {
   parseMultipleChoice: (text: string) => { questionBody: string; options: Array<{ label: string; text: string }> };
   getCleanQuestionBody: (text: string) => string;
   hasQuestionPrefix: (text: string) => boolean;
-  renderContentWithMath: (text: string) => string;
+  renderContentWithMath: (text: string, promoteStandaloneMath?: boolean) => string;
   triggerToast: (msg: string, success?: boolean) => void;
   handlePasteGeneric: (
     e: React.ClipboardEvent<HTMLTextAreaElement>,
@@ -542,7 +542,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                           setTracNghiemText(e.target.value)
                         }
                         onPaste={(e) =>
-                          handlePasteGeneric(e, setTracNghiemText)
+                          handlePasteGeneric(e, setTracNghiemText, true)
                         }
                         rows={6}
                         placeholder="VD: Cho hàm số $y=x+1$, tìm điểm giao với trục hoành.\nA. $(1;0)$\nB. $(-1;0)$\nC. $(0;1)$\nD. $(0;-1)$"
@@ -561,7 +561,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                           setTracNghiemAnswerText(e.target.value)
                         }
                         onPaste={(e) =>
-                          handlePasteGeneric(e, setTracNghiemAnswerText)
+                          handlePasteGeneric(e, setTracNghiemAnswerText, true)
                         }
                         rows={6}
                         placeholder="VD: Chọn B. Giao điểm với trục hoành có $y = 0 \implies x + 1 = 0 \implies x = -1$."
@@ -616,9 +616,9 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                           else setTuLuanQuestionText(val);
                         }}
                         onPaste={(e) => {
-                          if (newQuestionType === "trac_nghiem_dung_sai") handlePasteGeneric(e, setDungSaiText);
-                          else if (newQuestionType === "trac_nghiem_tra_loi_ngan") handlePasteGeneric(e, setTraLoiNganText);
-                          else handlePasteGeneric(e, setTuLuanQuestionText);
+                          if (newQuestionType === "trac_nghiem_dung_sai") handlePasteGeneric(e, setDungSaiText, true);
+                          else if (newQuestionType === "trac_nghiem_tra_loi_ngan") handlePasteGeneric(e, setTraLoiNganText, true);
+                          else handlePasteGeneric(e, setTuLuanQuestionText, true);
                         }}
                         rows={5}
                         placeholder={
@@ -644,9 +644,9 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                           else setTuLuanAnswerText(val);
                         }}
                         onPaste={(e) => {
-                          if (newQuestionType === "trac_nghiem_dung_sai") handlePasteGeneric(e, setDungSaiAnswerText);
-                          else if (newQuestionType === "trac_nghiem_tra_loi_ngan") handlePasteGeneric(e, setTraLoiNganAnswerText);
-                          else handlePasteGeneric(e, setTuLuanAnswerText);
+                          if (newQuestionType === "trac_nghiem_dung_sai") handlePasteGeneric(e, setDungSaiAnswerText, true);
+                          else if (newQuestionType === "trac_nghiem_tra_loi_ngan") handlePasteGeneric(e, setTraLoiNganAnswerText, true);
+                          else handlePasteGeneric(e, setTuLuanAnswerText, true);
                         }}
                         rows={5}
                         placeholder={
@@ -1270,17 +1270,18 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                       {parsed.options.map((opt, oIdx) => (
                                         <div
                                           key={oIdx}
-                                          className="doc-option-item flex items-start gap-1.5 py-0.5"
+                                          className="doc-option-item min-w-0 flex items-start gap-1.5 py-0.5"
                                         >
                                           <span className="doc-option-label font-bold text-slate-900 shrink-0 select-none">
                                             {opt.label}.
                                           </span>
                                           <div
-                                            className="doc-option-text text-slate-800 text-left w-full whitespace-normal break-words overflow-x-auto"
+                                            className="doc-option-text min-w-0 flex-1 text-slate-800 text-left whitespace-normal break-words overflow-x-auto"
                                             dangerouslySetInnerHTML={{
                                               __html:
                                                 renderContentWithMath(
                                                   opt.text,
+                                                  false,
                                                 ),
                                             }}
                                           />
