@@ -30,6 +30,14 @@
     "api/payos-check.ts": {
       "memory": 512,
       "maxDuration": 30
+    },
+    "api/admin/payments.ts": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "api/admin/grant-plan.ts": {
+      "memory": 512,
+      "maxDuration": 10
     }
   },
   "rewrites": [

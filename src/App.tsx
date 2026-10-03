@@ -6912,8 +6912,10 @@ ${bodyHtml}
             {/* Header Greeting */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] py-4 px-5 rounded-[28px]">
               <div>
-                <h1 className="text-lg font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-                  Chào mừng quay trở lại, <span className="text-indigo-600 font-black">{userDoc?.displayName || user?.displayName || user?.email?.split("@")[0]}</span>! 👋
+                <h1 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight leading-snug">
+                  <span className="block sm:inline">Chào mừng quay trở lại, </span>
+                  <span className="text-indigo-600 font-black break-words">{userDoc?.displayName || user?.displayName || user?.email?.split("@")[0]}</span>{" "}
+                  <span className="whitespace-nowrap">! 👋</span>
                 </h1>
                 <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
                   Hệ thống số hóa công thức LaTeX và hỗ trợ soạn thảo đề thi thông minh.

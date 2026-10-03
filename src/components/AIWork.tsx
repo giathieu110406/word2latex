@@ -6,6 +6,7 @@ import { readWorkDocument, applyWorkEdits, WorkConflict, WorkUncertain, type Wor
 import type { DriveDocument } from './GooglePickerBtn';
 import { db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { beginCodexPetActivity, type CodexPetResult } from '../utils/codex-pet-activity';
 
 interface Props {
   document: DriveDocument | null;
@@ -44,6 +45,7 @@ export default function AIWork({ document, accountId, onPreviewChange, onDocumen
   const [history, setHistory] = useState<string[]>([]);
   const operation = useRef(0);
   const controller = useRef<AbortController | null>(null);
+  const petResult = useRef<CodexPetResult>("ready");
   const currentDocument = useRef(document?.id);
   currentDocument.current = document?.id;
   const writing = busy === 'write' || busy === 'undo';
@@ -52,10 +54,17 @@ export default function AIWork({ document, accountId, onPreviewChange, onDocumen
   useEffect(() => {
     operation.current++;
     controller.current?.abort();
+    petResult.current = "ready";
     setSnapshot(null); setProposal(null); setUndo(null); setSelected([]); setError(''); setBusy(null); setMessages([]); setHistory([]);
     onPreviewChange(null);
     return () => { operation.current++; controller.current?.abort(); onPreviewChange(null); };
   }, [document?.id, accountId, onPreviewChange]);
+
+  useEffect(() => {
+    if (busy !== "generate") return;
+    const finishActivity = beginCodexPetActivity("Đang làm việc với tài liệu Google Docs…");
+    return () => finishActivity(petResult.current);
+  }, [busy]);
 
   useEffect(() => {
     onPreviewChange(valid && proposal ? <WorkDiff proposal={proposal} selected={selected} /> : null);
@@ -87,6 +96,7 @@ export default function AIWork({ document, accountId, onPreviewChange, onDocumen
 
   const generate = async () => {
     if (!document || busy || !task.trim()) return;
+    petResult.current = "ready";
     const ticket = ++operation.current;
     const requestedTask = task;
 
@@ -105,18 +115,23 @@ export default function AIWork({ document, accountId, onPreviewChange, onDocumen
         body: JSON.stringify({ task: requestedTask, documentId: document.id, blocks: blocks.map(block => ({ id: block.id, text: block.text })) }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Không tạo được đề xuất.');
+      if (!response.ok) {
+        petResult.current = response.status === 401 || response.status === 403 ? "needs-input" : "blocked";
+        throw new Error(data.error || 'Không tạo được đề xuất.');
+      }
       if (ticket !== operation.current || document.id !== currentDocument.current) return;
       
       if (response.status === 202) {
         setMessages(items => [...items, { role: 'assistant' as const, text: 'Đã gửi yêu cầu cho AI xử lý ngầm. Vui lòng đợi trong giây lát...' }].slice(-12));
         
         // Listen to Firestore for completion
+        let settled = false;
         const unsub = onSnapshot(doc(db, "ai_works", `${accountId}_${document.id}`), async (snapshotDoc) => {
           if (!snapshotDoc.exists()) return;
           const snapData = snapshotDoc.data();
           
           if (snapData?.status === "completed" && snapData?.proposal?.task === requestedTask) {
+            settled = true;
             unsub();
             if (ticket !== operation.current) return;
             
@@ -136,18 +151,31 @@ export default function AIWork({ document, accountId, onPreviewChange, onDocumen
                 onDocumentWritten();
               } catch (e) {
                 if (ticket !== operation.current) return;
+                petResult.current = "blocked";
                 setError(e instanceof Error ? e.message : 'Không tự động ghi được tài liệu.');
               }
             }
             
             setBusy(null);
           }
+
+          if (snapData?.status === "failed" || snapData?.status === "error") {
+            settled = true;
+            unsub();
+            if (ticket !== operation.current) return;
+            petResult.current = "blocked";
+            setError(typeof snapData.error === "string" ? snapData.error : "Tác vụ AI không hoàn tất.");
+            setBusy(null);
+          }
         });
         
         // Timeout after 2 minutes if no response
         setTimeout(() => {
+          if (settled) return;
+          settled = true;
           unsub();
-          if (ticket === operation.current && busy === 'generate') {
+          if (ticket === operation.current) {
+            petResult.current = "blocked";
             setError('Quá thời gian chờ phản hồi từ hệ thống xử lý ngầm.');
             setBusy(null);
           }
@@ -161,7 +189,7 @@ export default function AIWork({ document, accountId, onPreviewChange, onDocumen
         setBusy(null);
       }
       
-    } catch (e) { if (ticket === operation.current) { setError(e instanceof Error ? e.message : 'Không tạo được đề xuất.'); setBusy(null); } }
+    } catch (e) { if (ticket === operation.current) { if (petResult.current === "ready") petResult.current = "blocked"; setError(e instanceof Error ? e.message : 'Không tạo được đề xuất.'); setBusy(null); } }
   };
 
   const write = async (isUndo = false) => {

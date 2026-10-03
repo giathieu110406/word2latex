@@ -1,7 +1,7 @@
 import { logApiUsage } from "../utils/logger";
 import { authFetch } from "../utils/api-client";
 import { getActivePlan } from "../../shared/subscription-policy";
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { 
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
   FileType, FileText, Image as ImageIcon, Layout, 
@@ -12,6 +12,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import { PDFDocument } from "pdf-lib";
+import { beginCodexPetActivity, type CodexPetResult } from "../utils/codex-pet-activity";
 
 interface MarkItDownProps {
   triggerToast: (msg: string, success?: boolean) => void;
@@ -41,6 +42,20 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   const [isCopied, setIsCopied] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
   const [hasChargedCurrentFile, setHasChargedCurrentFile] = useState(false);
+  const petResult = useRef<CodexPetResult>("ready");
+
+  const getPetErrorResult = (error: unknown, status?: number): CodexPetResult => {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    return status === 401 || status === 403 || /401|403|unauthori[sz]ed|forbidden|đăng nhập|quyền truy cập/i.test(message)
+      ? "needs-input"
+      : "blocked";
+  };
+
+  useEffect(() => {
+    if (!isProcessing) return;
+    const finishActivity = beginCodexPetActivity("Đang chuyển đổi tài liệu bằng AI…");
+    return () => finishActivity(petResult.current);
+  }, [isProcessing]);
 
   // Queue & Chunking configuration
   const [chunkSize, setChunkSize] = useState<number>(15); // Hỗ trợ 5, 10, 15, 20 trang
@@ -123,6 +138,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
             delay *= 2;
             continue;
           }
+          petResult.current = getPetErrorResult(new Error(errorMsg), res.status);
           throw new Error(errorMsg);
         }
 
@@ -145,6 +161,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
   // Xử lý phân tích File (hỗ trợ phân trang PDF lớn)
   const processFile = async (file: File) => {
+    petResult.current = "ready";
     setIsProcessing(true);
     abortControllerRef.current = false;
     setFileName(file.name);
@@ -245,6 +262,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
             }
           } catch (err: any) {
             console.error(`Lỗi tại Chunk ${idx + 1}:`, err);
+            petResult.current = getPetErrorResult(err);
             updatedChunks[idx].status = "error";
             updatedChunks[idx].errorMsg = err.message || "Lỗi phân tích đoạn này";
             setChunks([...updatedChunks]);
@@ -263,6 +281,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       }
     } catch (error: any) {
       console.error(error);
+      petResult.current = getPetErrorResult(error);
       triggerToast(`Lỗi xử lý: ${error.message || "Lỗi không xác định"}`, false);
     } finally {
       setIsProcessing(false);
@@ -305,6 +324,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       setOutputMarkdown(data.markdown);
       triggerToast("Chuyển đổi thành công!", true);
     } else {
+        petResult.current = "blocked";
       triggerToast(data.error || "Không thể chuyển đổi tài liệu này", false);
     }
   };
@@ -345,6 +365,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       setOutputMarkdown(stitchChunks(chunks, includePageDividers));
       triggerToast(`Đã phân tích lại phân đoạn ${chunkIndex + 1} thành công!`, true);
     } catch (err: any) {
+      petResult.current = getPetErrorResult(err);
       targetChunk.status = "error";
       targetChunk.errorMsg = err.message || "Lỗi thử lại";
       setChunks([...chunks]);
@@ -361,6 +382,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     e.preventDefault();
     if (!url.trim()) return;
 
+    petResult.current = "ready";
     setIsProcessing(true);
     setMobileView("output");
     setHasChargedCurrentFile(false);
@@ -375,7 +397,10 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         body: JSON.stringify({ type: "url", url: url }),
       });
 
-      if (!res.ok) throw new Error("Lỗi máy chủ khi xử lý URL");
+      if (!res.ok) {
+        petResult.current = getPetErrorResult(new Error(`HTTP ${res.status}`), res.status);
+        throw new Error("Lỗi máy chủ khi xử lý URL");
+      }
 
       const data = await res.json();
       if (data.success && data.markdown) {
@@ -383,10 +408,12 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         setOutputMarkdown(data.markdown);
         triggerToast("Chuyển đổi URL thành công!", true);
       } else {
+        petResult.current = "blocked";
         triggerToast(data.error || "Không thể chuyển đổi URL này", false);
       }
     } catch (err: any) {
       console.error(err);
+      petResult.current = getPetErrorResult(err);
       triggerToast("Lỗi kết nối đến máy chủ!", false);
     } finally {
       setIsProcessing(false);
