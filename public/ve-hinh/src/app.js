@@ -401,19 +401,47 @@ $('help').onclick=()=>$('help-dialog').showModal();document.querySelectorAll('[d
 async function loadImage(file){if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type))return notify('Chọn ảnh PNG, JPEG hoặc WebP');if(file.size>4*1024*1024)return notify('Ảnh tối đa 4 MB. Cắt rõ cả đề bài và hình.');try{const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(Error('Không đọc được ảnh'));r.readAsDataURL(file);});const test=new Image();test.src=data;await test.decode();image=data;$('source-image').src=data;$('source-image').hidden=false;$('remove-image').hidden=false;notify('Ảnh đang ở thiết bị; chỉ gửi khi bạn bấm tạo bản đề xuất.');}catch(e){notify(e.message);}}
 for(const id of ['book-image','camera-image'])$(id).onchange=e=>loadImage(e.target.files[0]);$('remove-image').onclick=()=>{image=null;$('source-image').hidden=true;$('source-image').removeAttribute('src');$('remove-image').hidden=true;$('book-image').value='';$('camera-image').value='';};
 for(const evt of ['dragover','dragenter'])$('dropzone').addEventListener(evt,e=>{e.preventDefault();$('dropzone').classList.add('over');});$('dropzone').addEventListener('dragleave',()=>$('dropzone').classList.remove('over'));$('dropzone').addEventListener('drop',e=>{e.preventDefault();$('dropzone').classList.remove('over');loadImage(e.dataTransfer.files[0]);});
-$('analyze').onclick=async()=>{if(busy)return;cancelConstruction();render();const prompt=$('prompt').value.trim();if(!prompt&&!image)return notify('Nhập mô tả / đề bài hoặc chọn ảnh');busy=true;$('analyze').disabled=true;$('analyze').textContent='Đang dựng bản đề xuất…';const before=revision,originalImage=image;try{const result=await requestProposal({prompt,document:doc,image:originalImage});if(before!==revision)throw Error('Bản vẽ đã đổi trong lúc AI làm việc. Hãy phân tích lại để tránh ghi đè.');showProposal(result,before,originalImage);}catch(e){notify(e.message);}finally{busy=false;$('analyze').disabled=false;$('analyze').textContent='Tạo bản đề xuất →';}};
+$('analyze').onclick=async()=>{
+  if(busy)return;
+  cancelConstruction();
+  render();
+  const prompt=$('prompt').value.trim();
+  if(!prompt&&!image)return notify('Vui lòng nhập ý tưởng đề bài hoặc tải ảnh để AI vẽ');
+  busy=true;
+  $('analyze').disabled=true;
+  $('analyze').textContent='Đang phân tích và vẽ hình với AI…';
+  const before=revision,originalImage=image;
+  try{
+    const result=await requestProposal({prompt,document:doc,image:originalImage});
+    if(before!==revision)throw Error('Bản vẽ đã đổi trong lúc AI làm việc. Hãy thử lại để tránh ghi đè.');
+    selected='';
+    pending=[];
+    if(commit(result.document)){
+      if(result.document.graph && result.document.graph.expression && mode!=='graph') mode='graph';
+      else if(result.document.solid && result.document.solid.type && mode!=='solid') mode='solid';
+      else if(result.document.chart && result.document.chart.values && result.document.chart.values.length && mode!=='chart') mode='chart';
+      else mode='geometry';
+      sidebarView=mode==='geometry'?'tools':'properties';
+      syncSidebarTabs();
+      render();
+      notify('✨ Đã vẽ hình tự động thành công! Nhấn ↶ (hoàn tác) để xem lại bản trước nếu cần.');
+      if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: tự động vẽ AI');
+    } else {
+      notify('Không thể áp dụng bản vẽ.');
+    }
+  }catch(e){
+    notify('Lỗi tạo hình AI: '+e.message);
+  }finally{
+    busy=false;
+    $('analyze').disabled=false;
+    $('analyze').textContent='✨ Vẽ hình với AI';
+  }
+};
 for(const id of ['close-review','cancel-review'])$(id).onclick=()=>{proposal=null;$('review').close();if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: hủy đề xuất');};$('review').addEventListener('cancel',()=>{proposal=null;if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: hủy đề xuất');});$('confirm-review').onclick=()=>{if(!proposal)return;if(proposal.revision!==revision){notify('Bản gốc đã đổi; phân tích lại để áp dụng an toàn.');$('review').close();proposal=null;return;}selected='';pending=[];if(commit(proposal.document)){mode='geometry';render();$('review').close();proposal=null;notify('Đã áp dụng bản đề xuất đã xác nhận. Có thể hoàn tác.');if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: áp dụng AI');}};
-fetch('/api/ve-hinh?action=config').then(r=>r.json()).then(c=>$('ai-status').textContent=c.configured?'AI đã sẵn sàng. Mỗi bản đề xuất hợp lệ dùng 1 lượt tinh chỉnh AI của tài khoản bạn.':'AI chưa cấu hình trên server. Vẽ thủ công không giới hạn; có thể dùng chat Codex thủ công.').catch(()=>$('ai-status').textContent='Không kết nối được server AI local.');
+fetch('/api/ve-hinh?action=config').then(r=>r.json()).then(c=>{if(!c.configured){$('ai-status').hidden=false;$('ai-status').textContent='Chưa tìm thấy GEMINI_API_KEY trên server.';}}).catch(()=>{});
 function showProposal(result,before,originalImage){proposal={...result,revision:before};$('proposal-canvas').innerHTML=renderSVG(result.document);renderProposalWorkspaces(result.document);$('extracted').textContent=result.extractedText||'Không có văn bản được trả về';$('uncertainties').replaceChildren(...result.uncertainties.map(t=>{const li=document.createElement('li');li.textContent=t;return li;}));if(!result.uncertainties.length){const li=document.createElement('li');li.textContent='Provider không liệt kê nghi vấn. Vẫn kiểm tra toàn bộ nhãn và điều kiện.';$('uncertainties').append(li);}const errors=resolve(result.document).errors;$('proposal-errors').textContent=errors.length?'Cấu hình chưa xác định: '+errors.join('; '):'';$('confirm-review').disabled=errors.length>0;$('review-source').hidden=!originalImage;$('no-source').hidden=!!originalImage;if(originalImage)$('review-source').src=originalImage;else $('review-source').removeAttribute('src');$('review').showModal();}
-let codexRevision=0,codexImage=null;
 const workspaceReview=document.getElementById('workspace-review-template').content.cloneNode(true);$('extracted').previousElementSibling.before(workspaceReview);
 function renderProposalWorkspaces(next){let html=`<h3>Toàn bộ thay đổi sẽ áp dụng</h3><p>Tên: ${escape(doc.title)} → ${escape(next.title)}. Điểm ${doc.points.length} → ${next.points.length}; hình/đường ${doc.shapes.length} → ${next.shapes.length}.</p>`;for(const [key,label,renderer]of [['graph','Đồ thị',graphSVG],['chart','Thống kê',chartSVG],['solid','Không gian',solidSVG]]){if(JSON.stringify(doc[key])===JSON.stringify(next[key])){html+=`<p>${label}: giữ nguyên.</p>`;continue;}html+=`<details open><summary>${label}: có thay đổi</summary><div class="compare"><figure><figcaption>Hiện tại</figcaption>${renderer(doc[key])}</figure><figure><figcaption>Đề xuất</figcaption>${renderer(next[key])}</figure></div><p>Dữ liệu hiện tại: ${escape(JSON.stringify(doc[key]))}</p><p>Dữ liệu đề xuất: ${escape(JSON.stringify(next[key]))}</p></details>`;}$('proposal-workspaces').innerHTML=html;}
-const codexButton=document.createElement('button');codexButton.id='open-codex';codexButton.className='primary full';codexButton.textContent='Dùng chat Codex hiện tại ↗';codexButton.style.marginBottom='8px';$('analyze').before(codexButton);$('analyze').className='secondary full';
-codexButton.onclick=()=>{cancelConstruction();render();codexRevision=revision;codexImage=image;$('codex-request').value=buildCodexPrompt(doc,$('prompt').value.trim(),!!image);$('codex-result').value='';$('codex-error').textContent='';$('codex-dialog').showModal();};
-$('copy-codex').onclick=async()=>{try{await navigator.clipboard.writeText($('codex-request').value);$('codex-error').textContent='Đã sao chép. Dán vào chat Codex và đính kèm ảnh sách gốc nếu có.';}catch{$('codex-request').focus();$('codex-request').select();$('codex-error').textContent='Hãy sao chép đoạn đã chọn hoặc tải file .txt.';}};
-$('download-codex').onclick=()=>download($('codex-request').value,'yeu-cau-codex.txt','text/plain;charset=utf-8');
-$('codex-result-file').onchange=async e=>{try{const file=e.target.files[0];if(!file)return;if(file.size>1e6)throw Error('File tối đa 1 MB');$('codex-result').value=await file.text();}catch(err){$('codex-error').textContent=err.message;}finally{e.target.value='';}};
-$('preview-codex').onclick=()=>{try{if(codexRevision!==revision)throw Error('Bản vẽ đã đổi; tạo lại yêu cầu Codex để tránh ghi đè.');const result=parseCodexDraft($('codex-result').value);$('codex-dialog').close();showProposal(result,codexRevision,codexImage);}catch(e){$('codex-error').textContent='Chưa nhận kết quả: '+e.message;}};
 $('export-json').onclick=()=>{download(JSON.stringify(doc,null,2),'ve-hinh.json','application/json');$('export-dialog').close();};
 const deleteButton=document.createElement('button');deleteButton.id='delete-selected';deleteButton.className='delete';deleteButton.textContent='Xóa';deleteButton.title='Xóa đối tượng đã chọn · Delete';deleteButton.onclick=deleteSelection;document.querySelector('.canvas-bar').append(deleteButton);
 $('confirm-delete').onclick=()=>{if(deletion&&deletion.revision===revision){selected='';pending=[];commit(deletion.next);}else notify('Tài liệu đã đổi; chọn lại đối tượng cần xóa.');deletion=null;$('delete-dialog').close();};
