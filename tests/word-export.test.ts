@@ -327,12 +327,12 @@ test('legacy copy uses the synchronous copy event even when modern clipboard is 
     assert.equal(captured['text/plain'], 'Văn bản x');
     assert.equal(document.querySelector('[contenteditable="true"]'), null);
     const app = readFileSync('src/App.tsx', 'utf8');
-    for (const handler of ['copyDocToWord', 'copyToWord']) {
-      const section = app.slice(app.indexOf(`  const ${handler} =`)).split('\n  const ')[0];
-      assert.match(section, /injectMathML\(clone\)/);
-      assert.doesNotMatch(section, /prepareWordEquations/);
-      assert.match(section, /buildWordClipboard\(clone, wordFont, .*\.innerText\), true/);
-    }
+    // Audit removed copyDocToWord, which had no UI caller. Keep the active Word-copy path covered.
+    assert.match(app, /copyToWord=\{copyToWord\}/);
+    const section = app.slice(app.indexOf('  const copyToWord =')).split('\n  const ')[0];
+    assert.match(section, /injectMathML\(clone\)/);
+    assert.doesNotMatch(section, /prepareWordEquations/);
+    assert.match(section, /buildWordClipboard\(clone, wordFont, .*\.innerText\), true/);
   } finally {
     (globalThis as any).ClipboardItem = previousItem;
     delete (navigator as any).clipboard;

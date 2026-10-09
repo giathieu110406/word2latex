@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireAdmin } from '../../server/admin-request.js';
+import { randomUUID } from 'node:crypto';
+import { grantPlan } from '../../server/admin-plan.js';
+import { requestSource } from '../../server/activity.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -14,31 +17,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Thông tin người dùng hoặc gói không hợp lệ' });
     }
 
-    const targetUserRef = db.collection('users').doc(targetUid);
-    const targetUserSnap = await targetUserRef.get();
-    if (!targetUserSnap.exists) return res.status(404).json({ error: 'Không tìm thấy người dùng' });
-
-    const now = Date.now();
-    const days = Number(durationDays) || (plan === 'trial' ? 7 : 30);
-    const planExpiresAt = plan === 'free' ? null : now + days * 86400000;
-    await targetUserRef.update({
-      planType: plan,
-      pricingPlan: plan,
-      planExpiresAt,
-      status: 'approved',
-      updatedAt: new Date(now).toISOString(),
-    });
-
-    const orderCode = `ADMIN_${now}`;
-    await db.collection('payosPayments').doc(orderCode).set({
-      uid: targetUid,
-      amount: 0,
-      plan,
-      activatedAt: now,
-      method: 'admin_grant',
-      grantedBy: decodedToken.email || decodedToken.uid,
-      note: note || 'Cấp bởi Quản trị viên',
-    });
+    const headerId=req.headers['x-activity-id'];
+    const requestId=typeof headerId==='string'&&/^[a-zA-Z0-9_-]{8,100}$/.test(headerId)?headerId:randomUUID();
+    const {orderCode,planExpiresAt}=await grantPlan(db,decodedToken.uid,requestId,{targetUid,plan,durationDays,note},requestSource(req,{role:'admin'}));
 
     return res.status(200).json({
       success: true,

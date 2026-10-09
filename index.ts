@@ -1,49 +1,22 @@
+import grantPlanHandler from './api/admin/grant-plan';
 import "dotenv/config";
 import express from "express";
 import aiHandler from "./api/ai";
 import markitdownHandler from "./api/markitdown";
 import emailVerificationHandler from "./api/email-verification";
+import drawingHandler from "./api/ve-hinh";
+import activityHandler from "./api/activity";
 
 
 
 import * as path from "path";
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, updateDoc, getDoc, collection, getDocs } from "firebase/firestore";
+import { getFirestore, doc, updateDoc, getDoc } from "firebase/firestore";
 import * as crypto from "crypto";
-import * as dotenv from "dotenv";
-import { GoogleGenAI, Type } from "@google/genai";
-import * as mammoth from "mammoth";
-import { parseFile, parseUrl } from "./markitdown";
+
 import payosCreateHandler from "./api/payos-create";
 import payosWebhookHandler from "./api/payos-webhook";
 import { getFirebaseAdmin } from "./server/firebase-admin.js";
-
-// Initialize Google GenAI client lazily to avoid crashing on startup if key is missing
-let aiClient: GoogleGenAI | null = null;
-
-function cleanApiKey(key: string | undefined): string {
-  if (!key) return "";
-  let cleaned = key.trim();
-  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
-    cleaned = cleaned.slice(1, -1).trim();
-  }
-  return cleaned;
-}
-
-function getAiClient(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = cleanApiKey(process.env.GEMINI_API_KEY);
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey,
-    });
-  }
-  return aiClient;
-}
-
-const getFallbackApiKey = () => {
-  // Split to prevent GitHub API key scanning tools from falsely flagging this public Firebase client key
-  return "AIza" + "SyDhTHh" + "By3YyL1h5y" + "rIaSMRJI" + "WGc7hcn2N0";
-};
 
 const getValidVal = (val: string | undefined, fallback: string) => {
   if (!val || val.includes("your_") || val.includes("MY_") || val.trim() === "") return fallback;
@@ -91,23 +64,15 @@ const databaseId = getCleanDatabaseId(process.env.FIREBASE_DATABASE_ID || proces
 const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
 
-import { markItDownJob } from './src/workflows/markitdown';
+
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
-// Workflow webhook endpoint (Simulated for Vercel Workflow)
-app.post('/api/workflow', async (req, res) => {
-  try {
-    const result = await markItDownJob(req.body);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
-});
+app.all('/api/ve-hinh', drawingHandler);
+app.all('/api/activity', activityHandler);
 
 // VERCEL PROXY HANDLER (cho cả local dev và production Vercel)
 
@@ -331,74 +296,7 @@ app.get("/api/admin/payments", async (req, res) => {
   }
 });
 
-app.post("/api/admin/grant-plan", async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Missing token' });
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const { auth: adminAuth, db } = getFirebaseAdmin();
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    
-    // Check if requester is admin
-    const adminUserDoc = await db.collection('users').doc(decodedToken.uid).get();
-    const isOwner = decodedToken.email === 'giathieu110406@gmail.com';
-    const isAdmin = isOwner || adminUserDoc.data()?.role === 'admin';
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    const { targetUid, plan, durationDays, note } = req.body;
-    if (!targetUid || !plan) {
-      return res.status(400).json({ error: 'Thiếu thông tin targetUid hoặc plan' });
-    }
-
-    const targetUserRef = db.collection('users').doc(targetUid);
-    const targetUserSnap = await targetUserRef.get();
-    if (!targetUserSnap.exists) {
-      return res.status(404).json({ error: 'Không tìm thấy người dùng' });
-    }
-
-    const now = Date.now();
-    let planExpiresAt: number | null = null;
-    if (plan !== 'free') {
-      const days = Number(durationDays) || (plan === 'trial' ? 7 : 30);
-      planExpiresAt = now + days * 86400000;
-    }
-
-    // Cập nhật tài khoản người dùng
-    await targetUserRef.update({
-      planType: plan,
-      pricingPlan: plan,
-      planExpiresAt: planExpiresAt,
-      status: 'approved',
-      updatedAt: new Date(now).toISOString(),
-    });
-
-    // Ghi nhận vào lịch sử thanh toán với số tiền 0đ (Admin cấp, không thu tiền)
-    const orderCode = `ADMIN_${Date.now()}`;
-    await db.collection('payosPayments').doc(orderCode).set({
-      uid: targetUid,
-      amount: 0,
-      plan: plan,
-      activatedAt: now,
-      method: 'admin_grant',
-      grantedBy: decodedToken.email || decodedToken.uid,
-      note: note || 'Cấp bởi Quản trị viên',
-    });
-
-    return res.json({
-      success: true,
-      message: `Đã cấp gói ${plan.toUpperCase()} thành công và ghi nhận vào lịch sử thanh toán (0đ).`,
-      orderCode,
-      planExpiresAt,
-    });
-  } catch (error: any) {
-    console.error("Lỗi /api/admin/grant-plan:", error);
-    return res.status(500).json({ error: error?.message || 'Internal Server Error' });
-  }
-});
+app.post('/api/admin/grant-plan', (req,res) => grantPlanHandler(req as any,res as any));
 
 app.post("/api/user/update-phone", async (req, res) => {
   try {

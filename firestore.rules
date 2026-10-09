@@ -45,7 +45,7 @@ service cloud.firestore {
 
     // Owner: full access ngoại trừ profiles và OTP records, vốn cần các ràng buộc riêng.
     match /{collection}/{document=**} {
-      allow read, write: if collection != 'email_verifications' && collection != 'users' && isOwnerEmail();
+      allow read, write: if collection != 'email_verifications' && collection != 'users' && collection != 'activity_events' && collection != 'api_usage_stats' && collection != 'raw_ai_logs' && isOwnerEmail();
     }
 
     match /email_verifications/{uid} {
@@ -103,10 +103,16 @@ service cloud.firestore {
     }
 
     match /api_usage_stats/{statId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if false;
     }
     match /raw_ai_logs/{logId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /activity_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /ai_insights/{insightId} {

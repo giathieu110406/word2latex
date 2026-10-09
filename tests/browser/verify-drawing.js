@@ -1,0 +1,63 @@
+async page => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  // Browser-only account fixture: no production auth changes or Firebase writes.
+  await page.route('**/src/App.tsx', async route => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace(/\buseEffect\(/g, '(() => {} )(');
+    await route.fulfill({ response, body });
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem('q_builder_cached_user', JSON.stringify({ uid: 'ui-fixture', email: 'preview@example.com', displayName: 'Kiểm tra giao diện', emailVerified: true }));
+    localStorage.setItem('q_builder_cached_user_doc', JSON.stringify({ status: 'approved', emailVerified: true, phoneNumber: '0901234567', planType: 'free' }));
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route('**/api/ai?action=log-usage', route => route.fulfill({ json: { success: true } }));
+  await page.goto('http://localhost:3000');
+  await page.getByTitle('Mở thanh điều hướng Menu').click();
+  if (await page.getByText('Sync Hub', { exact: true }).count()) throw Error('Sync Hub still visible');
+  await page.getByRole('button', { name: 'Vẽ hình', exact: true }).click();
+  const iframe = page.locator('iframe[title="Vẽ Hình — bảng vẽ tương tác"]');
+  const frame = page.frameLocator('iframe[title="Vẽ Hình — bảng vẽ tương tác"]');
+  await frame.locator('#canvas svg').waitFor();
+  const full = await iframe.boundingBox();
+  if (Math.abs(full.y + full.height - 900) > 2 || full.x > 1 || Math.abs(full.width - 1440) > 2) throw Error('Drawing does not fill remaining viewport: ' + JSON.stringify(full));
+  await frame.locator('[data-tool="point"]').click();
+  await frame.locator('#canvas').click({ position: { x: 250, y: 180 } });
+  await frame.locator('#canvas').click({ position: { x: 380, y: 270 } });
+  if (await frame.locator('[data-point]').count() !== 2) throw Error('Point creation failed');
+  await frame.locator('#undo').click();
+  if (await frame.locator('[data-point]').count() !== 1) throw Error('Undo failed');
+  await frame.locator('#redo').click();
+  if (await frame.locator('[data-point]').count() !== 2) throw Error('Redo failed');
+  await frame.locator('[data-tool="select"]').click();
+  const point = frame.locator('[data-point]').first();
+  const before = await point.locator('circle').first().getAttribute('cx');
+  const b = await point.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down(); await page.mouse.move(b.x + b.width / 2 + 45, b.y + b.height / 2 + 30); await page.mouse.up();
+  if (await point.locator('circle').first().getAttribute('cx') === before) throw Error('Dragging did not move point');
+  const save = page.waitForEvent('download'); await frame.locator('#save').click(); const json = await save; const jsonPath = await json.path();
+  await frame.locator('#document-file').setInputFiles(jsonPath);
+  if (await frame.locator('[data-point]').count() !== 2) throw Error('JSON reopen failed');
+  await frame.locator('#export').click(); const svgDownload = page.waitForEvent('download'); await frame.locator('#export-svg').click(); const svg = await svgDownload;
+  await frame.locator('#export').click(); const pngDownload = page.waitForEvent('download'); await frame.locator('#export-png').click(); const png = await pngDownload;
+  await page.screenshot({ path: 'scratch/drawing-desktop.png' });
+  await page.getByTitle('Mở thanh điều hướng Menu').click();
+  await page.waitForTimeout(350);
+  const sidebar = await iframe.boundingBox();
+  if (sidebar.width >= full.width || Math.abs(sidebar.x + sidebar.width - 1440) > 2 || Math.abs(sidebar.y + sidebar.height - 900) > 2) throw Error('Sidebar sizing failed: ' + JSON.stringify(sidebar));
+  await page.screenshot({ path: 'scratch/drawing-sidebar.png' });
+  await page.locator('aside').first().locator('button').first().click();
+  await page.getByTitle('Mở thanh điều hướng Menu').click(); await page.getByRole('button', { name: 'Tổng quan', exact: true }).click();
+  await page.getByTitle('Mở thanh điều hướng Menu').click(); await page.getByRole('button', { name: 'Vẽ hình', exact: true }).click();
+  if (await frame.locator('[data-point]').count() !== 2) throw Error('Navigation lost drawing');
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobile = await iframe.boundingBox();
+  if (Math.abs(mobile.y + mobile.height - 844) > 2 || Math.abs(mobile.width - 390) > 2) throw Error('Mobile viewport sizing failed: ' + JSON.stringify(mobile));
+  await frame.locator('[data-mode="graph"]').click(); await frame.locator('[data-mode="chart"]').click(); await frame.locator('[data-mode="solid"]').click();
+  await page.screenshot({ path: 'scratch/drawing-mobile.png' });
+  const config = await page.request.get('http://localhost:3000/api/ve-hinh?action=config');
+  if (errors.length) throw Error('Browser errors: ' + errors.join('; '));
+  return { auth: 'browser-only fixture, App subscriptions disabled', full, sidebar, mobile, downloads: [json.suggestedFilename(), svg.suggestedFilename(), png.suggestedFilename()], config: await config.json(), errors };
+}

@@ -1,7 +1,7 @@
-import { logApiUsage } from "../utils/logger";
+
 import { authFetch } from "../utils/api-client";
 import React, { useState, useRef } from "react";
-import { Sparkles, ArrowRight, Loader2, HelpCircle, Folder, Paperclip, Code2, Eye } from "lucide-react";
+import { Sparkles, ArrowRight, Loader2, Paperclip, Code2, Eye } from "lucide-react";
 
 interface LatexConverterProps {
   wordFont: string;
@@ -32,9 +32,6 @@ interface LatexConverterProps {
     bypassAutoProcess?: boolean,
   ) => void;
   handleClear: () => void;
-  isPro?: boolean;
-  saveLatexToDocs?: (type: "word" | "pdf") => Promise<void>;
-  isSavingDoc?: boolean;
 }
 
 export const LatexConverter: React.FC<LatexConverterProps> = ({
@@ -62,9 +59,6 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
   triggerToast,
   handlePasteGeneric,
   handleClear,
-  isPro = false,
-  saveLatexToDocs,
-  isSavingDoc = false,
 }) => {
   const [isExtractingText, setIsExtractingText] = useState<boolean>(false);
   const [mobileView, setMobileView] = useState<"edit" | "preview">("edit");
@@ -95,7 +89,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
 
         const data = await res.json();
         if (data.success && data.text) {
-          logApiUsage("Trích xuất văn bản");
+
           setAiCanvasPrompt(aiCanvasPrompt + (aiCanvasPrompt ? "\n" : "") + data.text);
           triggerToast("Trích xuất văn bản thành công!", true);
         } else {

@@ -1,15 +1,11 @@
-import { waitUntil } from "@vercel/functions";
-import { aiWorkJob } from "../src/workflows/ai-work-job.js";
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 import { verifyAuthAndApproval } from '../server/auth-guard.js';
 import * as mammoth from "mammoth";
-import { FieldValue } from 'firebase-admin/firestore';
+import { withActivity, AI_ACTIONS } from '../server/activity.js';
 import { getFirebaseAdmin } from '../server/firebase-admin.js';
-import * as fs from 'fs';
-import * as path from 'path';
-import { validateProposal, type WorkBlock } from '../shared/ai-work.js';
-import { getActivePlan } from '../shared/subscription-policy.js';
+
+
 
 let db: FirebaseFirestore.Firestore | null = null;
 try {
@@ -208,297 +204,25 @@ async function generateContentWithRetry(
   throw err;
 }
 
-const localFilePath = path.join(process.cwd(), 'api_usage_local.json');
-
-function getVietnamTimeInfo() {
-  const now = new Date();
-  const formatterHour = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    hour: '2-digit',
-    hour12: false
-  });
-  const parts = formatterHour.formatToParts(now);
-  const hourPart = parts.find(p => p.type === 'hour');
-  let vnHour = hourPart ? hourPart.value.padStart(2, '0') : '00';
-  if (vnHour === '24') vnHour = '00';
-
-  const formatterDate = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  const vnDate = formatterDate.format(now);
-  return { vnHour, vnDate, nowIso: now.toISOString() };
-}
-
-function initEmptyDayStats(dateStr: string) {
-  const hourly: Record<string, { requests: number; durationMinutes: number }> = {};
-  for (let i = 0; i < 24; i++) {
-    hourly[String(i).padStart(2, '0')] = { requests: 0, durationMinutes: 0 };
-  }
-  return {
-    timestamp: new Date().toISOString(),
-    date: dateStr,
-    requests: 0,
-    totalDurationMinutes: 0,
-    hourly,
-    featureDurations: {
-      "Chuyển đổi LaTeX": 0,
-      "Soạn đề thi (AI)": 0,
-      "MarkItDown AI": 0,
-      "AI canvas": 0,
-      "AI hỏi đáp": 0,
-      "Dán AI": 0,
-      "AI thay thế số liệu": 0,
-      "Trích xuất văn bản": 0
-    },
-    "Chuyển đổi LaTeX": 0,
-    "Soạn đề thi (AI)": 0,
-    "MarkItDown AI": 0,
-    "AI canvas": 0,
-    "AI hỏi đáp": 0,
-    "Dán AI": 0,
-    "AI thay thế số liệu": 0,
-    "Trích xuất văn bản": 0
-  };
-}
-
-function logUsageLocally(feature: string, durationMinutes = 1) {
-  try {
-    const { vnHour, vnDate, nowIso } = getVietnamTimeInfo();
-    let data: any = {};
-    if (fs.existsSync(localFilePath)) {
-      try {
-        data = JSON.parse(fs.readFileSync(localFilePath, 'utf8'));
-      } catch (e) {
-        data = {};
-      }
-    }
-    if (!data[vnDate]) {
-      data[vnDate] = initEmptyDayStats(vnDate);
-    }
-    if (!data[vnDate].hourly) {
-      data[vnDate].hourly = {};
-      for (let i = 0; i < 24; i++) {
-        data[vnDate].hourly[String(i).padStart(2, '0')] = { requests: 0, durationMinutes: 0 };
-      }
-    }
-    if (!data[vnDate].hourly[vnHour]) {
-      data[vnDate].hourly[vnHour] = { requests: 0, durationMinutes: 0 };
-    }
-    if (!data[vnDate].featureDurations) {
-      data[vnDate].featureDurations = {};
-    }
-
-    data[vnDate].timestamp = nowIso;
-    data[vnDate].requests = (data[vnDate].requests || 0) + 1;
-    data[vnDate][feature] = (data[vnDate][feature] || 0) + 1;
-    data[vnDate].totalDurationMinutes = (data[vnDate].totalDurationMinutes || 0) + durationMinutes;
-
-    data[vnDate].hourly[vnHour].requests = (data[vnDate].hourly[vnHour].requests || 0) + 1;
-    data[vnDate].hourly[vnHour].durationMinutes = (data[vnDate].hourly[vnHour].durationMinutes || 0) + durationMinutes;
-    data[vnDate].featureDurations[feature] = (data[vnDate].featureDurations[feature] || 0) + durationMinutes;
-
-    fs.writeFileSync(localFilePath, JSON.stringify(data, null, 2), 'utf8');
-    console.log(`[Local Logger] Logged usage for ${feature} (${durationMinutes}m, hour ${vnHour}) to local JSON`);
-  } catch (err) {
-    console.error("Failed to log usage locally:", err);
-  }
-}
-
-function readUsageLocally(sevenDaysAgoStr: string): any[] {
-  try {
-    if (fs.existsSync(localFilePath)) {
-      const data = JSON.parse(fs.readFileSync(localFilePath, 'utf8'));
-      const list = Object.keys(data)
-        .filter(dateStr => dateStr >= sevenDaysAgoStr)
-        .map(dateStr => {
-          const item = data[dateStr];
-          if (!item.hourly) {
-            item.hourly = {};
-            for (let i = 0; i < 24; i++) {
-              item.hourly[String(i).padStart(2, '0')] = { requests: 0, durationMinutes: 0 };
-            }
-          }
-          return {
-            id: dateStr,
-            ...item
-          };
-        });
-      list.sort((a, b) => (a.date || a.id).localeCompare(b.date || b.id));
-      return list;
-    }
-  } catch (err) {
-    console.error("Failed to read usage locally:", err);
-  }
-  return [];
-}
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   const { action } = req.query;
-  let workUserId: string | undefined;
-  let workIsAdmin = false;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (action === 'log-usage' || action === 'get-usage-stats') return res.status(410).json({ error: 'Logger cũ đã ngừng. Sử dụng /api/activity với xác thực.' });
+
   // Xác thực token và trạng thái phê duyệt đối với các tác vụ AI
   if (action !== 'log-usage') {
-    const authCheck = await verifyAuthAndApproval(req, db);
+    const authCheck = (req as any).verifiedActivityAuth || await verifyAuthAndApproval(req, db);
     if (!authCheck.authorized) {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
-    workUserId = authCheck.user?.uid;
-    workIsAdmin = authCheck.user?.isOwner === true || authCheck.user?.role === 'admin';
   }
 
   try {
     await loadGenAISDK();
-
-    if (action === 'ai-work') {
-      const { task, blocks, documentId } = req.body || {};
-      if (typeof task !== 'string' || !task.trim() || task.length > 4000 || !Array.isArray(blocks) || !blocks.length || blocks.length > 400) return res.status(400).json({ error: 'Yêu cầu tối đa 4.000 ký tự và 400 đoạn. Chọn phạm vi nhỏ hơn.' });
-      
-      const ids = new Set<string>();
-      let size = 0;
-      for (const block of blocks) {
-        if (typeof block?.id !== 'string' || block.id.length > 200 || ids.has(block.id) || typeof block.text !== 'string' || block.text.length > 20000) return res.status(400).json({ error: 'Dữ liệu đoạn văn không hợp lệ.' });
-        ids.add(block.id); size += block.text.length;
-      }
-      if (size > 80000) return res.status(400).json({ error: 'Phạm vi quá dài (tối đa 80.000 ký tự). Chọn một đoạn.' });
-      
-      if (!workIsAdmin) {
-        if (!db || !workUserId) return res.status(503).json({ error: 'Chưa kết nối hệ thống hạn mức AI Work.' });
-        const day = new Date(Date.now() + 2 * 3600000).toISOString().slice(0, 10);
-        const allowed = await db.runTransaction(async transaction => {
-          const ref = db!.collection('users').doc(workUserId!);
-          const data = (await transaction.get(ref)).data() || {};
-          const plan = getActivePlan(data.planType, data.planExpiresAt);
-          const limit = plan === 'pro' ? 60 : plan === 'plus' || plan === 'trial' ? 30 : 15;
-          const count = data.aiWorkDay === day ? Number(data.aiWorkCount) || 0 : 0;
-          if (count >= limit) return false;
-          transaction.set(ref, { aiWorkDay: day, aiWorkCount: count + 1 }, { merge: true });
-          return true;
-        });
-        if (!allowed) return res.status(429).json({ error: 'Đã hết hạn mức AI Work hôm nay. Nâng cấp gói hoặc chờ đến 05:00.' });
-      }
-      
-      // Khởi chạy Vercel Workflow Background Job
-      waitUntil(aiWorkJob({ 
-        accountId: workUserId || 'anonymous', 
-        documentId: documentId || 'unknown_doc', 
-        task, 
-        blocks 
-      }).catch(err => console.error("Background job error:", err)));
-      
-      return res.status(202).json({ 
-        success: true,
-        message: 'Đã đưa vào hàng đợi xử lý ngầm (Vercel Workflow)',
-        runId: Date.now().toString() 
-      });
-    }
-
-    if (action === 'log-usage') {
-      const { feature, durationMinutes } = req.body;
-      if (!feature) {
-        return res.status(400).json({ error: "Thiếu dữ liệu feature" });
-      }
-
-      const duration = typeof durationMinutes === 'number' && durationMinutes > 0 ? Math.min(durationMinutes, 180) : 1;
-      const { vnHour, vnDate, nowIso } = getVietnamTimeInfo();
-
-      if (db) {
-        try {
-          const docRef = db.collection('api_usage_stats').doc(vnDate);
-          await docRef.set({
-            timestamp: nowIso,
-            date: vnDate,
-            requests: FieldValue.increment(1),
-            totalDurationMinutes: FieldValue.increment(duration),
-            [feature]: FieldValue.increment(1),
-            hourly: {
-              [vnHour]: {
-                requests: FieldValue.increment(1),
-                durationMinutes: FieldValue.increment(duration)
-              }
-            },
-            featureDurations: {
-              [feature]: FieldValue.increment(duration)
-            }
-          }, { merge: true });
-          console.log(`[Server Logger] Logged usage for ${feature} (${duration}m, hour ${vnHour}) to Firestore`);
-        } catch (dbErr) {
-          console.warn("Failed to log to Firestore, falling back to local file:", dbErr);
-          logUsageLocally(feature, duration);
-        }
-      } else {
-        logUsageLocally(feature, duration);
-      }
-
-      return res.json({ success: true });
-    }
-
-    if (action === 'get-usage-stats') {
-      let statsList: any[] = [];
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const sevenDaysAgoStr = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Ho_Chi_Minh',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).format(sevenDaysAgo);
-
-      if (db) {
-        try {
-          const snapshot = await db.collection('api_usage_stats')
-            .where('date', '>=', sevenDaysAgoStr)
-            .get();
-          
-          if (snapshot.empty) {
-            // Thử query theo document ID nếu trường date chưa được set
-            const allDocs = await db.collection('api_usage_stats').get();
-            statsList = allDocs.docs
-              .filter(d => d.id >= sevenDaysAgoStr)
-              .map(doc => ({ id: doc.id, ...doc.data() }));
-          } else {
-            statsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          }
-
-          // Chuẩn hóa cấu trúc hourly 0h-24h (00-23)
-          statsList = statsList.map(item => {
-            const normalizedHourly: Record<string, { requests: number; durationMinutes: number }> = {};
-            for (let i = 0; i < 24; i++) {
-              const hh = String(i).padStart(2, '0');
-              normalizedHourly[hh] = item.hourly && item.hourly[hh]
-                ? {
-                    requests: Number(item.hourly[hh].requests) || 0,
-                    durationMinutes: Number(item.hourly[hh].durationMinutes) || 0
-                  }
-                : { requests: 0, durationMinutes: 0 };
-            }
-            return {
-              ...item,
-              hourly: normalizedHourly,
-              totalDurationMinutes: Number(item.totalDurationMinutes) || 0,
-              requests: Number(item.requests) || 0
-            };
-          });
-
-          statsList.sort((a, b) => (a.date || a.id).localeCompare(b.date || b.id));
-        } catch (dbErr) {
-          console.warn("Failed to get usage stats from Firestore, falling back to local file:", dbErr);
-          statsList = readUsageLocally(sevenDaysAgoStr);
-        }
-      } else {
-        statsList = readUsageLocally(sevenDaysAgoStr);
-      }
-
-      return res.json({ success: true, stats: statsList });
-    }
-
 
     if (action === 'parse-exam') {
 
@@ -607,7 +331,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const summary = parsedJson.summary || {};
     
     // Log AI Interaction asynchronously
-    logAIInteraction(req.body.userId || "anonymous", "qbuilder", contentsText, responseText, response.usageMetadata);
+    logAIInteraction((req as any).verifiedActivityAuth.user.uid, "qbuilder", contentsText, responseText, response.usageMetadata);
     
     return res.json({ success: true, questions, summary });
 
@@ -684,7 +408,7 @@ HƯỚNG DẪN CỰC KỲ QUAN TRỌNG:
     const questions = parsedJson.questions || [];
     
     // Log AI Interaction asynchronously
-    logAIInteraction(req.body.userId || "anonymous", "qbuilder", contentsText, responseText, response.usageMetadata);
+    logAIInteraction((req as any).verifiedActivityAuth.user.uid, "qbuilder", contentsText, responseText, response.usageMetadata);
     
     return res.json({ success: true, questions });
 
@@ -754,7 +478,7 @@ HÃY ÁP DỤNG NGHIÊM NGẶT CÁC QUY TẮC SAU:
     let fixedText = response.text || "";
     
     // Log interaction
-    logAIInteraction(req.body.userId || "anonymous", "latex", contentsText, fixedText, response.usageMetadata);
+    logAIInteraction((req as any).verifiedActivityAuth.user.uid, "latex", contentsText, fixedText, response.usageMetadata);
 
     fixedText = fixedText.trim();
     
@@ -813,7 +537,7 @@ HÃY TUÂN THỦ CÁC QUY TẮC CHẶT CHẼ SAU:
     let fixedText = response.text || "";
     
     // Log interaction
-    logAIInteraction(req.body.userId || "anonymous", "latex", contentsText, fixedText, response.usageMetadata);
+    logAIInteraction((req as any).verifiedActivityAuth.user.uid, "latex", contentsText, fixedText, response.usageMetadata);
 
     fixedText = fixedText.trim();
     
@@ -1176,3 +900,5 @@ Quy tắc bắt buộc:
   }
 }
  
+
+export default withActivity(handler, req => AI_ACTIONS[String(req.query?.action)]);

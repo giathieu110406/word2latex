@@ -1,4 +1,6 @@
 import type { Firestore } from 'firebase-admin/firestore';
+import { activityId, activityData } from './activity.js';
+import type { ActivitySource } from '../shared/activity.js';
 
 export async function findPaymentUser(db: Firestore, description: string) {
   const prefix = description.match(/W2L([A-Z0-9]{4})(?![A-Z0-9])/i)?.[1]?.toLowerCase();
@@ -10,7 +12,7 @@ export async function findPaymentUser(db: Firestore, description: string) {
   return matches[0].id;
 }
 
-export async function activatePaidPlan(db: Firestore, uid: string, orderCode: number, amount: number) {
+export async function activatePaidPlan(db: Firestore, uid: string, orderCode: number, amount: number, source: ActivitySource='web') {
   const plan = amount === 9000 ? 'trial' : amount === 19000 ? 'plus' : amount === 29000 ? 'pro' : null;
   if (!plan || !Number.isSafeInteger(orderCode)) throw new Error('Invalid paid order');
   const userRef = db.collection('users').doc(uid);
@@ -30,5 +32,9 @@ export async function activatePaidPlan(db: Firestore, uid: string, orderCode: nu
       updatedAt: new Date(now).toISOString(),
     });
     transaction.set(paymentRef, { uid, amount, plan, activatedAt: now });
+    // Audit and payment commit together; duplicate webhook/check cannot create a second activation event.
+    const action='Thanh toán: kích hoạt gói';
+    transaction.set(db.collection('activity_events').doc(activityId(null,String(orderCode),action)),
+      activityData({actorUid:null,actorType:'system',action,source,status:'success',targetUid:uid,referenceId:String(orderCode)},new Date(now)));
   });
 }

@@ -1,41 +1,9 @@
-import { renderLatexContent, maskProtectedContent, parseMultipleChoice, escHtml, applySmartFormatting, normalizeLaTeX, convertTabTableToMarkdown } from './utils/latex-content';
-import { clearDriveSession } from './lib/drive-session';
-import AIWork from './components/AIWork';
+import { renderLatexContent, maskProtectedContent, parseMultipleChoice, applySmartFormatting, convertTabTableToMarkdown } from './utils/latex-content';
 import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils/logger";
 import { authFetch } from "./utils/api-client";
-import React, { useState, useRef, useEffect, startTransition } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import {
-  HelpCircle,
-  FileText,
-  HardDrive,
-  Upload,
-  Check,
-  X,
-  Loader2,
-  AlertTriangle,
-  ShieldAlert,
-  Sparkles,
-  CheckCircle2,
-  LogOut,
-  Bell,
-  MessageSquare,
-  Settings,
-  Camera,
-  Image,
-  Trash2,
-  ZoomIn,
-  ArrowRight,
-  Home,
-  Folder,
-  Users,
-  Diamond,
-  Search, Pin, PinOff, Mail, Phone,
-  Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserPlus, UserCog, User, Info, Save,
-  Paperclip, Layout, Laptop, Wifi, BrainCircuit, Lock,
-  Vote, BarChart3, PieChart, ListChecks, MessageSquarePlus, PauseCircle, PlayCircle, EyeOff,
-  BookOpen
-} from "lucide-react";
+import { HelpCircle, FileText, Check, X, Loader2, AlertTriangle, ShieldAlert, Sparkles, CheckCircle2, Bell, MessageSquare, Settings, Image, Trash2, ZoomIn, ArrowRight, Home, Users, Diamond, Search, Mail, Phone, Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserCog, User, Info, Save, Layout, Laptop, Wifi, Lock, Vote, BarChart3, MessageSquarePlus, PauseCircle, PlayCircle, BookOpen } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
 import { prepareWordEquations, buildWordClipboard, copyWordContent, downloadWordDocument } from "./utils/word-export";
@@ -54,37 +22,14 @@ import { hasPhoneConfirmation, isEmailOtpVerified } from "./utils/email-verifica
 import { normalizeVietnamPhone } from "../shared/phone-confirmation";
 import { getUpgradeVisibility } from "./utils/upgrade-policy";
 import { canRegisterPlan, getActivePlan } from "../shared/subscription-policy";
+import { getAiUsageDay } from "../shared/ai-usage-policy";
 import { PhoneConfirmationHistory } from "./components/PhoneConfirmationHistory";
-import { GoogleOAuthProvider } from "@react-oauth/google";
-import { GooglePickerBtn } from "./components/GooglePickerBtn";
-import { SplitViewWorkspace } from "./components/SplitViewWorkspace";
+import { DrawingWorkspace } from "./components/DrawingWorkspace";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  updateProfile,
-  User as FirebaseUser,
-  GoogleAuthProvider,
-  signInWithPopup,
-} from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  addDoc,
-  updateDoc,
-  onSnapshot,
-  collection,
-  query,
-  orderBy,
-  where,
-  deleteDoc,
-  increment,
-} from "firebase/firestore";
+import { onAuthStateChanged, signOut, User as FirebaseUser, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { doc, setDoc, addDoc, updateDoc, onSnapshot, collection, query, where, deleteDoc, increment } from "firebase/firestore";
 
 enum OperationType {
   CREATE = "create",
@@ -175,24 +120,10 @@ function isAdminUser(user: any, userDoc: any): boolean {
 }
 
 function getTodayStr(): string {
-  const offsetDate = new Date();
-  // Trừ đi 5 tiếng để mốc reset đổi ngày mới rơi vào đúng 5:00 sáng
-  offsetDate.setHours(offsetDate.getHours() - 5);
-  return offsetDate.toLocaleDateString("vi-VN");
+  return getAiUsageDay();
 }
 
 export default function App() {
-  const [syncHubMode, setSyncHubMode] = useState<'latex' | 'work'>('latex');
-  const [workPreview, setWorkPreview] = useState<React.ReactNode>(null);
-  const [workWriting, setWorkWriting] = useState(false);
-  const [documentVersion, setDocumentVersion] = useState(0);
-  const [docId, setDocId] = useState<string | null>(null);
-  const [driveDocument, setDriveDocument] = useState<import('./components/GooglePickerBtn').DriveDocument | null>(null);
-
-  const handleFileSelect = (id: string) => {
-    setDocId(id);
-  };
-
   // --- AUTH & CONTROL STATE ---
   const [user, setUser] = useState<FirebaseUser | null>(() => {
     try {
@@ -224,12 +155,14 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
 
   // --- ADMIN STATE ---
-  const [adminTab, setAdminTab] = useState<"tool" | "admin">("tool");
   const [sidebarView, setSidebarView] = useState<string>("overview");
+  const [drawingOpened, setDrawingOpened] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
-  const sidebarExpanded = isMenuOpen;
 
   const handleSidebarNav = (view: string) => {
+    const views: Record<string,string> = {overview:'Tổng quan',drawing:'Vẽ hình',analytics:'Phân tích',members:'Quản trị thành viên',payments:'Lịch sử thanh toán'};
+    if (views[view]) logApiUsage('Xem tính năng: '+views[view]);
+    if (view === 'drawing') setDrawingOpened(true);
     setSidebarView(view);
     setIsMenuOpen(false);
   };
@@ -264,7 +197,7 @@ export default function App() {
   const [showEditMemberModal, setShowEditMemberModal] = useState<boolean>(false);
   const [showUserDetailsModal, setShowUserDetailsModal] = useState<boolean>(false);
   const [selectedUserDetails, setSelectedUserDetails] = useState<any | null>(null);
-  
+
   useEffect(() => {
     if (showUserDetailsModal) {
       document.body.style.overflow = "hidden";
@@ -274,9 +207,8 @@ export default function App() {
   }, [showUserDetailsModal]);
 
   const [editingUser, setEditingUser] = useState<any | null>(null);
-  
+
   // -- PRICING STATE & MODALS --
-  const [showPricingModal, setShowPricingModal] = useState<boolean>(false);
   const [selectedPricingPlan, setSelectedPricingPlan] = useState<string | null>(null);
   const [paymentOrder, setPaymentOrder] = useState<{ id: string, amount: number, plan: string, bin?: string, accountNumber?: string, qrCode?: string, orderCode?: number } | null>(null);
 
@@ -291,10 +223,10 @@ export default function App() {
         setSelectedPricingPlan(null);
         return;
       }
-      
+
       // Kích hoạt bảng popup "Đang chuyển hướng"
       setPaymentOrder({ id: "loading", amount: 0, plan: selectedPricingPlan });
-      
+
       const fetchPayOS = async () => {
         try {
           const amounts: Record<string, number> = { trial: 9000, plus: 19000, pro: 29000 };
@@ -371,7 +303,7 @@ export default function App() {
       }
     }
   }, [userDoc, paymentOrder]);
-  
+
   const getLimitMultiplier = (planType?: string) => {
     if (planType === 'pro') return 4;
     if (planType === 'plus' || planType === 'trial') return 2;
@@ -407,7 +339,6 @@ export default function App() {
   const [allFeedbacks, setAllFeedbacks] = useState<any[]>([]);
   const [feedbackSearchQuery, setFeedbackSearchQuery] = useState<string>("");
   const [feedbackTypeFilter, setFeedbackTypeFilter] = useState<string>("all");
-  const [adminSubTab, setAdminSubTab] = useState<"members" | "feedbacks" | "notify">("members");
 
   // Notification creation form state for admin
   const [generalNoticeTitle, setGeneralNoticeTitle] = useState<string>("");
@@ -722,93 +653,14 @@ export default function App() {
   ).length;
 
   const [inputText, setInputText] = useState<string>("");
-  const [isCanvasMaximized, setIsCanvasMaximized] = useState<boolean>(false);
 
-  const insertAtCursor = (before: string, after: string = "") => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const currentVal = textarea.value;
-    const selectedText = currentVal.substring(start, end);
 
-    const replacement = before + (selectedText || after) + (selectedText ? after : "");
-    const newVal = currentVal.substring(0, start) + replacement + currentVal.substring(end);
 
-    setInputText(newVal);
-    
-    // Focus and select back
-    setTimeout(() => {
-      textarea.focus();
-      const cursorOffset = start + before.length + (selectedText ? selectedText.length + after.length : 0);
-      textarea.setSelectionRange(cursorOffset, cursorOffset);
-    }, 0);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const value = textarea.value;
-
-    const pairs: Record<string, string> = {
-      "$": "$",
-      "{": "}",
-      "[": "]",
-      "(": ")",
-      '"': '"',
-      "'": "'"
-    };
-
-    const char = e.key;
-    if (pairs[char] !== undefined) {
-      e.preventDefault();
-      const closeChar = pairs[char];
-      
-      // If there's selected text, wrap it
-      if (start !== end) {
-        const selected = value.substring(start, end);
-        const newVal = value.substring(0, start) + char + selected + closeChar + value.substring(end);
-        setInputText(newVal);
-        setTimeout(() => {
-          textarea.setSelectionRange(start + 1, end + 1);
-        }, 0);
-      } else {
-        // If no selected text, insert both and place cursor in middle
-        const newVal = value.substring(0, start) + char + closeChar + value.substring(end);
-        setInputText(newVal);
-        setTimeout(() => {
-          textarea.setSelectionRange(start + 1, start + 1);
-        }, 0);
-      }
-    } else if (char === "Backspace" && start === end && start > 0) {
-      // If backspace is pressed, and we have a matching pair right around the cursor, delete both!
-      const prevChar = value[start - 1];
-      const nextChar = value[start];
-      if (
-        (prevChar === "$" && nextChar === "$") ||
-        (prevChar === "{" && nextChar === "}") ||
-        (prevChar === "[" && nextChar === "]") ||
-        (prevChar === "(" && nextChar === ")") ||
-        (prevChar === '"' && nextChar === '"') ||
-        (prevChar === "'" && nextChar === "'")
-      ) {
-        e.preventDefault();
-        const newVal = value.substring(0, start - 1) + value.substring(start + 1);
-        setInputText(newVal);
-        setTimeout(() => {
-          textarea.setSelectionRange(start - 1, start - 1);
-        }, 0);
-      }
-    }
-  };
   const [showAiCanvas, setShowAiCanvas] = useState<boolean>(false);
   const [aiCanvasPrompt, setAiCanvasPrompt] = useState<string>("");
   const [isProcessingCanvas, setIsProcessingCanvas] = useState<boolean>(false);
-  const [smartNewline, setSmartNewline] = useState<boolean>(true);
+  const smartNewline = true;
   const [wordFont, setWordFont] = useState<string>(
     "'Times New Roman', Times, serif",
   );
@@ -908,7 +760,7 @@ export default function App() {
   const dungSaiList = docQuestions.filter((q) => q.type === "trac_nghiem_dung_sai");
   const traLoiNganList = docQuestions.filter((q) => q.type === "trac_nghiem_tra_loi_ngan");
   const tuLuanList = docQuestions.filter((q) => q.type === "tu_luan");
-  
+
   let sectionIndex = 1;
   const toRoman = (num: number) => {
     switch(num) {
@@ -1133,13 +985,13 @@ export default function App() {
   ): "trac_nghiem" | "trac_nghiem_dung_sai" | "trac_nghiem_tra_loi_ngan" | "tu_luan" => {
     qText = maskProtectedContent(qText).masked;
     const cleanText = qText.trim().toLowerCase();
-    
+
     // Check for A., B., C., D. options (for Multiple Choice)
     const hasA = /^[A][.\s\)-]/m.test(qText) || /(?:\s|^|\n)A[.\s\)-]/m.test(qText) || /a\.\s/i.test(qText);
     const hasB = /^[B][.\s\)-]/m.test(qText) || /(?:\s|^|\n)B[.\s\)-]/m.test(qText) || /b\.\s/i.test(qText);
     const hasC = /^[C][.\s\)-]/m.test(qText) || /(?:\s|^|\n)C[.\s\)-]/m.test(qText) || /c\.\s/i.test(qText);
     const hasD = /^[D][.\s\)-]/m.test(qText) || /(?:\s|^|\n)D[.\s\)-]/m.test(qText) || /d\.\s/i.test(qText);
-    
+
     // If we have at least A, B, C, D options, it's definitely trac_nghiem
     if (hasA && hasB && hasC && hasD) {
       return "trac_nghiem";
@@ -1204,26 +1056,25 @@ export default function App() {
     const protectedContent = maskProtectedContent(formattedText);
     const fixedText = fixMarkdown(protectedContent.masked);
     const lines = fixedText.split('\n');
-    
+
     let blocks: {text: string, typeContext: "trac_nghiem" | "trac_nghiem_dung_sai" | "trac_nghiem_tra_loi_ngan" | "tu_luan"}[] = [];
     let currentBlock = "";
     let currentTypeContext = newQuestionType;
-    
+
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const lineTrimmed = line.trim();
-        const lowerLine = lineTrimmed.toLowerCase();
-        
+
         // Nhận diện câu hỏi an toàn: Tránh các dòng trống, lệnh LaTeX (\begin, \section), hoặc dòng bảng biểu (|)
         const isTableLine = lineTrimmed.startsWith("|");
         const isLaTeXCommand = lineTrimmed.startsWith("\\");
-        
+
         const isNewQuestion = !isTableLine && !isLaTeXCommand && /^(?:[\-\*•\+]\s*)?(?:\*\s*\*|\*\*|\*)?\s*(?:Câu|Bài)\s*(?:hỏi)?\s*(?:\d+)?\s*(?:[:.\-|\*]|$)/i.test(lineTrimmed);
         const isNewSection = /^Phần\s+\d+/i.test(lineTrimmed);
 
         if (isNewQuestion || isNewSection) {
             if (currentBlock.trim()) blocks.push({ text: currentBlock, typeContext: currentTypeContext });
-            
+
             if (isNewSection) {
                 currentBlock = "";
             } else {
@@ -1234,24 +1085,24 @@ export default function App() {
         }
     }
     if (currentBlock.trim()) blocks.push({ text: currentBlock, typeContext: currentTypeContext });
-    
+
     blocks = blocks.filter(b => /^(?:[\-\*•\+]\s*)?(?:\*\s*\*|\*\*|\*)?\s*(?:Câu|Bài)/i.test(b.text.trim()));
-    
+
     if (blocks.length === 0) {
         blocks.push({ text: fixedText, typeContext: currentTypeContext });
     }
-    
+
     const parsedQuestions = blocks.map(blockObj => {
         const block = blockObj.text;
         let qLines: string[] = [];
         let aLines: string[] = [];
         let isAnswer = false;
-        
+
         const blockLines = block.split('\n');
         for (let i = 0; i < blockLines.length; i++) {
             const lower = blockLines[i].toLowerCase().trim();
             const plain = lower.replace(/\*/g, '').trim();
-            
+
             if (
                 plain.startsWith('đáp án:') || 
                 plain.startsWith('đáp án') || 
@@ -1262,28 +1113,28 @@ export default function App() {
             ) {
                 isAnswer = true;
             }
-            
+
             if (isAnswer) {
                 aLines.push(blockLines[i]);
             } else {
                 qLines.push(blockLines[i]);
             }
         }
-        
+
         const questionContent = protectedContent.restore(qLines.join('\n').trim());
         const detectedType = detectQuestionTypeFromBlockContent(questionContent, blockObj.typeContext);
-        
+
         return {
            type: detectedType,
            q: questionContent,
            a: protectedContent.restore(aLines.join('\n').trim())
         };
     });
-    
+
     if (parsedQuestions.length > 0) {
         setDocQuestions((prev) => {
           const updated = [...prev];
-          
+
           parsedQuestions.forEach(item => {
               updated.push({
                   id: "q_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
@@ -1293,11 +1144,11 @@ export default function App() {
                   answerText: getCleanAnswerBody(item.a),
               });
           });
-          
+
           // Re-number them properly
           return renumberQuestions(updated);
         });
-        
+
         triggerToast(`Đã tự động phân tách và thêm ${parsedQuestions.length} câu hỏi vào đề thi!`, true);
     }
   };
@@ -1332,7 +1183,7 @@ export default function App() {
 
         const data = await response.json();
         if (data.success && data.questions && data.questions.length > 0) {
-          logApiUsage("Dán AI");
+
           const previewList = data.questions.map((q: any) => ({
             id: q.id || "q_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
             type: q.type || "trac_nghiem",
@@ -1379,7 +1230,7 @@ export default function App() {
       });
       incrementPromptCount();
       triggerToast(`Đã tự động thêm ${parsedPreviewQuestions.length} câu hỏi vào đề thi!`, true);
-      
+
       // Reset state and close modal
       setSmartPasteText("");
       setParsedPreviewQuestions([]);
@@ -1440,7 +1291,7 @@ export default function App() {
 
         const data = await response.json();
         if (data.success && Array.isArray(data.questions)) {
-          logApiUsage("AI thay thế số liệu");
+
           const updated = shuffled.map(q => {
             const aiQ = data.questions.find((item: any) => item.id === q.id);
             return {
@@ -1473,35 +1324,7 @@ export default function App() {
     }
   };
 
-  const copyDocToWord = async () => {
-    if (docQuestions.length === 0) {
-      triggerToast("Không có nội dung để sao chép cho Word!", false);
-      return;
-    }
 
-    const currentExamCount = userDoc?.examCount || 0;
-    if (!isApproved && currentExamCount >= 10 * currentMultiplier) {
-      triggerToast(
-        `Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa ${10 * currentMultiplier} lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
-        false,
-      );
-      return;
-    }
-
-    if (!docPreviewRef.current) return;
-
-    try {
-      const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement;
-      injectMathML(clone);
-      injectInlineStyles(clone);
-      await copyWordContent(buildWordClipboard(clone, wordFont, docPreviewRef.current.innerText), true);
-    } catch (error) {
-      triggerToast(error instanceof Error ? error.message : "Không thể tạo nội dung Word. Vui lòng thử lại.", false);
-      return;
-    }
-    triggerToast("Đã sao chép tài liệu! Trong Word, chọn dán giữ nguyên định dạng nguồn. Nếu công thức bị sai, hãy tải file .docx rồi sao chép từ Word.");
-    await incrementExamCount();
-  };
 
   const downloadDocAsWord = async () => {
     if (docQuestions.length === 0) {
@@ -1567,7 +1390,7 @@ export default function App() {
     let clean = mergeAdjacentBoldBlocks(normalizeInputText(text)).trim();
     const protectedQuestion = maskProtectedContent(clean);
     clean = protectedQuestion.masked;
-    
+
     // Clean any leading list bullets or punctuation that appear before the question prefix
     const qMatch = clean.match(/(?:Câu|Bài)\s*(?:\d+|[IVXLCDM]+)\b/i);
     if (qMatch && qMatch.index !== undefined) {
@@ -1586,7 +1409,7 @@ export default function App() {
           // It starts with a bold indicator, so don't strip
           break;
         }
-        
+
         const firstChar = clean[0];
         if (firstChar && "-+•–—o*›»■▪●:.~>".includes(firstChar)) {
           if (firstChar === "*") {
@@ -1601,11 +1424,11 @@ export default function App() {
         }
       }
     }
-    
+
     let changed = true;
     while (changed) {
       changed = false;
-      
+
       // Pattern 1: Bold prefix like **Câu 1:** or **Câu 1.** or **Câu 1**
       const boldPrefixRegex = /^\s*\*\*\s*(?:Câu|Bài)\s*\d+\s*[:.\-]*\s*\*\*\s*(?:\s*\d+\s*[:.\-]\s*)?/i;
       if (boldPrefixRegex.test(clean)) {
@@ -1613,7 +1436,7 @@ export default function App() {
         changed = true;
         continue;
       }
-      
+
       // Pattern 2: Normal prefix like Câu 1: or Câu 1. or Câu 1 - or Bài 1: or Câu 1: 1.
       const normalPrefixRegex = /^\s*(?:Câu|Bài)\s*\d+\s*[:.\-]*\s*(?:\s*\d+\s*[:.\-]\s*)?/i;
       if (normalPrefixRegex.test(clean)) {
@@ -1621,7 +1444,7 @@ export default function App() {
         changed = true;
         continue;
       }
-      
+
       // Pattern 3: Number prefix like 1. or 1: or 1-
       const numberPrefixRegex = /^\s*\d+\s*[:.\-]\s*/;
       if (numberPrefixRegex.test(clean)) {
@@ -1629,7 +1452,7 @@ export default function App() {
         changed = true;
         continue;
       }
-      
+
       // Pattern 4: Bold sentence starting with Câu X: inside bold, e.g. **Câu 1: Tìm cực đại**
       const boldSentencePrefixRegex = /^\s*\*\*\s*(?:Câu|Bài)\s*\d+\s*[:.\-]\s*/i;
       if (boldSentencePrefixRegex.test(clean)) {
@@ -1637,7 +1460,7 @@ export default function App() {
         changed = true;
         continue;
       }
-      
+
       // Pattern 5: Bold sentence starting with number prefix inside bold, e.g. **1. Tìm cực đại**
       const boldNumberPrefixRegex = /^\s*\*\*\s*\d+\s*[:.\-]\s*/i;
       if (boldNumberPrefixRegex.test(clean)) {
@@ -1646,7 +1469,7 @@ export default function App() {
         continue;
       }
     }
-    
+
     clean = clean.replace(/^\s*\*\*\s*\*\*\s*/, "").trim();
     return protectedQuestion.restore(clean);
   };
@@ -1692,25 +1515,24 @@ export default function App() {
     const protectedContent = maskProtectedContent(formattedText);
     const fixedText = fixMarkdown(protectedContent.masked);
     const lines = fixedText.split('\n');
-    
+
     let blocks: {text: string, typeContext: "trac_nghiem" | "trac_nghiem_dung_sai" | "trac_nghiem_tra_loi_ngan" | "tu_luan"}[] = [];
     let currentBlock = "";
     let currentTypeContext = newQuestionType;
-    
+
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const lineTrimmed = line.trim();
-        const lowerLine = lineTrimmed.toLowerCase();
-        
+
         const isTableLine = lineTrimmed.startsWith("|");
         const isLaTeXCommand = lineTrimmed.startsWith("\\");
-        
+
         const isNewQuestion = !isTableLine && !isLaTeXCommand && /^(?:[\-\*•\+]\s*)?(?:\*\s*\*|\*\*|\*)?\s*(?:Câu|Bài)\s*(?:hỏi)?\s*(?:\d+)?\s*(?:[:.\-|\*]|$)/i.test(lineTrimmed);
         const isNewSection = /^Phần\s+\d+/i.test(lineTrimmed);
 
         if (isNewQuestion || isNewSection) {
             if (currentBlock.trim()) blocks.push({ text: currentBlock, typeContext: currentTypeContext });
-            
+
             if (isNewSection) {
                 currentBlock = "";
             } else {
@@ -1721,24 +1543,24 @@ export default function App() {
         }
     }
     if (currentBlock.trim()) blocks.push({ text: currentBlock, typeContext: currentTypeContext });
-    
+
     blocks = blocks.filter(b => /^(?:[\-\*•\+]\s*)?(?:\*\s*\*|\*\*|\*)?\s*(?:Câu|Bài)/i.test(b.text.trim()));
-    
+
     if (blocks.length === 0) {
         blocks.push({ text: fixedText, typeContext: currentTypeContext });
     }
-    
+
     const parsedQuestions = blocks.map(blockObj => {
         const block = blockObj.text;
         let qLines: string[] = [];
         let aLines: string[] = [];
         let isAnswer = false;
-        
+
         const blockLines = block.split('\n');
         for (let i = 0; i < blockLines.length; i++) {
             const lower = blockLines[i].toLowerCase().trim();
             const plain = lower.replace(/\*/g, '').trim();
-            
+
             if (
                 plain.startsWith('đáp án:') || 
                 plain.startsWith('đáp án') || 
@@ -1749,24 +1571,24 @@ export default function App() {
             ) {
                 isAnswer = true;
             }
-            
+
             if (isAnswer) {
                 aLines.push(blockLines[i]);
             } else {
                 qLines.push(blockLines[i]);
             }
         }
-        
+
         const questionContent = protectedContent.restore(qLines.join('\n').trim());
         const detectedType = detectQuestionTypeFromBlockContent(questionContent, blockObj.typeContext);
-        
+
         return {
            type: detectedType,
            q: questionContent,
            a: protectedContent.restore(aLines.join('\n').trim())
         };
     });
-    
+
     return parsedQuestions.map(item => ({
         id: "q_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
         type: item.type,
@@ -1787,9 +1609,9 @@ export default function App() {
       counts[q.type] = (counts[q.type] || 0) + 1;
       const currentNum = counts[q.type];
       const text = q.questionText || "";
-      
+
       const prefixRegex = /^(\s*(?:[\-\*•\+]\s*)?)(\**|\*)\s*(Câu|Bài)\s*(\d+)\s*([:.\-]*\s*(?:\**|\*)\s*[:.\-]*|[:.\-]*)/i;
-      
+
       if (prefixRegex.test(text)) {
         const newText = text.replace(prefixRegex, (match, bullet, starsBefore, word, num, after) => {
           return `${bullet || ""}${starsBefore || ""}${word} ${currentNum}${after || ""}`;
@@ -1849,7 +1671,7 @@ export default function App() {
         const ipRes = await fetch("https://api.ipify.org?format=json").catch(() => null);
         const ipData = ipRes ? await ipRes.json() : { ip: "unknown" };
         const ip = ipData.ip || "unknown";
-        
+
         // Sử dụng một ID thiết bị lưu trong localStorage để phân biệt chính xác
         // Giúp tránh báo động nhầm (false positive) khi nhiều người dùng có cùng loại máy và độ phân giải
         let deviceId = localStorage.getItem("device_tracking_id");
@@ -1857,11 +1679,11 @@ export default function App() {
           deviceId = "dev_" + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
           localStorage.setItem("device_tracking_id", deviceId);
         }
-        
+
         // Kết hợp ID với một phần user agent và kích thước màn hình
         const browserHint = navigator.userAgent.split(' ')[0] || "unknown";
         const fp = `${deviceId}_${browserHint}_${window.screen.width}x${window.screen.height}`;
-        
+
         const userDocRef = doc(db, "users", user.uid);
         await updateDoc(userDocRef, { 
             lastIp: ip, 
@@ -2179,51 +2001,13 @@ export default function App() {
     return unsubscribeNotifications;
   }, [user, userDoc]);
   // --- ADMIN PANEL HANDLERS ---
-  const handleUpdateUserStatus = async (targetUid: string, status: "approved" | "pending" | "rejected") => {
-    try {
-      await updateDoc(doc(db, "users", targetUid), { status });
-      triggerToast(`Đã chuyển đổi trạng thái thành ${status === "approved" ? "Đã duyệt" : status === "pending" ? "Chờ duyệt" : "Khóa"}!`);
-    } catch (e) {
-      triggerToast("Lỗi thay đổi trạng thái thành viên.", false);
-    }
-  };
 
-  const handleUpdateUserRole = async (targetUid: string, role: "admin" | "user") => {
-    try {
-      await updateDoc(doc(db, "users", targetUid), { role });
-      triggerToast(`Đã chuyển đổi vai trò thành ${role === "admin" ? "Quản trị viên" : "Thành viên"}!`);
-    } catch (e) {
-      triggerToast("Lỗi thay đổi vai trò thành viên.", false);
-    }
-  };
 
-  const handleResetUserUsage = async (targetUid: string) => {
-    try {
-      await updateDoc(doc(db, "users", targetUid), {
-        latexCount: 0,
-        queryCount: 0,
-        examCount: 0,
-        promptCount: 0,
-        markItDownCount: 0,
-        lastLatexResetDate: getTodayStr(),
-      });
-      triggerToast("Đã thiết lập lại (reset) số lượt sử dụng của thành viên!");
-    } catch (e) {
-      triggerToast("Lỗi thiết lập lại số lượt sử dụng.", false);
-    }
-  };
 
-  const handleAdjustUserLimit = async (targetUid: string, field: "latexCount" | "queryCount" | "examCount" | "promptCount", value: number) => {
-    try {
-      await updateDoc(doc(db, "users", targetUid), {
-        [field]: value,
-        lastLatexResetDate: getTodayStr(),
-      });
-      triggerToast("Đã điều chỉnh chỉ số sử dụng thành công!");
-    } catch (e) {
-      triggerToast("Lỗi điều chỉnh chỉ số sử dụng.", false);
-    }
-  };
+
+
+
+
 
   const handleSendFeedbackReply = async (fbId: string, targetUid: string, targetEmail: string) => {
     if (!feedbackReplyText.trim()) {
@@ -2498,23 +2282,9 @@ export default function App() {
     }
   };
 
-  const handleDeleteFeedback = async (feedbackId: string) => {
-    try {
-      await deleteDoc(doc(db, "feedbacks", feedbackId));
-      triggerToast("Xóa phản hồi thành công.");
-    } catch (e) {
-      triggerToast("Lỗi khi xóa phản hồi.", false);
-    }
-  };
 
-  const handleDeleteUserRecord = async (targetUid: string) => {
-    try {
-      await deleteDoc(doc(db, "users", targetUid));
-      triggerToast("Đã xóa bản ghi thành viên.");
-    } catch (e) {
-      triggerToast("Lỗi khi xóa bản ghi.", false);
-    }
-  };
+
+
 
   const handleAddNewMember = async () => {
     if (!newMemberEmail.trim()) {
@@ -2531,7 +2301,7 @@ export default function App() {
 
       const randomId = "user_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       const docRef = doc(db, "users", randomId);
-      
+
       const newProfile = {
         uid: randomId,
         email: emailLower,
@@ -2688,8 +2458,6 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      setAdminTab("tool");
-      if (user?.uid) clearDriveSession(user.uid);
       await signOut(auth);
       triggerToast("Đã đăng xuất tài khoản!");
     } catch (err) {
@@ -2740,28 +2508,10 @@ export default function App() {
     }
   };
 
-  const handleFeedbackDeleteAction = async (fbId: string) => {
-    try {
-      await deleteDoc(doc(db, "feedbacks", fbId));
-      triggerToast("Đã xóa phản hồi thành công.");
-    } catch (err) {
-      console.error(err);
-      triggerToast("Lỗi khi xóa phản hồi.", false);
-    }
-  };
+
 
   // Helper to increment user query logs
-  const incrementUserQuery = async () => {
-    if (user && userDoc) {
-      try {
-        await updateDoc(doc(db, "users", user.uid), {
-          queryCount: increment(1),
-        });
-      } catch (err) {
-        console.error("Lỗi đếm số truy vấn:", err);
-      }
-    }
-  };
+
 
   const incrementLatexCount = async () => {
     logApiUsage("Chuyển đổi LaTeX");
@@ -2787,7 +2537,7 @@ export default function App() {
   };
 
   const incrementExamCount = async () => {
-    logApiUsage("Soạn đề thi (AI)");
+    logApiUsage("Áp dụng đề thi");
     if (user && userDoc) {
       try {
         const todayStr = getTodayStr();
@@ -2810,7 +2560,7 @@ export default function App() {
   };
 
   const incrementPromptCount = async () => {
-    logApiUsage("Dán AI");
+    logApiUsage("Áp dụng tinh chỉnh AI");
     if (user && userDoc) {
       try {
         const todayStr = getTodayStr();
@@ -2833,7 +2583,7 @@ export default function App() {
   };
 
   const handleMarkItDownUsage = async () => {
-    logApiUsage("MarkItDown AI");
+
     if (user && userDoc) {
       try {
         const todayStr = getTodayStr();
@@ -3260,60 +3010,7 @@ ${cleanedBody}
     setToast({ show: true, msg, success });
   };
 
-  const handleManualAutoFix = async () => {
-    if (!inputText.trim()) {
-      triggerToast("Vui lòng nhập văn bản trước để sửa dính chữ!", false);
-      return;
-    }
-    const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
-      triggerToast(
-        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
-        false,
-      );
-      return;
-    }
-    const fixedText = applySmartFormatting(inputText);
-    if (fixedText === inputText) {
-      triggerToast("Văn bản đã chuẩn, không phát hiện lỗi dính chữ!", true);
-    } else {
-      setInputText(fixedText);
-      triggerToast(
-        "Đã tự động sửa lỗi dính chữ triệt để cho cả khung nhập và khung hiển thị đầu ra!",
-        true,
-      );
-      await incrementLatexCount();
-    }
-  };
 
-  const insertTextAroundSelection = (prefix: string, suffix: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const text = el.value;
-    const selected = text.substring(start, end);
-    const replacement = prefix + selected + suffix;
-    const newText =
-      text.substring(0, start) + replacement + text.substring(end);
-    setInputText(newText);
-
-    setTimeout(() => {
-      el.focus();
-      el.setSelectionRange(
-        start + prefix.length,
-        start + prefix.length + selected.length,
-      );
-    }, 0);
-  };
-
-  const handleBold = () => {
-    insertTextAroundSelection("**", "**");
-  };
-
-  const handleItalic = () => {
-    insertTextAroundSelection("*", "*");
-  };
 
   const handlePasteGeneric = (
     e: React.ClipboardEvent<HTMLTextAreaElement>,
@@ -3380,7 +3077,7 @@ ${cleanedBody}
         cauCount++;
       }
     }
-    
+
     // Nếu có từ 2 câu trở lên, chạy tính năng "Dán thông minh" ẩn danh (nếu không bypass)
     if (!bypassAutoProcess && cauCount >= 2) {
       const currentPromptCount = userDoc?.promptCount || 0;
@@ -3418,18 +3115,10 @@ ${cleanedBody}
     );
   };
 
-  const handlePasteChange = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    handlePasteGeneric(e, setInputText);
-  };
+
 
   // Copy code handler
-  const handleCopyAction = async () => {
-    if (activeTab === "word") {
-      await copyToWord();
-    } else {
-      await copyRawLaTeX();
-    }
-  };
+
 
   const copyRawLaTeX = async () => {
     const rawText = overleafCode.trim();
@@ -4054,7 +3743,7 @@ ${bodyHtml}
             let baseText = baseChild.textContent || "";
             if (baseText === "\u0131") baseText = "i"; // dotless i
             if (baseText === "\u0237") baseText = "j"; // dotless j
-            
+
             const resolvedText = (baseText + combining).normalize("NFC");
             const newEl = document.createElement("mtext");
             newEl.textContent = resolvedText;
@@ -4266,7 +3955,7 @@ ${bodyHtml}
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const isSelected = start !== end;
-    
+
     const textToProcess = isSelected ? inputText.substring(start, end) : inputText;
 
     triggerToast("Trợ lý AI Canvas đang thực hiện yêu cầu của bạn...", true);
@@ -4300,7 +3989,7 @@ ${bodyHtml}
 
       const data = await res.json();
       if (data.success && data.fixedText) {
-        logApiUsage("AI Canvas");
+
         const resultText = data.fixedText;
         if (isSelected) {
           const newText = inputText.substring(0, start) + resultText + inputText.substring(end);
@@ -4314,12 +4003,12 @@ ${bodyHtml}
           setInputText(resultText);
           triggerToast("Trợ lý AI đã cập nhật toàn bộ Canvas!", true);
         }
-        
+
         // Clear the prompt input if it was submitted manually
         if (!customPrompt) {
           setAiCanvasPrompt("");
         }
-        
+
         await incrementPromptCount();
       } else {
         throw new Error(data.error || "Lỗi phản hồi từ AI Canvas");
@@ -4564,9 +4253,8 @@ ${bodyHtml}
       <ZaloContactWidget />
     </>;
   }
-  
+
   return (
-    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || "mock-client-id"}>
     <div 
       className="h-[100dvh] w-full text-slate-800 antialiased font-sans flex flex-row overflow-hidden relative"
       style={{
@@ -4603,9 +4291,9 @@ ${bodyHtml}
       </AnimatePresence>
 
       {/* Top Premium Navigation Bar - sậm màu (trừ màu đen), sang trọng */}
-      
-      
-      
+
+
+
       {/* MOBILE OVERLAY */}
       <AnimatePresence>
         {isMenuOpen && (
@@ -4613,7 +4301,7 @@ ${bodyHtml}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60]"
+            className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] ${sidebarView === 'drawing' ? 'md:hidden' : ''}`}
             onClick={() => setIsMenuOpen(false)}
           />
         )}
@@ -4634,20 +4322,20 @@ ${bodyHtml}
                     <div className="text-[10px] text-slate-500 leading-tight">Chuyển đổi soạn đề thi LaTeX sang Word</div>
                  </div>
              </div>
-             
+
              {/* Close button */}
              <button onClick={() => setIsMenuOpen(false)} className={`p-1 text-slate-400 hover:text-slate-600 transition-colors`}>
                 <X className="w-5 h-5" />
              </button>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto py-2 flex flex-col gap-3 px-3 overflow-x-hidden w-full select-none">
               <div className="w-full shrink-0">
                   <button onClick={() => handleSidebarNav('overview')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'overview' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <Home className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Tổng quan</span>
                   </button>
               </div>
-              
+
               <div className="w-full shrink-0 flex flex-col gap-1">
                   <div className="text-[10px] font-bold text-slate-400 tracking-wider mb-1 px-3 uppercase truncate">Workspace</div>
                   <button onClick={() => handleSidebarNav('latex')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'latex' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
@@ -4656,13 +4344,9 @@ ${bodyHtml}
                   <button onClick={() => handleSidebarNav('qbuilder')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'qbuilder' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <FileText className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Soạn đề thi (AI)</span>
                   </button>
-                  {activePlan === 'pro' && (
-<button onClick={() => handleSidebarNav('sync-hub')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'sync-hub' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
-                      <div className="flex items-center gap-3 truncate">
-                          <HardDrive className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Sync Hub</span>
-                      </div>
+                  <button onClick={() => handleSidebarNav('drawing')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'drawing' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                      <Pencil className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Vẽ hình</span>
                   </button>
-)}
                   <button onClick={() => handleSidebarNav('markitdown')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'markitdown' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <div className="flex items-center gap-3 truncate">
                           <Layout className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">MarkItDown AI</span>
@@ -4702,7 +4386,7 @@ ${bodyHtml}
                 </div>
               )}
           </div>
-          
+
           {!isAdminUser(user, userDoc) && upgradeVisibility.sidebar && (
             <div className="p-4 mt-auto w-full shrink-0">
                 <div className="bg-[#F8F9FE] rounded-2xl p-4 border border-indigo-50 relative overflow-hidden">
@@ -4726,12 +4410,12 @@ ${bodyHtml}
       </div>
 
       {/* MAIN CONTENT WRAPPER */}
-      <div className="flex-1 flex flex-col min-w-0 h-[100dvh] overflow-y-auto">
+      <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] ${sidebarView === 'drawing' ? `overflow-hidden ${isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto'}`}>
           {/* TOPBAR */}
-          <div className="sticky top-0 z-30 w-full bg-[#F8F9FD]/80 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
+          <div className="sticky top-0 z-30 w-full bg-[#F8F9FD]/80 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-3 flex-1">
                   <button 
-                    onClick={() => setIsMenuOpen(true)}
+                    onClick={() => setIsMenuOpen(open => !open)}
                     className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-xs shrink-0 cursor-pointer"
                     title="Mở thanh điều hướng Menu"
                   >
@@ -4753,14 +4437,14 @@ ${bodyHtml}
                   )}
               </div>
               <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                  {upgradeVisibility.main && !isAdminUser(user, userDoc) && (
+                  {(activePlan === 'pro' || upgradeVisibility.main) && !isAdminUser(user, userDoc) && (
                     <button 
                       onClick={() => setSidebarView('pricing')}
                       className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs flex items-center justify-center gap-1.5 sm:gap-2 transition-colors border border-indigo-100 shadow-xs cursor-pointer shrink-0"
                     >
                         <Diamond className="w-3.5 h-3.5 shrink-0" />
-                        <span className="hidden sm:inline">Nâng cấp PRO</span>
-                        <span className="sm:hidden">PRO</span>
+                        <span className="hidden sm:inline">{activePlan === 'pro' ? 'Gói đăng ký' : 'Nâng cấp PRO'}</span>
+                        <span className="sm:hidden">{activePlan === 'pro' ? 'Gói đăng ký' : 'PRO'}</span>
                     </button>
                   )}
                   <button 
@@ -4777,7 +4461,7 @@ ${bodyHtml}
                       <Bell className="w-4 h-4" />
                       {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>}
                   </button>
-                  
+
                   <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 bg-white border border-slate-200 rounded-full shadow-xs cursor-pointer hover:bg-slate-50 transition-colors shrink-0" onClick={handleLogout}>
                       <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 shrink-0">
                           <img src={getUserAvatar()} alt="User avatar" className="w-full h-full object-cover" />
@@ -4791,8 +4475,8 @@ ${bodyHtml}
           </div>
 
 
-      <div className="flex-1 flex flex-col">
-      <div className="max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-10 py-2 md:py-4 flex-1 flex flex-col gap-4 md:gap-6 overflow-x-hidden">
+      <div className={`flex-1 flex flex-col ${sidebarView === 'drawing' ? 'min-h-0' : ''}`}>
+      <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 overflow-hidden' : 'max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-10 py-2 md:py-4 flex-1 flex flex-col gap-4 md:gap-6 overflow-x-hidden'}>
         {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics" || sidebarView === "payments") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 
@@ -4803,7 +4487,7 @@ ${bodyHtml}
               const totalMembers = allUsers.length;
               const activeMembers = allUsers.filter(u => u.status === "approved").length;
               const pendingMembers = allUsers.filter(u => u.status === "pending" || !u.status).length;
-              
+
               const currentTodayStr = getTodayStr();
               const totalLatexCount = allUsers.reduce((sum, u) => {
                 const isReset = u.lastLatexResetDate !== currentTodayStr;
@@ -4977,9 +4661,7 @@ ${bodyHtml}
                         <tbody className="divide-y divide-[#EEF2F7]/50">
                           {paginatedUsers.map((u) => {
                             const isSelf = user && u.uid === user.uid;
-                            const isApproved = u.status === "approved";
-                            const isAdmin = u.role === "admin";
-                            
+
                             // Generator for beautiful pastel initials backgrounds matching the image
                             const getInitialsStyle = (nameStr: string, emailStr: string) => {
                               const char = nameStr ? nameStr.charAt(0).toUpperCase() : (emailStr ? emailStr.charAt(0).toUpperCase() : 'U');
@@ -5133,7 +4815,7 @@ ${bodyHtml}
                           >
                             <ChevronLeft className="w-4 h-4" />
                           </button>
-                          
+
                           {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
                             if (
                               p === 1 ||
@@ -5205,7 +4887,7 @@ ${bodyHtml}
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
-                            
+
                             <div className="flex flex-col items-center text-center">
                               <div className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden font-bold text-xl shadow-sm mb-3 bg-indigo-50 text-indigo-600 ring-2 ring-indigo-50">
                                 {selectedUserDetails.photoURL ? (
@@ -5216,7 +4898,7 @@ ${bodyHtml}
                               </div>
                               <h3 className="text-lg font-extrabold text-[#1E2432] font-sans leading-tight">{selectedUserDetails.displayName || "Thành viên"}</h3>
                               <div className="text-[13px] font-medium text-slate-500 mt-0.5">{selectedUserDetails.email || "Không có email"}</div>
-                              
+
                               <div className="flex items-center gap-1.5 mt-3">
                                 {selectedUserDetails.status === "approved" ? (
                                   <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E6F9EE] text-[#10B981] border border-emerald-100">
@@ -5268,7 +4950,7 @@ ${bodyHtml}
                                 <span className="text-[11px] font-mono text-slate-500 truncate">{selectedUserDetails.uid}</span>
                               </div>
                             </div>
-                            
+
                             <PhoneConfirmationHistory uid={selectedUserDetails.uid} />
                             <div className="grid grid-cols-3 gap-2">
                               <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
@@ -5478,7 +5160,7 @@ ${bodyHtml}
                             </div>
 
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức sử dụng (Lượt đã dùng)</span>
-                              
+
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="flex flex-col gap-1.5">
                                   <label className="text-xs font-bold text-[#1E2432]">LaTeX (Tối đa 30)</label>
@@ -5908,7 +5590,7 @@ ${bodyHtml}
                                   ({(editingNotificationId ? editingNoticePollOptions : generalNoticePollOptions).length} phương án)
                                 </span>
                               </label>
-                              
+
                               <div className="space-y-1.5">
                                 {(editingNotificationId ? editingNoticePollOptions : generalNoticePollOptions).map((opt, idx) => (
                                   <div key={idx} className="flex items-center gap-1.5">
@@ -6319,12 +6001,12 @@ ${bodyHtml}
                 .map(([ip, group]) => {
                   const filteredGroup = group.filter(u => u.role !== "admin" && u.status !== "approved");
                   const uniqueFps = new Set(filteredGroup.map(u => u.deviceFingerprint).filter(Boolean));
-                  
+
                   // Nếu tất cả tài khoản có chung một dấu vân tay duy nhất thì đã hiển thị ở nhóm trùng thiết bị rồi
                   if (uniqueFps.size === 1 && filteredGroup.length > 1) {
                     return [ip, []] as [string, any[]];
                   }
-                  
+
                   return [ip, filteredGroup] as [string, any[]];
                 })
                 .filter(([ip, group]) => group.length > 1);
@@ -6360,7 +6042,7 @@ ${bodyHtml}
                     ...flaggedDeviceGroups.flatMap(([_, group]) => group),
                     ...flaggedIpGroups.flatMap(([_, group]) => group)
                   ];
-                  
+
                   const promises = usersToDismiss.map(u => 
                     updateDoc(doc(db, "users", u.uid), { dismissedAlert: true })
                   );
@@ -6385,7 +6067,7 @@ ${bodyHtml}
                         <p className="text-xs text-slate-500 font-medium mt-0.5">Phân biệt và kiểm soát hành vi đăng nhập nhiều tài khoản</p>
                       </div>
                     </div>
-                    
+
                     <div className="flex flex-wrap items-center gap-2">
                       {totalAlerts > 0 && (
                         <button
@@ -6403,7 +6085,7 @@ ${bodyHtml}
                           )}
                         </button>
                       )}
-                      
+
                       {totalAlerts > 0 && (
                         <span className="text-[11px] font-bold bg-amber-500/10 text-amber-600 px-3 py-2 rounded-xl border border-amber-500/20">
                           Phát hiện {totalAlerts} nhóm trùng khớp
@@ -6599,7 +6281,7 @@ ${bodyHtml}
               {/* Left Column: Avatar and Account Summary Card */}
               <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] p-6 flex flex-col items-center text-center relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
-                
+
                 {/* Avatar container */}
                 <div className="relative mt-4 mb-4 group">
                   <div className="w-28 h-28 rounded-full overflow-hidden ring-4 ring-indigo-50 shadow-md bg-slate-100 flex items-center justify-center">
@@ -6638,7 +6320,7 @@ ${bodyHtml}
                 {/* Usage statistics summary */}
                 <div className="w-full space-y-3 text-left">
                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Thống kê sử dụng</h4>
-                  
+
                   <div>
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Số lần dùng LaTeX</span>
@@ -6834,7 +6516,7 @@ ${bodyHtml}
                <button aria-label="Đóng bảng nâng cấp" onClick={() => setSidebarView('overview')} className="fixed md:absolute top-4 right-4 p-2 bg-[#F9F9F9] md:bg-transparent rounded-full text-slate-400 hover:text-slate-800 transition-colors z-20 md:z-10">
                  <X className="w-6 h-6 stroke-[1.5]" />
                </button>
-               
+
                <h2 className="text-2xl md:text-3xl font-semibold text-center mb-6 text-[#0D0D0D]">Nâng cấp gói của bạn</h2>
                {activePlan !== 'free' && userDoc?.planExpiresAt && (
                  <p className="text-sm text-gray-500 text-center mb-4">Gói {activePlan.toUpperCase()} đã đăng ký đến {new Date(userDoc.planExpiresAt).toLocaleDateString('vi-VN')}. Bạn có thể nâng cấp lên gói cao hơn.</p>
@@ -6842,7 +6524,7 @@ ${bodyHtml}
 
                {/* Grid 3 cột */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                 
+
                  {/* Card Trial */}
                  <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300">
                     <h3 className="text-xl font-medium text-gray-900 mb-2">Trial</h3>
@@ -6988,6 +6670,8 @@ ${bodyHtml}
                     <HelpCircle className="w-4 h-4" />
                   </div>
                 </div>
+                <span data-testid="prompt-usage" className="text-sm font-bold text-slate-700">{userDoc?.promptCount || 0} lượt đã dùng{isApproved ? ' · Không giới hạn theo quyền tài khoản' : ` / ${15 * currentMultiplier} lượt`}</span>
+                <span className="text-xs text-slate-500">Dùng chung cho tinh chỉnh AI, MarkItDown AI và AI Vẽ hình.</span>
                 <div className="mt-1">
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div
@@ -7030,9 +6714,9 @@ ${bodyHtml}
             </div>
 
             {/* Bento Grid: Core Modules & Quick Launch */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 xl:gap-6">
               {/* Module 1: Word to LaTeX Converter */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-indigo-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
+              <div className="bg-white p-5 xl:p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-indigo-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
                 <div className="space-y-4">
                   <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
                     <Sparkles className="w-6 h-6" />
@@ -7056,7 +6740,7 @@ ${bodyHtml}
               </div>
 
               {/* Module 2: AI Exam Builder */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-violet-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
+              <div className="bg-white p-5 xl:p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-violet-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
                 <div className="space-y-4">
                   <div className="p-3 bg-violet-50 text-violet-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
                     <FileText className="w-6 h-6" />
@@ -7079,8 +6763,44 @@ ${bodyHtml}
                 </button>
               </div>
 
-              {/* Module 3: MarkItDown AI */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-emerald-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
+              {/* Module 3: Drawing Workspace / Vẽ hình */}
+              <div className="bg-white p-5 xl:p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-amber-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
+                      <Pencil className="w-6 h-6" />
+                    </div>
+                    <a
+                      href="/ve-hinh/huong-dan.html"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-semibold text-slate-400 hover:text-amber-600 flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-amber-50/60"
+                      title="Xem hướng dẫn sử dụng vẽ hình"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>Hướng dẫn</span>
+                    </a>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-800 font-sans">
+                      Workspace · Vẽ hình
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium mt-1.5 leading-relaxed">
+                      Dựng hình học, khám phá đồ thị và không gian tương tác. Kéo thả trực quan, AI hỗ trợ tạo bản dựng và xuất hình ảnh chất lượng cao cho bài giảng.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSidebarNav('drawing')}
+                  className="mt-6 w-full py-2.5 border border-amber-100 hover:bg-amber-50/50 text-amber-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer group-hover:border-amber-300 animate-none"
+                >
+                  Mở bảng vẽ <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
+
+              {/* Module 4: MarkItDown AI */}
+              <div className="bg-white p-5 xl:p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-emerald-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
                 <div className="space-y-4">
                   <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
                     <Layout className="w-6 h-6" />
@@ -7104,54 +6824,6 @@ ${bodyHtml}
               </div>
             </div>
           </motion.div>
-        )}
-
-        {sidebarView === 'sync-hub' && (
-          <div className="sync-hub-page">
-            <div className="sync-hub-header">
-              <div><p className="text-xs font-semibold text-blue-600 mb-1">GOOGLE WORKSPACE</p><h2 className="text-xl font-bold text-slate-900">Sync Hub</h2><p className="text-sm text-slate-500 mt-1">Soạn công thức và làm việc cùng tài liệu Google Docs.</p></div>
-              <GooglePickerBtn onFileSelect={handleFileSelect} onDocumentChange={setDriveDocument} accountId={user?.uid} disabled={workWriting} />
-            </div>
-            <div className="flex-1 overflow-hidden relative">
-              <SplitViewWorkspace documentId={docId} document={driveDocument} workPreview={workPreview} documentVersion={documentVersion}>
-                <div className="sync-mode-tabs" role="group" aria-label="Chức năng Sync Hub">
-                  <button type="button" disabled={workWriting} aria-pressed={syncHubMode === 'latex'} onClick={() => setSyncHubMode('latex')}>Biên dịch LaTeX</button>
-                  <button type="button" disabled={workWriting} aria-pressed={syncHubMode === 'work'} onClick={() => setSyncHubMode('work')}>AI Work</button>
-                </div>
-                <div className="sync-tool-content">
-                {syncHubMode === 'work' ? <AIWork document={driveDocument} accountId={user?.uid || 'anonymous'} onPreviewChange={setWorkPreview} onBusyChange={setWorkWriting} onDocumentWritten={() => setDocumentVersion(version => version + 1)} /> : (
-                <LatexConverter
-                  wordFont={wordFont}
-                  setWordFont={setWordFont}
-                  inputText={inputText}
-                  setInputText={setInputText}
-                  hasUnclosedDollar={hasUnclosedDollar}
-                  showAiCanvas={showAiCanvas}
-                  setShowAiCanvas={setShowAiCanvas}
-                  isProcessingCanvas={isProcessingCanvas}
-                  handleCallAiCanvas={handleCallAiCanvas}
-                  aiCanvasPrompt={aiCanvasPrompt}
-                  setAiCanvasPrompt={setAiCanvasPrompt}
-                  activeTab={activeTab}
-                  setActiveTab={(tab: string) => setActiveTab(tab as any)}
-                  copyToWord={copyToWord}
-                  downloadAsWord={downloadAsWord}
-                  copyRawLaTeX={copyRawLaTeX}
-                  downloadAsPdf={downloadAsPdf}
-                  overleafCode={overleafCode}
-                  processedHtml={processedHtml}
-                  previewRef={previewRef}
-                  textareaRef={textareaRef}
-                  triggerToast={triggerToast}
-                  handlePasteGeneric={handlePasteGeneric}
-                  handleClear={handleClear}
-                  isPro={isApproved || isAdminUser(user, userDoc)}
-                />
-                )}
-                </div>
-              </SplitViewWorkspace>
-            </div>
-          </div>
         )}
 
         {sidebarView === 'latex' && (
@@ -7180,12 +6852,12 @@ ${bodyHtml}
             triggerToast={triggerToast}
             handlePasteGeneric={handlePasteGeneric}
             handleClear={handleClear}
-            isPro={isApproved || isAdminUser(user, userDoc)}
           />
         )}
+        {drawingOpened && <DrawingWorkspace active={sidebarView === 'drawing'} />}
         {sidebarView === 'qbuilder' && qBuilderPanel}
 
-        
+
         {sidebarView === 'markitdown' && (
           <MarkItDown 
             triggerToast={triggerToast} 
@@ -7268,7 +6940,7 @@ ${bodyHtml}
                       <p className="text-sm text-slate-600 font-medium leading-relaxed">
                         Kết quả phân tách tự động dưới đây. Vui lòng xem trước các định dạng. Nếu đã chính xác, hãy bấm nút <strong>"Xác nhận nạp vào đề"</strong> để tiến hành nhập vào đề thi chính thức.
                       </p>
-                      
+
                       <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1 border border-slate-100 rounded-xl p-3 bg-slate-50/50">
                         {parsedPreviewQuestions.map((q, index) => (
                           <div key={q.id || index} className="p-4 bg-white rounded-xl border border-slate-250 shadow-2xs text-left relative overflow-hidden">
@@ -7454,7 +7126,7 @@ ${bodyHtml}
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block">
                       Đính kèm hình ảnh minh họa (nếu có)
                     </label>
-                    
+
                     {!feedbackImage ? (
                       <div className="relative group border-2 border-dashed border-slate-200 hover:border-indigo-500/50 rounded-xl p-4 transition-all bg-slate-50/50 hover:bg-indigo-50/10 flex flex-col items-center justify-center cursor-pointer min-h-[90px]">
                         <input
@@ -8221,7 +7893,7 @@ ${bodyHtml}
           )}
         </AnimatePresence>
 
-        
+
         {/* Pro Upgrade Contact Modal */}
         <AnimatePresence>
           {showProUpgradeModal && (
@@ -8352,9 +8024,9 @@ ${bodyHtml}
         </AnimatePresence>
       </div>
       </div> {/* This closes max-w-[1600px] or inner container maybe? */}
-      
+
       {/* Footer */}
-      <footer className="w-full text-center py-4 bg-white/50 border-t border-slate-200/60 mt-auto shrink-0 select-none px-4">
+      <footer hidden={sidebarView === 'drawing'} className="w-full text-center py-4 bg-white/50 border-t border-slate-200/60 mt-auto shrink-0 select-none px-4">
         <div className="max-w-[1600px] mx-auto space-y-2 sm:space-y-1">
           <p className="text-xs text-slate-500 font-medium flex flex-col sm:block items-center justify-center gap-1 leading-relaxed">
             <span>Bản quyền thuộc về </span>
@@ -8418,6 +8090,5 @@ ${bodyHtml}
       )}
     </div>
   </div>
-  </GoogleOAuthProvider>
   );
 }

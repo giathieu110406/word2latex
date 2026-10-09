@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, Sparkles, HelpCircle, Folder, Loader2, FileEdit, Eye } from "lucide-react";
+import { Sparkles, HelpCircle, FileEdit, Eye } from "lucide-react";
 
 interface QBuilderProps {
   wordFont: string;
@@ -85,8 +85,6 @@ interface QBuilderProps {
     setter: (val: string) => void,
     bypassAutoProcess?: boolean,
   ) => void;
-  saveQBuilderToDocs?: () => Promise<void>;
-  isSavingDoc?: boolean;
 }
 
 export const QBuilder: React.FC<QBuilderProps> = ({
@@ -163,8 +161,6 @@ export const QBuilder: React.FC<QBuilderProps> = ({
   renderContentWithMath,
   triggerToast,
   handlePasteGeneric,
-  saveQBuilderToDocs,
-  isSavingDoc = false,
 }) => {
   const [isHeaderOpen, setIsHeaderOpen] = React.useState(true);
   const [mobileView, setMobileView] = React.useState<"edit" | "preview">("edit");

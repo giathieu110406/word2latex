@@ -2,6 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { PayOS } from "@payos/node";
 import { getFirebaseAdmin } from '../server/firebase-admin.js';
 import { activatePaidPlan, findPaymentUser } from '../server/payos-subscription.js';
+import { requestSource } from '../server/activity.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // PayOS test webhook thường gửi request GET hoặc HEAD để ping kiểm tra URL có sống không
@@ -29,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (/W2L/i.test(description)) {
         const { db } = getFirebaseAdmin();
         const uid = await findPaymentUser(db, description);
-        await activatePaidPlan(db, uid, webhookData.orderCode, webhookData.amount);
+        await activatePaidPlan(db, uid, webhookData.orderCode, webhookData.amount, requestSource(req,null));
       }
     }
     return res.json({ success: true });

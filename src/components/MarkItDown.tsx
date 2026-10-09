@@ -1,6 +1,5 @@
-import { logApiUsage } from "../utils/logger";
+
 import { authFetch } from "../utils/api-client";
-import { getActivePlan } from "../../shared/subscription-policy";
 import React, { useEffect, useState, useRef } from "react";
 import { 
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
@@ -270,7 +269,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
           }
         }
 
-        logApiUsage("MarkItDown AI");
+
         const finalCombined = stitchChunks(updatedChunks, includePageDividers);
         setOutputMarkdown(finalCombined);
         triggerToast("Đã hoàn tất phân tích và ghép file thành công!", true);
@@ -320,7 +319,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
     const data = await res.json();
     if (data.success && data.markdown) {
-      logApiUsage("MarkItDown AI");
+
       setOutputMarkdown(data.markdown);
       triggerToast("Chuyển đổi thành công!", true);
     } else {
@@ -404,7 +403,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
       const data = await res.json();
       if (data.success && data.markdown) {
-        logApiUsage("MarkItDown AI");
+
         setOutputMarkdown(data.markdown);
         triggerToast("Chuyển đổi URL thành công!", true);
       } else {

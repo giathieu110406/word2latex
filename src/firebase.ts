@@ -3,10 +3,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-const getFallbackApiKey = () => {
-  // Split to prevent GitHub API key scanning tools from falsely flagging this public Firebase client key
-  return "AIza" + "SyDhTHh" + "By3YyL1h5y" + "rIaSMRJI" + "WGc7hcn2N0";
-};
+
 
 const getValidVal = (val: string | undefined, fallback: string) => {
   if (!val || val.includes("your_") || val.includes("MY_") || val.trim() === "") return fallback;

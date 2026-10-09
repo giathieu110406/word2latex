@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { auth } from "../firebase";
-import { Loader2, Banknote, Search, Sparkles, Gift, Filter, X, CheckCircle2, User } from "lucide-react";
+import { Loader2, Banknote, Search, Sparkles, Gift, X, CheckCircle2 } from "lucide-react";
 
 interface AdminPaymentsProps {
   allUsers: any[];

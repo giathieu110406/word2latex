@@ -12,6 +12,11 @@ const db = {
 };
 await activatePaidPlan(db as any, 'user-1', 123, 9000);
 assert.equal(records.get('users/user-1').planType, 'trial');
+const paymentEvents=[...records.entries()].filter(([key])=>key.startsWith('activity_events/'));
+assert.equal(paymentEvents.length,1);
+assert.equal(paymentEvents[0][1].actorType,'system');
+assert.equal(paymentEvents[0][1].actorUid,null);
+assert.equal(paymentEvents[0][1].targetUid,'user-1');
 const expires = records.get('users/user-1').planExpiresAt;
 assert.ok(expires >= Date.now() + 6.99 * 86400000);
 await activatePaidPlan(db as any, 'user-1', 123, 9000);

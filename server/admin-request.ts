@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getFirebaseAdmin } from './firebase-admin.js';
 
-export async function requireAdmin(req: VercelRequest, res: VercelResponse) {
+export async function requireUser(req: VercelRequest, res: VercelResponse) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Missing token' });
@@ -16,8 +16,16 @@ export async function requireAdmin(req: VercelRequest, res: VercelResponse) {
   }
 
   const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+  return {decodedToken,db,profile:userDoc.data() || {}};
+}
+
+export async function requireAdmin(req: VercelRequest, res: VercelResponse) {
+  const context=await requireUser(req,res);
+  if(!context)return null;
+  const {decodedToken,db,profile}=context;
   const isOwner = decodedToken.email?.toLowerCase() === 'giathieu110406@gmail.com';
-  if (!isOwner && userDoc.data()?.role !== 'admin') {
+  const adminDoc = !isOwner && profile.role !== 'admin' ? await db.collection('admins').doc(decodedToken.uid).get() : null;
+  if (!isOwner && profile.role !== 'admin' && !adminDoc?.exists) {
     res.status(403).json({ error: 'Forbidden' });
     return null;
   }

@@ -2,13 +2,13 @@ import { auth } from "../firebase";
 import { beginCodexPetActivity, type CodexPetResult } from "./codex-pet-activity";
 
 function getAiActivityLabel(url: string): string | null {
+  if (/\/api\/ve-hinh\?action=reconstruct(?:&|$)/i.test(url)) return "Đang dựng bản đề xuất hình học…";
   if (/\/api\/markitdown(?:[?#]|$)/i.test(url)) return "Đang chuyển đổi tài liệu bằng AI…";
   if (!/\/api\/ai(?:[?#]|$)/i.test(url)) return null;
 
   const action = /[?&]action=([^&#]+)/i.exec(url)?.[1];
   if (action === "log-usage" || action === "get-usage-stats") return null;
   switch (action) {
-    case "ai-work": return "Đang làm việc với tài liệu…";
     case "extract-text": return "Đang đọc nội dung tài liệu…";
     case "smart-paste-parse": return "Đang phân tích câu hỏi…";
     case "shuffle-ai": return "Đang biến đổi đề thi bằng AI…";
@@ -46,7 +46,9 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
     : undefined;
 
   try {
-    const headers = await getAuthHeaders((options.headers as Record<string, string>) || {});
+    const requestHeaders = { ...((options.headers as Record<string, string>) || {}) };
+    if (options.method?.toUpperCase() === 'POST') requestHeaders['X-Activity-Id'] ||= crypto.randomUUID();
+    const headers = await getAuthHeaders(requestHeaders);
     let response = await fetch(url, {
       ...options,
       headers
@@ -56,7 +58,7 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
     if (response.status === 401 && auth.currentUser) {
       try {
         console.log("[API Client] Nhận 401 Unauthorized, đang tự động làm mới Firebase ID Token...");
-        const refreshedHeaders = await getAuthHeaders((options.headers as Record<string, string>) || {}, true);
+        const refreshedHeaders = await getAuthHeaders(requestHeaders, true);
         response = await fetch(url, {
           ...options,
           headers: refreshedHeaders

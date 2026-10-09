@@ -1,3 +1,4 @@
+import { withActivity } from '../server/activity.js';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 import { verifyAuthAndApproval } from '../server/auth-guard.js';
@@ -102,13 +103,13 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
   throw finalError;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   // Xác thực token và trạng thái tài khoản trước khi xử lý
-  const authCheck = await verifyAuthAndApproval(req);
+  const authCheck = (req as any).verifiedActivityAuth || await verifyAuthAndApproval(req);
   if (!authCheck.authorized) {
     return res.status(authCheck.status).json({ error: authCheck.error });
   }
@@ -170,3 +171,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
  
+
+export default withActivity(handler, () => 'MarkItDown AI');

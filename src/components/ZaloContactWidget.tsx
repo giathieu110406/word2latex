@@ -151,8 +151,8 @@ export const ZaloContactWidget: React.FC = () => {
     getCodexPetActivity,
   );
   const reduceMotion = useReducedMotion();
-  const dragStart = useRef<{ pointerId: number; startX: number; startY: number; left: number; top: number; width: number; height: number; moved: boolean } | null>(null);
-  const suppressClick = useRef(false);
+  const dragStart = useRef<{ pointerId: number; startX: number; startY: number; left: number; top: number; width: number; height: number; moved: boolean; target: HTMLElement } | null>(null);
+  const clickBlockedUntil = useRef(0);
   const [bannerIndex, setBannerIndex] = useState<number>(0);
   const [isBubbleVisible, setIsBubbleVisible] = useState<boolean>(true);
   const [isPetHovered, setIsPetHovered] = useState<boolean>(false);
@@ -182,6 +182,7 @@ export const ZaloContactWidget: React.FC = () => {
       const deltaY = event.clientY - start.startY;
       if (!start.moved && Math.hypot(deltaX, deltaY) < 4) return;
       start.moved = true;
+      clickBlockedUntil.current = Date.now() + 2000;
       setIsPetDragging(true);
       setDragPosition({
         left: Math.max(0, Math.min(window.innerWidth - start.width, start.left + deltaX)),
@@ -193,18 +194,21 @@ export const ZaloContactWidget: React.FC = () => {
       if (!start || event.pointerId !== start.pointerId) return;
       dragStart.current = null;
       setIsPetDragging(false);
-      if (start.moved) {
-        suppressClick.current = true;
-        window.setTimeout(() => { suppressClick.current = false; }, 0);
-      }
+      if (start.moved || event.type === 'pointercancel') clickBlockedUntil.current = Date.now() + 2000;
+      if (start.target.hasPointerCapture(start.pointerId)) start.target.releasePointerCapture(start.pointerId);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
     window.addEventListener("pointercancel", stop);
+    window.addEventListener("lostpointercapture", stop);
     return () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
       window.removeEventListener("pointercancel", stop);
+      window.removeEventListener("lostpointercapture", stop);
+      const start = dragStart.current;
+      dragStart.current = null;
+      if (start?.target.hasPointerCapture(start.pointerId)) start.target.releasePointerCapture(start.pointerId);
     };
   }, []);
 
@@ -258,16 +262,18 @@ export const ZaloContactWidget: React.FC = () => {
     <AnimatePresence>
       <motion.div
           onPointerDown={(event) => {
-            if ((event.pointerType === "mouse" && event.button !== 0) || (event.target as HTMLElement).closest("button")) return;
+            if (!event.isPrimary || dragStart.current || (event.pointerType === "mouse" && event.button !== 0) || (event.target as HTMLElement).closest("button")) return;
+            event.preventDefault();
             const rect = event.currentTarget.getBoundingClientRect();
-            dragStart.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height, moved: false };
-            suppressClick.current = false;
+            const target = (event.target as HTMLElement).closest('a') || event.currentTarget;
+            target.setPointerCapture(event.pointerId);
+            dragStart.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height, moved: false, target };
           }}
+          onDragStart={(event) => event.preventDefault()}
           onClickCapture={(event) => {
-            if (!suppressClick.current) return;
+            if (!dragStart.current && Date.now() >= clickBlockedUntil.current) return;
             event.preventDefault();
             event.stopPropagation();
-            suppressClick.current = false;
           }}
           initial={{ opacity: 0, scale: 0.85, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -292,6 +298,7 @@ export const ZaloContactWidget: React.FC = () => {
             </button>
             <a
             href={ZALO_LINK}
+            draggable={false}
             target="_blank"
             rel="noreferrer"
             aria-live={displayedActivity.status === "idle" ? "off" : "polite"}
@@ -327,6 +334,7 @@ export const ZaloContactWidget: React.FC = () => {
 
           <a
             href={ZALO_LINK}
+            draggable={false}
             target="_blank"
             rel="noreferrer"
             title={`Kéo để di chuyển thú cưng Codex · Nhắn Zalo ${ZALO_PHONE}`}

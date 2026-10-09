@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Smartphone, Loader2, LogOut, ShieldCheck } from 'lucide-react';
+import { Smartphone, Loader2, LogOut } from 'lucide-react';
 
 interface MandatoryPhoneGateProps {
   user: any;
