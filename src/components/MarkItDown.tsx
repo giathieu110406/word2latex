@@ -4,7 +4,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { 
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
   FileType, FileText, Image as ImageIcon, Layout, 
-  Layers, Clock, AlertCircle, RotateCcw, XCircle, CheckCircle2, Sliders
+  Layers, Clock, AlertCircle, RotateCcw, XCircle, CheckCircle2, Sliders,
+  Trash2, Plus, X
 } from "lucide-react";
 import Markdown from 'react-markdown';
 import remarkMath from "remark-math";
@@ -29,15 +30,18 @@ export interface ChunkItem {
   markdown?: string;
   errorMsg?: string;
   retryCount: number;
+  title?: string;
 }
 
 export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, userDoc, onMarkItDownUsage, currentMultiplier = 1 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [outputMarkdown, setOutputMarkdown] = useState("");
-  const [inputType, setInputType] = useState<"file" | "url">("file");
+  const [inputType, setInputType] = useState<"file" | "images" | "url">("file");
   const [url, setUrl] = useState("");
   const [fileName, setFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [isCopied, setIsCopied] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
   const [hasChargedCurrentFile, setHasChargedCurrentFile] = useState(false);
@@ -80,8 +84,13 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
           text = text.replace(/^```[a-zA-Z]*\s*/, "").replace(/\s*```$/, "");
         }
 
-        if (withDividers && c.startPage > 0) {
-          return `\n\n<!-- ====== TRANG ${c.startPage} - ${c.endPage} ====== -->\n\n${text}`;
+        if (withDividers) {
+          if (c.title) {
+            return `\n\n<!-- ====== ${c.title.toUpperCase()} ====== -->\n\n${text}`;
+          }
+          if (c.startPage > 0) {
+            return `\n\n<!-- ====== TRANG ${c.startPage} - ${c.endPage} ====== -->\n\n${text}`;
+          }
         }
         return text;
       })
@@ -328,12 +337,169 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     }
   };
 
+  // Helper chuyển file thành chuỗi base64 thuần
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = reader.result as string;
+        const base64 = res.includes(",") ? res.split(",")[1] : res;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Xử lý chọn nhiều hình ảnh
+  const handleImageSelect = (files: FileList | File[]) => {
+    const list = Array.from(files);
+    const validImages: File[] = [];
+    let invalidCount = 0;
+
+    for (const f of list) {
+      if (f.type.startsWith("image/") || /\.(png|jpe?g|webp|bmp|gif|svg)$/i.test(f.name)) {
+        validImages.push(f);
+      } else {
+        invalidCount++;
+      }
+    }
+
+    if (invalidCount > 0 && validImages.length === 0) {
+      triggerToast("Chỉ chấp nhận tệp hình ảnh (PNG, JPG, WebP...)!", false);
+      return;
+    }
+    if (invalidCount > 0) {
+      triggerToast(`Đã lọc lấy ${validImages.length} ảnh hợp lệ (bỏ qua ${invalidCount} tệp không phải ảnh)`, true);
+    }
+
+    setSelectedImages((prev) => [...prev, ...validImages]);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const removeImage = (index: number) => {
+    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const clearImages = () => {
+    setSelectedImages([]);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  // Chuyển đổi hàng loạt nhiều ảnh cùng lúc
+  const processBatchImages = async () => {
+    if (selectedImages.length === 0) {
+      triggerToast("Vui lòng tải lên ít nhất 1 hình ảnh", false);
+      return;
+    }
+
+    petResult.current = "ready";
+    setIsProcessing(true);
+    abortControllerRef.current = false;
+    setFileName(`${selectedImages.length}_hinh_anh`);
+    setMobileView("output");
+    setHasChargedCurrentFile(false);
+    setOutputMarkdown("");
+
+    const chunkList: ChunkItem[] = selectedImages.map((img, i) => ({
+      id: i + 1,
+      startPage: 0,
+      endPage: 0,
+      title: `Ảnh ${i + 1}: ${img.name}`,
+      status: "waiting",
+      retryCount: 0,
+    }));
+
+    setChunks(chunkList);
+    triggerToast(`Bắt đầu chuyển đổi ${selectedImages.length} hình ảnh...`, true);
+
+    const updatedChunks = [...chunkList];
+
+    for (let idx = 0; idx < updatedChunks.length; idx++) {
+      if (abortControllerRef.current) {
+        triggerToast("Đã dừng hàng đợi xử lý", false);
+        break;
+      }
+
+      setCurrentChunkIndex(idx);
+      updatedChunks[idx].status = "processing";
+      setChunks([...updatedChunks]);
+
+      try {
+        const img = selectedImages[idx];
+        const base64Data = await fileToBase64(img);
+        const resultMarkdown = await sendChunkToApi(
+          base64Data,
+          img.type || "image/jpeg",
+          img.name
+        );
+
+        updatedChunks[idx].status = "completed";
+        updatedChunks[idx].markdown = resultMarkdown;
+        setChunks([...updatedChunks]);
+
+        setOutputMarkdown(stitchChunks(updatedChunks, includePageDividers));
+
+        if (idx < updatedChunks.length - 1 && !abortControllerRef.current) {
+          updatedChunks[idx + 1].status = "cooldown";
+          setChunks([...updatedChunks]);
+          await sleep(interChunkDelay, true);
+        }
+      } catch (err: any) {
+        console.error(`Lỗi tại ảnh ${idx + 1}:`, err);
+        petResult.current = getPetErrorResult(err);
+        updatedChunks[idx].status = "error";
+        updatedChunks[idx].errorMsg = err.message || "Lỗi phân tích ảnh này";
+        setChunks([...updatedChunks]);
+        triggerToast(`Ảnh ${idx + 1} (${selectedImages[idx].name}) gặp lỗi: ${err.message || "Lỗi xử lý"}`, false);
+      }
+    }
+
+    const finalCombined = stitchChunks(updatedChunks, includePageDividers);
+    setOutputMarkdown(finalCombined);
+    if (!abortControllerRef.current) {
+      triggerToast("Đã hoàn tất chuyển đổi tất cả hình ảnh!", true);
+    }
+    setIsProcessing(false);
+    setCurrentChunkIndex(-1);
+    setCooldownCountdown(0);
+  };
+
   // Thử lại 1 chunk bị lỗi
   const retryChunk = async (chunkIndex: number) => {
-    if (!fileInputRef.current?.files?.[0]) return;
-    const file = fileInputRef.current.files[0];
     const targetChunk = chunks[chunkIndex];
     if (!targetChunk) return;
+
+    // Trường hợp thử lại 1 ảnh trong hàng đợi nhiều ảnh
+    if (selectedImages.length > 0 && selectedImages[chunkIndex]) {
+      const img = selectedImages[chunkIndex];
+      targetChunk.status = "processing";
+      setChunks([...chunks]);
+      try {
+        const base64Data = await fileToBase64(img);
+        const resultMarkdown = await sendChunkToApi(
+          base64Data,
+          img.type || "image/jpeg",
+          img.name
+        );
+        targetChunk.status = "completed";
+        targetChunk.markdown = resultMarkdown;
+        targetChunk.errorMsg = undefined;
+        setChunks([...chunks]);
+        setOutputMarkdown(stitchChunks(chunks, includePageDividers));
+        triggerToast(`Đã phân tích lại ảnh ${chunkIndex + 1} thành công!`, true);
+      } catch (err: any) {
+        petResult.current = getPetErrorResult(err);
+        targetChunk.status = "error";
+        targetChunk.errorMsg = err.message || "Lỗi thử lại";
+        setChunks([...chunks]);
+        triggerToast(`Thử lại ảnh ${chunkIndex + 1} thất bại: ${err.message}`, false);
+      }
+      return;
+    }
+
+    if (!fileInputRef.current?.files?.[0]) return;
+    const file = fileInputRef.current.files[0];
 
     targetChunk.status = "processing";
     setChunks([...chunks]);
@@ -496,6 +662,14 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
             }`}
           >
             Tệp tin (PDF / Doc)
+          </button>
+          <button
+            onClick={() => setInputType("images")}
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer text-center ${
+              inputType === "images" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Nhiều hình ảnh
           </button>
           <button
             onClick={() => setInputType("url")}
@@ -670,7 +844,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                   {isProcessing && (
                     <button
                       onClick={handleStopQueue}
-                      className="px-2.5 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1"
+                      className="px-2.5 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       <XCircle className="w-3.5 h-3.5" /> Dừng
                     </button>
@@ -688,6 +862,200 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                   <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-xs"><ImageIcon className="w-3.5 h-3.5 text-purple-500" /> Hình ảnh OCR</div>
                 </div>
               </div>
+            </div>
+          ) : inputType === "images" ? (
+            <div className="flex flex-col gap-3.5 sm:gap-4">
+              {/* Dropzone for images */}
+              <div
+                id="tour-markitdown-images-dropzone"
+                onClick={() => !isProcessing && imageInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!isProcessing && e.dataTransfer.files) {
+                    handleImageSelect(e.dataTransfer.files);
+                  }
+                }}
+                className={`border-2 border-dashed rounded-2xl p-4 sm:p-6 flex flex-col items-center justify-center text-center transition-all ${
+                  isProcessing 
+                    ? "border-slate-200 bg-slate-100/60 cursor-not-allowed opacity-75" 
+                    : "border-indigo-200 bg-white/60 hover:bg-indigo-50/50 hover:border-indigo-400 cursor-pointer shadow-sm"
+                }`}
+              >
+                <div className="w-10 h-10 sm:w-11 sm:h-11 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-2">
+                  <ImageIcon className="w-5 h-5" />
+                </div>
+                <p className="font-semibold text-slate-700 text-xs sm:text-sm">Nhấn để tải nhiều ảnh lên</p>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">Chỉ chấp nhận tệp hình ảnh (PNG, JPG, WebP...). Chọn cùng lúc nhiều ảnh hoặc kéo thả.</p>
+                <input
+                  type="file"
+                  ref={imageInputRef}
+                  multiple
+                  accept="image/*"
+                  disabled={isProcessing}
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) handleImageSelect(e.target.files);
+                  }}
+                />
+              </div>
+
+              {/* Selected Images List & Start Action */}
+              {selectedImages.length > 0 && (
+                <div className="bg-white rounded-2xl p-3.5 border border-slate-200/80 shadow-xs flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                      Đã chọn {selectedImages.length} hình ảnh
+                    </span>
+                    {!isProcessing && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => imageInputRef.current?.click()}
+                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" /> Thêm ảnh
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearImages}
+                          className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" /> Xóa hết
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                    {selectedImages.map((img, i) => (
+                      <div
+                        key={`${img.name}-${i}`}
+                        className="flex items-center justify-between bg-slate-50 border border-slate-200/70 px-2.5 py-1.5 rounded-lg text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                          <span className="text-[10px] font-bold text-slate-400 shrink-0">#{i + 1}</span>
+                          <ImageIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                          <span className="truncate text-slate-700 font-medium">{img.name}</span>
+                          <span className="text-[10px] text-slate-400 shrink-0">({(img.size / 1024).toFixed(0)} KB)</span>
+                        </div>
+                        {!isProcessing && (
+                          <button
+                            type="button"
+                            onClick={() => removeImage(i)}
+                            className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors cursor-pointer"
+                            title="Xóa ảnh này"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={processBatchImages}
+                    disabled={isProcessing}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer mt-1"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Đang chuyển đổi {selectedImages.length} ảnh...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Bắt đầu chuyển đổi ({selectedImages.length} ảnh)
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Queue Settings Card for Images */}
+              <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-col gap-3.5">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                  Cấu hình Hàng đợi & Khoảng nghỉ
+                </span>
+
+                {/* Cooldown Delay Setting */}
+                <div>
+                  <div className="flex justify-between text-xs text-slate-600 mb-1.5 font-medium">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      Khoảng nghỉ giữa các ảnh:
+                    </span>
+                    <span className="font-bold text-slate-700">{interChunkDelay / 1000}s</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { label: "2.5s (Nhanh)", val: 2500 },
+                      { label: "3.5s (Chuẩn)", val: 3500 },
+                      { label: "5.0s (An toàn)", val: 5000 },
+                    ].map((item) => (
+                      <button
+                        key={item.val}
+                        type="button"
+                        disabled={isProcessing}
+                        onClick={() => setInterChunkDelay(item.val)}
+                        className={`py-1.5 px-1.5 text-[11px] font-semibold rounded-lg border transition-all text-center ${
+                          interChunkDelay === item.val
+                            ? "bg-slate-800 text-white border-slate-800 shadow-xs"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                        } disabled:opacity-50`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Switch Image Dividers */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                  <label htmlFor="imageDividerToggle" className="cursor-pointer select-none">
+                    Ghi chú mốc ảnh (&lt;!-- ẢNH X --&gt;)
+                  </label>
+                  <input
+                    id="imageDividerToggle"
+                    type="checkbox"
+                    checked={includePageDividers}
+                    onChange={(e) => {
+                      setIncludePageDividers(e.target.checked);
+                      if (chunks.length > 0) {
+                        setOutputMarkdown(stitchChunks(chunks, e.target.checked));
+                      }
+                    }}
+                    className="w-4 h-4 text-indigo-600 rounded accent-indigo-600 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Active Batch Images Card */}
+              {fileName && (
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 flex items-center gap-3 shadow-xs">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                    <ImageIcon className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-700 truncate">{fileName}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {chunks.length > 0 ? `${chunks.length} ảnh trong hàng đợi` : "Hàng đợi ảnh"}
+                    </p>
+                  </div>
+                  {isProcessing && (
+                    <button
+                      onClick={handleStopQueue}
+                      className="px-2.5 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <XCircle className="w-3.5 h-3.5" /> Dừng
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <form onSubmit={processUrl} className="flex flex-col gap-4">
@@ -795,7 +1163,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                     {chk.status === "cooldown" && <Clock className="w-3.5 h-3.5 text-amber-600" />}
                     {chk.status === "error" && <AlertCircle className="w-3.5 h-3.5 text-rose-600" />}
                     
-                    <span>Đoạn {chk.id} (Trang {chk.startPage}-{chk.endPage})</span>
+                    <span className="truncate max-w-[200px]">{chk.title || `Đoạn ${chk.id} (Trang ${chk.startPage}-${chk.endPage})`}</span>
 
                     {chk.status === "error" && (
                       <button
