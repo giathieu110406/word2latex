@@ -200,11 +200,11 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     fileData: string, 
     mimeType: string, 
     fName: string, 
-    maxRetries = 3,
+    maxRetries = 2,
     mode: "fast" | "ai" = conversionMode
   ): Promise<string> => {
     let attempt = 0;
-    let delay = 4000;
+    let delay = 2000;
 
     while (attempt < maxRetries) {
       if (abortControllerRef.current) throw new Error("Quá trình đã bị người dùng dừng lại.");
@@ -226,8 +226,8 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
           const errData = await res.json().catch(() => ({}));
           const errorMsg = errData.error || `HTTP ${res.status}`;
           
-          // Nếu bị 429 Too Many Requests hoặc quá tải, chờ lâu hơn rồi thử lại
-          if (res.status === 429 || res.status === 503 || errorMsg.toLowerCase().includes("quota")) {
+          // Chỉ retry khi bị 429 Too Many Requests hoặc 503 Quá tải
+          if ((res.status === 429 || res.status === 503 || errorMsg.toLowerCase().includes("quota")) && attempt < maxRetries) {
             console.warn(`[Queue] Gặp hạn mức 429/503 ở lần thử ${attempt}. Nghỉ ${delay}ms...`);
             await sleep(delay);
             delay *= 2;
@@ -239,7 +239,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
         const data = await res.json();
         if (data.success && typeof data.markdown === "string" && data.markdown.trim().length > 0 && data.markdown.trim() !== "undefined") {
-          return data.markdown;
+          return data.markdown.trim();
         } else {
           throw new Error(data.error || "Không thể phân tích dữ liệu phân đoạn này");
         }
@@ -388,16 +388,24 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     }
   };
 
+  // Helper chuyển file thành chuỗi base64 thuần
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = reader.result as string;
+        const base64 = res.includes(",") ? res.split(",")[1] : res;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Xử lý gửi 1 file trọn vẹn
-  const processSingleWholeFile = async (file: File, arrayBuffer: ArrayBuffer) => {
+  const processSingleWholeFile = async (file: File, _arrayBuffer?: ArrayBuffer) => {
     triggerToast("Đang phân tích tài liệu...", true);
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = "";
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64Data = btoa(binary);
+    const base64Data = await fileToBase64(file);
 
     const res = await authFetch("/api/markitdown", {
       method: "POST",
@@ -418,26 +426,14 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
     const data = await res.json();
     if (data.success && typeof data.markdown === "string" && data.markdown.trim().length > 0 && data.markdown.trim() !== "undefined") {
-      setOutputMarkdown(data.markdown);
+      setOutputMarkdown(data.markdown.trim());
       triggerToast("Chuyển đổi thành công!", true);
     } else {
       petResult.current = "blocked";
-      triggerToast(data.error || "Không thể chuyển đổi tài liệu này", false);
+      const errMsg = data.error || "Không thể chuyển đổi tài liệu này";
+      triggerToast(errMsg, false);
+      throw new Error(errMsg);
     }
-  };
-
-  // Helper chuyển file thành chuỗi base64 thuần
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const res = reader.result as string;
-        const base64 = res.includes(",") ? res.split(",")[1] : res;
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
   };
 
   // Khởi động chuyển đổi toàn bộ danh sách tệp chờ

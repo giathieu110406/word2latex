@@ -59,18 +59,11 @@ async function generateContentWithRetry(params: any, retries = 2, delay = 1000, 
       try {
         console.log(`[Gemini API] Đang gửi yêu cầu bằng model: ${model} (Lần thử ${attempt}/${retries})`);
         const aiInstance = getAiClient();
-        
-        // Timeout 15 giây cho mỗi lần gọi để tránh bị treo request vô thời hạn
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Timeout sau 15000ms khi gọi model ${model}`)), 15000)
-        );
 
-        const callPromise = aiInstance.models.generateContent({
+        const response: any = await aiInstance.models.generateContent({
           ...params,
           model: model
         });
-
-        const response: any = await Promise.race([callPromise, timeoutPromise]);
         
         // Đảm bảo kết quả trả về có chứa nội dung văn bản
         const extracted = response?.text 
@@ -80,14 +73,14 @@ async function generateContentWithRetry(params: any, retries = 2, delay = 1000, 
         if (extracted && extracted.trim().length > 0) {
           return { ...response, text: extracted };
         } else {
-          console.warn(`[Gemini API] Model ${model} trả về nội dung rỗng, thử model tiếp theo...`);
+          console.warn(`[Gemini API] Model ${model} trả về nội dung rỗng, chuyển model tiếp theo...`);
         }
       } catch (error: any) {
         lastError = error;
         if (!firstImportantError && error.status !== 404) {
           firstImportantError = error;
         }
-        console.warn(`[Gemini API] Thử nghiệm model ${model} thất bại:`, error.message || error);
+        console.warn(`[Gemini API] Model ${model} gặp lỗi (${error.status || error.message || error}), đang đổi sang model tiếp theo...`);
         
         if (
           error.message?.includes("API_KEY_INVALID") ||
@@ -98,15 +91,14 @@ async function generateContentWithRetry(params: any, retries = 2, delay = 1000, 
           break; 
         }
         
-        if (error.status === 429 || error.status === 503 || error.message?.includes("Timeout") || (error.message && (error.message.includes("quota") || error.message.includes("Quota") || error.message.includes("high demand") || error.message.includes("overloaded")))) {
-          continue;
-        }
+        // Với mọi lỗi khác (429, 503, 500, overload, v.v.), lập tức chuyển model tiếp theo trong chuỗi fallback
+        continue;
       }
     }
     
     if (attempt < retries) {
       const waitTime = delay * Math.pow(2, attempt - 1);
-      console.log(`[Gemini API] Tất cả các model đều tạm thời không khả dụng ở lần thử ${attempt}. Đang chờ ${waitTime}ms trước khi thử lại...`);
+      console.log(`[Gemini API] Tất cả các model đều gặp sự cố ở lần thử ${attempt}. Đang chờ ${waitTime}ms trước khi thử lại...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
