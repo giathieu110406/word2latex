@@ -115,33 +115,69 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    await loadGenAISDK();
-    // Log the request immediately for dashboard updates
-    const { type, fileData, mimeType, fileName, url } = req.body;
+    const { 
+      type, 
+      fileData, 
+      fileBase64, 
+      mimeType, 
+      fileName, 
+      filename, 
+      url, 
+      mode = "ai" 
+    } = req.body || {};
+
+    const base64Data = fileData || fileBase64;
+    const resolvedFileName = fileName || filename || "";
+    const conversionMode: "fast" | "ai" = mode === "fast" ? "fast" : "ai";
+
     let rawText = "";
     let inlineParts: any[] = [];
 
+    // Xử lý dữ liệu đầu vào
     if (type === "url" && url) {
       const extracted = await parseUrl(url);
       if (!extracted) {
-        return res.status(400).json({ error: "Could not extract content from URL" });
+        return res.status(400).json({ error: "Không thể trích xuất nội dung từ liên kết URL" });
       }
       rawText = extracted;
-    } else if (type === "file" && fileData) {
-      const extracted = await parseFile(fileData, mimeType, fileName || "");
+
+      // CHẾ ĐỘ SIÊU TỐC: Trả về Markdown ngay lập tức
+      if (conversionMode === "fast") {
+        return res.json({ success: true, markdown: rawText });
+      }
+    } else if (type === "file" && base64Data) {
+      const extracted = await parseFile(base64Data, mimeType || "", resolvedFileName, conversionMode);
+      
+      // CHẾ ĐỘ SIÊU TỐC (FAST MODE)
+      if (conversionMode === "fast") {
+        if (extracted && extracted.trim().length > 0) {
+          // Trả về ngay lập tức, 0 AI token, phản hồi tức thì
+          return res.json({ success: true, markdown: extracted });
+        } else {
+          // Trường hợp tệp hình ảnh hoặc PDF scan không có text layer
+          return res.status(400).json({ 
+            error: "Không thể trích xuất văn bản ở chế độ Siêu tốc (file hình ảnh hoặc PDF scan cần nhận diện OCR). Vui lòng chuyển sang chế độ 'AI Math Polish' để xử lý." 
+          });
+        }
+      }
+
+      // CHẾ ĐỘ AI MATH POLISH (MẶC ĐỊNH)
       if (extracted) {
         rawText = extracted;
       } else {
         inlineParts = [{
           inlineData: {
             mimeType: mimeType || 'application/octet-stream',
-            data: fileData
+            data: base64Data
           }
         }];
       }
     } else {
-      return res.status(400).json({ error: "Invalid parameters" });
+      return res.status(400).json({ error: "Tham số yêu cầu không hợp lệ" });
     }
+
+    // Nạp Gemini SDK và gọi AI chuẩn hóa LaTeX
+    await loadGenAISDK();
 
     const contents: any = {
       parts: [
@@ -167,7 +203,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error("MarkItDown error:", error);
-    return res.status(500).json({ error: error.message || "Server error" });
+    return res.status(500).json({ error: error.message || "Lỗi máy chủ khi xử lý tài liệu" });
   }
 }
  

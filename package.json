@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "test:parser": "node --import tsx --test tests/markitdown-parser.test.ts",
     "test:word": "node --import tsx --test tests/word-export.test.ts",
     "test:latex": "node --import tsx --test tests/latex-content.test.ts"
   },
