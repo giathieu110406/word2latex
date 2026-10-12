@@ -5,7 +5,7 @@ import {
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
   FileType, FileText, Image as ImageIcon, Layout, 
   Layers, Clock, AlertCircle, RotateCcw, XCircle, CheckCircle2, Sliders,
-  Trash2, Plus, X
+  Trash2, Plus, X, ChevronDown, Zap, FileSpreadsheet, Presentation
 } from "lucide-react";
 import Markdown from 'react-markdown';
 import remarkMath from "remark-math";
@@ -36,12 +36,14 @@ export interface ChunkItem {
 export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, userDoc, onMarkItDownUsage, currentMultiplier = 1 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [outputMarkdown, setOutputMarkdown] = useState("");
-  const [inputType, setInputType] = useState<"file" | "images" | "url">("file");
+  const [inputType, setInputType] = useState<"file" | "url">("file");
   const [url, setUrl] = useState("");
   const [fileName, setFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isQueueSettingsOpen, setIsQueueSettingsOpen] = useState(false);
+  const [conversionMode, setConversionMode] = useState<"fast" | "ai">("ai");
   const [isCopied, setIsCopied] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
   const [hasChargedCurrentFile, setHasChargedCurrentFile] = useState(false);
@@ -115,8 +117,92 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     });
   };
 
+  // Helper định dạng kích thước tệp
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Helper hiển thị icon đại diện theo định dạng tệp
+  const getFileIcon = (name: string) => {
+    const ext = name.split(".").pop()?.toLowerCase();
+    switch (ext) {
+      case "pdf":
+        return <FileType className="w-3.5 h-3.5 text-red-500 shrink-0" />;
+      case "doc":
+      case "docx":
+      case "odt":
+      case "rtf":
+      case "txt":
+        return <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
+      case "xls":
+      case "xlsx":
+      case "csv":
+        return <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
+      case "ppt":
+      case "pptx":
+        return <Presentation className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
+      case "png":
+      case "jpg":
+      case "jpeg":
+      case "webp":
+      case "gif":
+      case "svg":
+        return <ImageIcon className="w-3.5 h-3.5 text-purple-500 shrink-0" />;
+      default:
+        return <FileText className="w-3.5 h-3.5 text-slate-500 shrink-0" />;
+    }
+  };
+
+  // Helper MIME type dự phòng khi trình duyệt trả về rỗng
+  const getFallbackMimeType = (filename: string): string => {
+    const ext = filename.split(".").pop()?.toLowerCase();
+    switch (ext) {
+      case "pdf": return "application/pdf";
+      case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      case "doc": return "application/msword";
+      case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      case "xls": return "application/vnd.ms-excel";
+      case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+      case "ppt": return "application/vnd.ms-powerpoint";
+      case "png": return "image/png";
+      case "jpg":
+      case "jpeg": return "image/jpeg";
+      case "webp": return "image/webp";
+      case "txt": return "text/plain";
+      case "csv": return "text/csv";
+      default: return "application/octet-stream";
+    }
+  };
+
+  // Quản lý danh sách tệp chờ
+  const handleFilesSelect = (files: FileList | File[]) => {
+    const list = Array.from(files).filter((f) => f.size > 0);
+    if (list.length === 0) return;
+
+    setSelectedFiles((prev) => [...prev, ...list]);
+    triggerToast(`Đã thêm ${list.length} tệp vào danh sách chờ`, true);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const clearFiles = () => {
+    setSelectedFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   // Gửi 1 phần dữ liệu tới API với cơ chế Exponential Backoff
-  const sendChunkToApi = async (fileData: string, mimeType: string, fName: string, maxRetries = 3): Promise<string> => {
+  const sendChunkToApi = async (
+    fileData: string, 
+    mimeType: string, 
+    fName: string, 
+    maxRetries = 3,
+    mode: "fast" | "ai" = conversionMode
+  ): Promise<string> => {
     let attempt = 0;
     let delay = 4000;
 
@@ -132,6 +218,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
             fileData: fileData,
             mimeType: mimeType,
             fileName: fName,
+            mode: mode,
           }),
         });
 
@@ -251,7 +338,9 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
             const resultMarkdown = await sendChunkToApi(
               subPdfBase64,
               "application/pdf",
-              `${file.name.replace(/\.[^/.]+$/, "")}_part_${idx + 1}.pdf`
+              `${file.name.replace(/\.[^/.]+$/, "")}_part_${idx + 1}.pdf`,
+              3,
+              conversionMode
             );
 
             updatedChunks[idx].status = "completed";
@@ -301,7 +390,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
   // Xử lý gửi 1 file trọn vẹn
   const processSingleWholeFile = async (file: File, arrayBuffer: ArrayBuffer) => {
-    triggerToast("Đang phân tích tài liệu bằng AI...", true);
+    triggerToast("Đang phân tích tài liệu...", true);
     const bytes = new Uint8Array(arrayBuffer);
     let binary = "";
     const len = bytes.byteLength;
@@ -316,8 +405,9 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       body: JSON.stringify({
         type: "file",
         fileData: base64Data,
-        mimeType: file.type,
+        mimeType: file.type || getFallbackMimeType(file.name),
         fileName: file.name,
+        mode: conversionMode,
       }),
     });
 
@@ -351,67 +441,42 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     });
   };
 
-  // Xử lý chọn nhiều hình ảnh
-  const handleImageSelect = (files: FileList | File[]) => {
-    const list = Array.from(files);
-    const validImages: File[] = [];
-    let invalidCount = 0;
-
-    for (const f of list) {
-      if (f.type.startsWith("image/") || /\.(png|jpe?g|webp|bmp|gif|svg)$/i.test(f.name)) {
-        validImages.push(f);
-      } else {
-        invalidCount++;
-      }
-    }
-
-    if (invalidCount > 0 && validImages.length === 0) {
-      triggerToast("Chỉ chấp nhận tệp hình ảnh (PNG, JPG, WebP...)!", false);
-      return;
-    }
-    if (invalidCount > 0) {
-      triggerToast(`Đã lọc lấy ${validImages.length} ảnh hợp lệ (bỏ qua ${invalidCount} tệp không phải ảnh)`, true);
-    }
-
-    setSelectedImages((prev) => [...prev, ...validImages]);
-    if (imageInputRef.current) imageInputRef.current.value = "";
-  };
-
-  const removeImage = (index: number) => {
-    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const clearImages = () => {
-    setSelectedImages([]);
-    if (imageInputRef.current) imageInputRef.current.value = "";
-  };
-
-  // Chuyển đổi hàng loạt nhiều ảnh cùng lúc
-  const processBatchImages = async () => {
-    if (selectedImages.length === 0) {
-      triggerToast("Vui lòng tải lên ít nhất 1 hình ảnh", false);
+  // Khởi động chuyển đổi toàn bộ danh sách tệp chờ
+  const handleStartConversion = async () => {
+    if (selectedFiles.length === 0) {
+      triggerToast("Vui lòng chọn hoặc kéo thả ít nhất 1 tệp tin!", false);
       return;
     }
 
+    // TRƯỜNG HỢP 1: Chỉ có 1 file PDF -> Phân đoạn theo trang nếu vượt quá chunkSize
+    const firstFile = selectedFiles[0];
+    const isPdf = firstFile.type === "application/pdf" || firstFile.name.toLowerCase().endsWith(".pdf");
+
+    if (selectedFiles.length === 1 && isPdf) {
+      await processFile(firstFile);
+      return;
+    }
+
+    // TRƯỜNG HỢP 2: Nhiều tệp hỗn hợp hoặc 1 tệp đơn lẻ phi PDF
     petResult.current = "ready";
     setIsProcessing(true);
     abortControllerRef.current = false;
-    setFileName(`${selectedImages.length}_hinh_anh`);
+    setFileName(selectedFiles.length === 1 ? firstFile.name : `${selectedFiles.length}_tep_tin`);
     setMobileView("output");
     setHasChargedCurrentFile(false);
     setOutputMarkdown("");
 
-    const chunkList: ChunkItem[] = selectedImages.map((img, i) => ({
+    const chunkList: ChunkItem[] = selectedFiles.map((file, i) => ({
       id: i + 1,
       startPage: 0,
       endPage: 0,
-      title: `Ảnh ${i + 1}: ${img.name}`,
+      title: file.name,
       status: "waiting",
       retryCount: 0,
     }));
 
     setChunks(chunkList);
-    triggerToast(`Bắt đầu chuyển đổi ${selectedImages.length} hình ảnh...`, true);
+    triggerToast(`Bắt đầu xử lý hàng đợi ${selectedFiles.length} tệp...`, true);
 
     const updatedChunks = [...chunkList];
 
@@ -426,12 +491,15 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       setChunks([...updatedChunks]);
 
       try {
-        const img = selectedImages[idx];
-        const base64Data = await fileToBase64(img);
+        const file = selectedFiles[idx];
+        const base64Data = await fileToBase64(file);
+        const mimeType = file.type || getFallbackMimeType(file.name);
         const resultMarkdown = await sendChunkToApi(
           base64Data,
-          img.type || "image/jpeg",
-          img.name
+          mimeType,
+          file.name,
+          3,
+          conversionMode
         );
 
         updatedChunks[idx].status = "completed";
@@ -446,19 +514,19 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
           await sleep(interChunkDelay, true);
         }
       } catch (err: any) {
-        console.error(`Lỗi tại ảnh ${idx + 1}:`, err);
+        console.error(`Lỗi tại tệp ${idx + 1}:`, err);
         petResult.current = getPetErrorResult(err);
         updatedChunks[idx].status = "error";
-        updatedChunks[idx].errorMsg = err.message || "Lỗi phân tích ảnh này";
+        updatedChunks[idx].errorMsg = err.message || "Lỗi phân tích tệp này";
         setChunks([...updatedChunks]);
-        triggerToast(`Ảnh ${idx + 1} (${selectedImages[idx].name}) gặp lỗi: ${err.message || "Lỗi xử lý"}`, false);
+        triggerToast(`Tệp ${idx + 1} (${selectedFiles[idx].name}) gặp lỗi: ${err.message || "Lỗi xử lý"}`, false);
       }
     }
 
     const finalCombined = stitchChunks(updatedChunks, includePageDividers);
     setOutputMarkdown(finalCombined);
     if (!abortControllerRef.current) {
-      triggerToast("Đã hoàn tất chuyển đổi tất cả hình ảnh!", true);
+      triggerToast("Đã hoàn tất chuyển đổi tất cả tệp tin!", true);
     }
     setIsProcessing(false);
     setCurrentChunkIndex(-1);
@@ -470,42 +538,44 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     const targetChunk = chunks[chunkIndex];
     if (!targetChunk) return;
 
-    // Trường hợp thử lại 1 ảnh trong hàng đợi nhiều ảnh
-    if (selectedImages.length > 0 && selectedImages[chunkIndex]) {
-      const img = selectedImages[chunkIndex];
-      targetChunk.status = "processing";
-      setChunks([...chunks]);
+    targetChunk.status = "processing";
+    setChunks([...chunks]);
+
+    // Nhánh A: Thử lại 1 tệp trong hàng đợi đa tệp
+    if (selectedFiles.length > 0 && selectedFiles[chunkIndex] && targetChunk.startPage === 0) {
+      const file = selectedFiles[chunkIndex];
       try {
-        const base64Data = await fileToBase64(img);
+        const base64Data = await fileToBase64(file);
+        const mimeType = file.type || getFallbackMimeType(file.name);
         const resultMarkdown = await sendChunkToApi(
           base64Data,
-          img.type || "image/jpeg",
-          img.name
+          mimeType,
+          file.name,
+          3,
+          conversionMode
         );
         targetChunk.status = "completed";
         targetChunk.markdown = resultMarkdown;
         targetChunk.errorMsg = undefined;
         setChunks([...chunks]);
         setOutputMarkdown(stitchChunks(chunks, includePageDividers));
-        triggerToast(`Đã phân tích lại ảnh ${chunkIndex + 1} thành công!`, true);
+        triggerToast(`Đã phân tích lại tệp "${file.name}" thành công!`, true);
       } catch (err: any) {
         petResult.current = getPetErrorResult(err);
         targetChunk.status = "error";
         targetChunk.errorMsg = err.message || "Lỗi thử lại";
         setChunks([...chunks]);
-        triggerToast(`Thử lại ảnh ${chunkIndex + 1} thất bại: ${err.message}`, false);
+        triggerToast(`Thử lại tệp thất bại: ${err.message}`, false);
       }
       return;
     }
 
-    if (!fileInputRef.current?.files?.[0]) return;
-    const file = fileInputRef.current.files[0];
-
-    targetChunk.status = "processing";
-    setChunks([...chunks]);
+    // Nhánh B: Thử lại 1 phân đoạn trang của file PDF
+    const pdfFile = selectedFiles[0] || fileInputRef.current?.files?.[0];
+    if (!pdfFile) return;
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      const arrayBuffer = await pdfFile.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const subPdf = await PDFDocument.create();
       const pageIndices: number[] = [];
@@ -519,7 +589,9 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       const resultMarkdown = await sendChunkToApi(
         subPdfBase64,
         "application/pdf",
-        `${file.name.replace(/\.[^/.]+$/, "")}_part_${chunkIndex + 1}.pdf`
+        `${pdfFile.name.replace(/\.[^/.]+$/, "")}_part_${chunkIndex + 1}.pdf`,
+        3,
+        conversionMode
       );
 
       targetChunk.status = "completed";
@@ -559,7 +631,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       const res = await authFetch("/api/markitdown", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "url", url: url }),
+        body: JSON.stringify({ type: "url", url: url, mode: conversionMode }),
       });
 
       if (!res.ok) {
@@ -661,15 +733,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
               inputType === "file" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            Tệp tin (PDF / Doc)
-          </button>
-          <button
-            onClick={() => setInputType("images")}
-            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer text-center ${
-              inputType === "images" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Nhiều hình ảnh
+            Tài liệu & Hình ảnh
           </button>
           <button
             onClick={() => setInputType("url")}
@@ -716,117 +780,286 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         }`}>
           {inputType === "file" ? (
             <div className="flex flex-col gap-3.5 sm:gap-4">
-              {/* Dropzone */}
+              {/* Dropzone Thống nhất Đa tệp & Hình ảnh */}
               <div
                 id="tour-markitdown-dropzone"
                 onClick={() => !isProcessing && fileInputRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (!isProcessing) setIsDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (!isProcessing && e.dataTransfer.files) {
+                    handleFilesSelect(e.dataTransfer.files);
+                  }
+                }}
                 className={`border-2 border-dashed rounded-2xl p-4 sm:p-6 flex flex-col items-center justify-center text-center transition-all ${
                   isProcessing 
                     ? "border-slate-200 bg-slate-100/60 cursor-not-allowed opacity-75" 
+                    : isDragging
+                    ? "border-indigo-500 bg-indigo-50/80 ring-2 ring-indigo-200 cursor-pointer shadow-md"
                     : "border-indigo-200 bg-white/60 hover:bg-indigo-50/50 hover:border-indigo-400 cursor-pointer shadow-sm"
                 }`}
               >
-                <div className="w-10 h-10 sm:w-11 sm:h-11 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-2">
+                <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center mb-2 transition-transform ${
+                  isDragging ? "bg-indigo-600 text-white scale-110" : "bg-indigo-100 text-indigo-600"
+                }`}>
                   <FileUp className="w-5 h-5" />
                 </div>
-                <p className="font-semibold text-slate-700 text-xs sm:text-sm">Nhấn để tải tệp lên</p>
-                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">Hỗ trợ PDF (1 - 100+ trang), Word, Excel, PPTX, Ảnh, Âm thanh...</p>
+                <p className="font-semibold text-slate-700 text-xs sm:text-sm">
+                  {isDragging ? "Thả các tệp vào đây..." : "Kéo thả hoặc nhấn để tải tệp lên"}
+                </p>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+                  Hỗ trợ nhiều tệp: PDF, Word, Excel, PPTX, Văn bản &amp; Ảnh (PNG, JPG, WebP...)
+                </p>
                 <input
                   type="file"
                   ref={fileInputRef}
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.rtf,.txt,.csv,image/*"
                   disabled={isProcessing}
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) processFile(file);
+                    if (e.target.files) handleFilesSelect(e.target.files);
                   }}
                 />
               </div>
 
-              {/* Chunking & Queue Settings Card */}
-              <div id="tour-markitdown-queue-settings" className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-col gap-3.5">
+              {/* Danh sách tệp chờ & Nút bắt đầu chuyển đổi */}
+              {selectedFiles.length > 0 && (
+                <div className="bg-white rounded-2xl p-3.5 border border-slate-200/80 shadow-xs flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                      Đã chọn {selectedFiles.length} tệp ({formatFileSize(selectedFiles.reduce((acc, f) => acc + f.size, 0))})
+                    </span>
+                    {!isProcessing && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" /> Thêm tệp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearFiles}
+                          className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" /> Xóa hết
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                    {selectedFiles.map((file, i) => (
+                      <div
+                        key={`${file.name}-${i}-${file.size}`}
+                        className="flex items-center justify-between bg-slate-50 border border-slate-200/70 px-2.5 py-1.5 rounded-lg text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                          <span className="text-[10px] font-bold text-slate-400 shrink-0">#{i + 1}</span>
+                          {getFileIcon(file.name)}
+                          <span className="truncate text-slate-700 font-medium">{file.name}</span>
+                          <span className="text-[10px] text-slate-400 shrink-0">({formatFileSize(file.size)})</span>
+                        </div>
+                        {!isProcessing && (
+                          <button
+                            type="button"
+                            onClick={() => removeFile(i)}
+                            className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors cursor-pointer"
+                            title="Xóa tệp này"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleStartConversion}
+                    disabled={isProcessing}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer mt-1"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Đang xử lý {selectedFiles.length} tệp...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Bắt đầu chuyển đổi ({selectedFiles.length} tệp)
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Bộ chọn Chế độ Chuyển đổi (Conversion Mode Selector) */}
+              <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-200/80 shadow-xs flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Sliders className="w-3.5 h-3.5 text-indigo-600" />
-                    Cấu hình Hàng đợi & Cắt trang
+                    <Zap className="w-3.5 h-3.5 text-amber-500" />
+                    Chế độ Chuyển đổi
+                  </span>
+                  <span className="text-[11px] font-medium text-slate-400">
+                    {conversionMode === "fast" ? "⚡ Siêu tốc (0 AI token)" : "✨ AI Math Polish"}
                   </span>
                 </div>
-
-                {/* Chunk Size Selector */}
-                <div>
-                  <div className="flex justify-between text-xs text-slate-600 mb-1.5 font-medium">
-                    <span>Kích thước phân đoạn:</span>
-                    <span className="font-bold text-indigo-600">{chunkSize} trang / lần</span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {[5, 10, 15, 20].map((sz) => (
-                      <button
-                        key={sz}
-                        type="button"
-                        disabled={isProcessing}
-                        onClick={() => setChunkSize(sz)}
-                        className={`py-1.5 px-2 text-xs font-semibold rounded-lg border transition-all ${
-                          chunkSize === sz
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
-                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                        } disabled:opacity-50`}
-                      >
-                        {sz} trang
-                      </button>
-                    ))}
-                  </div>
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/50">
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => setConversionMode("fast")}
+                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      conversionMode === "fast"
+                        ? "bg-white text-amber-600 shadow-xs border border-amber-200/60"
+                        : "text-slate-600 hover:text-slate-800"
+                    } disabled:opacity-50`}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Siêu tốc</span>
+                    <span className="text-[10px] font-normal px-1 py-0.2 bg-amber-100 text-amber-700 rounded-sm">Fast</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => setConversionMode("ai")}
+                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      conversionMode === "ai"
+                        ? "bg-white text-indigo-600 shadow-xs border border-indigo-200/60"
+                        : "text-slate-600 hover:text-slate-800"
+                    } disabled:opacity-50`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>AI Math Polish</span>
+                    <span className="text-[10px] font-normal px-1 py-0.2 bg-indigo-100 text-indigo-700 rounded-sm">AI</span>
+                  </button>
                 </div>
+                <p className="text-[11px] text-slate-400 leading-tight">
+                  {conversionMode === "fast" 
+                    ? "⚡ Trích xuất Markdown thuần tức thì qua AnyDoc (<100ms), 0 token AI."
+                    : "✨ Tự động chuẩn hóa công thức Toán/Lý/Hóa sang LaTeX ($...$, $$...$$) với Gemini 3.7 Flash."}
+                </p>
+              </div>
 
-                {/* Cooldown Delay Setting */}
-                <div>
-                  <div className="flex justify-between text-xs text-slate-600 mb-1.5 font-medium">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      Khoảng nghỉ giữa các đoạn:
+              {/* Accordion Cấu hình Hàng đợi 1 hàng (Thu gọn mặc định) */}
+              <div id="tour-markitdown-queue-settings" className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden transition-all">
+                {/* Accordion Summary Header (1 hàng) */}
+                <button
+                  type="button"
+                  onClick={() => setIsQueueSettingsOpen((prev) => !prev)}
+                  className="w-full p-3 sm:p-3.5 flex items-center justify-between text-left hover:bg-slate-50/80 transition-colors cursor-pointer select-none"
+                >
+                  <div className="flex items-center gap-2 min-w-0 mr-2">
+                    <Sliders className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span className="text-xs font-bold text-slate-700 shrink-0">Cấu hình Hàng đợi &amp; Cắt trang</span>
+                    <span className="hidden sm:inline text-slate-300">|</span>
+                    <span className="text-[11px] text-slate-500 font-medium truncate">
+                      {chunkSize} trang/lần • {(interChunkDelay / 1000).toFixed(1)}s • Mốc trang {includePageDividers ? "ON" : "OFF"}
                     </span>
-                    <span className="font-bold text-slate-700">{interChunkDelay / 1000}s</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      { label: "2.5s (Nhanh)", val: 2500 },
-                      { label: "3.5s (Chuẩn)", val: 3500 },
-                      { label: "5.0s (An toàn)", val: 5000 },
-                    ].map((item) => (
-                      <button
-                        key={item.val}
-                        type="button"
-                        disabled={isProcessing}
-                        onClick={() => setInterChunkDelay(item.val)}
-                        className={`py-1.5 px-1.5 text-[11px] font-semibold rounded-lg border transition-all text-center ${
-                          interChunkDelay === item.val
-                            ? "bg-slate-800 text-white border-slate-800 shadow-xs"
-                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                        } disabled:opacity-50`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <ChevronDown
+                      className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                        isQueueSettingsOpen ? "rotate-180 text-indigo-600" : ""
+                      }`}
+                    />
                   </div>
-                </div>
+                </button>
 
-                {/* Switch Page Dividers */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                  <label htmlFor="dividerToggle" className="cursor-pointer select-none">
-                    Ghi chú mốc trang (&lt;!-- Trang X-Y --&gt;)
-                  </label>
-                  <input
-                    id="dividerToggle"
-                    type="checkbox"
-                    checked={includePageDividers}
-                    onChange={(e) => {
-                      setIncludePageDividers(e.target.checked);
-                      if (chunks.length > 0) {
-                        setOutputMarkdown(stitchChunks(chunks, e.target.checked));
-                      }
-                    }}
-                    className="w-4 h-4 text-indigo-600 rounded accent-indigo-600 cursor-pointer"
-                  />
-                </div>
+                {/* Accordion Expandable Content */}
+                {isQueueSettingsOpen && (
+                  <div className="px-3.5 pb-4 pt-1 border-t border-slate-100 flex flex-col gap-3.5">
+                    {/* Chunk Size Selector */}
+                    <div>
+                      <div className="flex justify-between text-xs text-slate-600 mb-1.5 font-medium">
+                        <span>Kích thước phân đoạn:</span>
+                        <span className="font-bold text-indigo-600">{chunkSize} trang / lần</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[5, 10, 15, 20].map((sz) => (
+                          <button
+                            key={sz}
+                            type="button"
+                            disabled={isProcessing}
+                            onClick={() => setChunkSize(sz)}
+                            className={`py-1.5 px-2 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+                              chunkSize === sz
+                                ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                            } disabled:opacity-50`}
+                          >
+                            {sz} trang
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Cooldown Delay Setting */}
+                    <div>
+                      <div className="flex justify-between text-xs text-slate-600 mb-1.5 font-medium">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          Khoảng nghỉ giữa các đoạn:
+                        </span>
+                        <span className="font-bold text-slate-700">{interChunkDelay / 1000}s</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { label: "2.5s (Nhanh)", val: 2500 },
+                          { label: "3.5s (Chuẩn)", val: 3500 },
+                          { label: "5.0s (An toàn)", val: 5000 },
+                        ].map((item) => (
+                          <button
+                            key={item.val}
+                            type="button"
+                            disabled={isProcessing}
+                            onClick={() => setInterChunkDelay(item.val)}
+                            className={`py-1.5 px-1.5 text-[11px] font-semibold rounded-lg border transition-all text-center cursor-pointer ${
+                              interChunkDelay === item.val
+                                ? "bg-slate-800 text-white border-slate-800 shadow-xs"
+                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                            } disabled:opacity-50`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Switch Page Dividers */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                      <label htmlFor="dividerToggle" className="cursor-pointer select-none flex items-center gap-1.5">
+                        <span>Ghi chú mốc phân cách</span>
+                        <span className="text-[10px] text-slate-400">(&lt;!-- Mốc trang / Tệp --&gt;)</span>
+                      </label>
+                      <input
+                        id="dividerToggle"
+                        type="checkbox"
+                        checked={includePageDividers}
+                        onChange={(e) => {
+                          setIncludePageDividers(e.target.checked);
+                          if (chunks.length > 0) {
+                            setOutputMarkdown(stitchChunks(chunks, e.target.checked));
+                          }
+                        }}
+                        className="w-4 h-4 text-indigo-600 rounded accent-indigo-600 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Active File Card */}
@@ -857,205 +1090,11 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                 <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Định dạng hỗ trợ</h4>
                 <div className="grid grid-cols-2 gap-1.5">
                   <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-xs"><FileType className="w-3.5 h-3.5 text-red-500" /> PDF Nhiều trang</div>
-                  <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-xs"><FileType className="w-3.5 h-3.5 text-blue-500" /> Word (.docx)</div>
-                  <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-xs"><FileType className="w-3.5 h-3.5 text-green-600" /> Excel (.xlsx)</div>
+                  <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-xs"><FileText className="w-3.5 h-3.5 text-blue-500" /> Word (.docx)</div>
+                  <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-xs"><FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Excel (.xlsx)</div>
                   <div className="flex items-center gap-2 text-xs text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-xs"><ImageIcon className="w-3.5 h-3.5 text-purple-500" /> Hình ảnh OCR</div>
                 </div>
               </div>
-            </div>
-          ) : inputType === "images" ? (
-            <div className="flex flex-col gap-3.5 sm:gap-4">
-              {/* Dropzone for images */}
-              <div
-                id="tour-markitdown-images-dropzone"
-                onClick={() => !isProcessing && imageInputRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (!isProcessing && e.dataTransfer.files) {
-                    handleImageSelect(e.dataTransfer.files);
-                  }
-                }}
-                className={`border-2 border-dashed rounded-2xl p-4 sm:p-6 flex flex-col items-center justify-center text-center transition-all ${
-                  isProcessing 
-                    ? "border-slate-200 bg-slate-100/60 cursor-not-allowed opacity-75" 
-                    : "border-indigo-200 bg-white/60 hover:bg-indigo-50/50 hover:border-indigo-400 cursor-pointer shadow-sm"
-                }`}
-              >
-                <div className="w-10 h-10 sm:w-11 sm:h-11 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-2">
-                  <ImageIcon className="w-5 h-5" />
-                </div>
-                <p className="font-semibold text-slate-700 text-xs sm:text-sm">Nhấn để tải nhiều ảnh lên</p>
-                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">Chỉ chấp nhận tệp hình ảnh (PNG, JPG, WebP...). Chọn cùng lúc nhiều ảnh hoặc kéo thả.</p>
-                <input
-                  type="file"
-                  ref={imageInputRef}
-                  multiple
-                  accept="image/*"
-                  disabled={isProcessing}
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files) handleImageSelect(e.target.files);
-                  }}
-                />
-              </div>
-
-              {/* Selected Images List & Start Action */}
-              {selectedImages.length > 0 && (
-                <div className="bg-white rounded-2xl p-3.5 border border-slate-200/80 shadow-xs flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
-                      Đã chọn {selectedImages.length} hình ảnh
-                    </span>
-                    {!isProcessing && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => imageInputRef.current?.click()}
-                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" /> Thêm ảnh
-                        </button>
-                        <button
-                          type="button"
-                          onClick={clearImages}
-                          className="text-[11px] font-semibold text-rose-500 hover:text-rose-700 flex items-center gap-0.5 cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3" /> Xóa hết
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-                    {selectedImages.map((img, i) => (
-                      <div
-                        key={`${img.name}-${i}`}
-                        className="flex items-center justify-between bg-slate-50 border border-slate-200/70 px-2.5 py-1.5 rounded-lg text-xs"
-                      >
-                        <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
-                          <span className="text-[10px] font-bold text-slate-400 shrink-0">#{i + 1}</span>
-                          <ImageIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                          <span className="truncate text-slate-700 font-medium">{img.name}</span>
-                          <span className="text-[10px] text-slate-400 shrink-0">({(img.size / 1024).toFixed(0)} KB)</span>
-                        </div>
-                        {!isProcessing && (
-                          <button
-                            type="button"
-                            onClick={() => removeImage(i)}
-                            className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors cursor-pointer"
-                            title="Xóa ảnh này"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={processBatchImages}
-                    disabled={isProcessing}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer mt-1"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Đang chuyển đổi {selectedImages.length} ảnh...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        Bắt đầu chuyển đổi ({selectedImages.length} ảnh)
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {/* Queue Settings Card for Images */}
-              <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-col gap-3.5">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-indigo-600" />
-                  Cấu hình Hàng đợi & Khoảng nghỉ
-                </span>
-
-                {/* Cooldown Delay Setting */}
-                <div>
-                  <div className="flex justify-between text-xs text-slate-600 mb-1.5 font-medium">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      Khoảng nghỉ giữa các ảnh:
-                    </span>
-                    <span className="font-bold text-slate-700">{interChunkDelay / 1000}s</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      { label: "2.5s (Nhanh)", val: 2500 },
-                      { label: "3.5s (Chuẩn)", val: 3500 },
-                      { label: "5.0s (An toàn)", val: 5000 },
-                    ].map((item) => (
-                      <button
-                        key={item.val}
-                        type="button"
-                        disabled={isProcessing}
-                        onClick={() => setInterChunkDelay(item.val)}
-                        className={`py-1.5 px-1.5 text-[11px] font-semibold rounded-lg border transition-all text-center ${
-                          interChunkDelay === item.val
-                            ? "bg-slate-800 text-white border-slate-800 shadow-xs"
-                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                        } disabled:opacity-50`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Switch Image Dividers */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                  <label htmlFor="imageDividerToggle" className="cursor-pointer select-none">
-                    Ghi chú mốc ảnh (&lt;!-- ẢNH X --&gt;)
-                  </label>
-                  <input
-                    id="imageDividerToggle"
-                    type="checkbox"
-                    checked={includePageDividers}
-                    onChange={(e) => {
-                      setIncludePageDividers(e.target.checked);
-                      if (chunks.length > 0) {
-                        setOutputMarkdown(stitchChunks(chunks, e.target.checked));
-                      }
-                    }}
-                    className="w-4 h-4 text-indigo-600 rounded accent-indigo-600 cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              {/* Active Batch Images Card */}
-              {fileName && (
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 flex items-center gap-3 shadow-xs">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                    <ImageIcon className="w-4 h-4 text-indigo-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-700 truncate">{fileName}</p>
-                    <p className="text-[11px] text-slate-400">
-                      {chunks.length > 0 ? `${chunks.length} ảnh trong hàng đợi` : "Hàng đợi ảnh"}
-                    </p>
-                  </div>
-                  {isProcessing && (
-                    <button
-                      onClick={handleStopQueue}
-                      className="px-2.5 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <XCircle className="w-3.5 h-3.5" /> Dừng
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
           ) : (
             <form onSubmit={processUrl} className="flex flex-col gap-4">
