@@ -47,10 +47,10 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
   let firstImportantError: any = null;
   
   const modelsToTry = overrideModelsToTry || [
-    params.model || "gemini-3.7-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash-lite"
+    params.model || "gemini-3.8-flash",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-pro-preview"
   ].filter((value, index, self) => self.indexOf(value) === index && value);
   
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -195,9 +195,9 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const response = await generateContentWithRetry({
-      model: "gemini-3.7-flash",
+      model: "gemini-3.8-flash",
       contents: contents
-    }, 3, 2000, ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+    }, 3, 2000, ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"]);
 
     return res.json({ success: true, markdown: response.text });
 

@@ -42,7 +42,7 @@ Shape {id:string duy nhất khác id điểm,type:'segment'|'line'|'vector'|'cir
 type DrawingEnvironment = Record<string, string | undefined>;
 const clean = (value?: string) => (value || '').trim().replace(/^(["'])(.*)\1$/, '$2');
 
-const DEFAULT_GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.7-flash'];
+const DEFAULT_GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"];
 
 export function getDrawingProviderConfig(env: DrawingEnvironment = process.env) {
  const endpoint = clean(env.DRAWING_AI_ENDPOINT || env.AI_ENDPOINT);
@@ -53,7 +53,7 @@ export function getDrawingProviderConfig(env: DrawingEnvironment = process.env) 
   return { provider: 'openai-compatible', configured: missing.length === 0, endpoint, model, key: customKey, missing };
  }
  const key = clean(env.GEMINI_API_KEY);
- return { provider: 'gemini', configured: !!key, endpoint: '', model: model || 'gemini-2.5-flash', key, missing: key ? [] : ['GEMINI_API_KEY'] };
+ return { provider: 'gemini', configured: !!key, endpoint: '', model: model || 'gemini-3.8-flash', key, missing: key ? [] : ['GEMINI_API_KEY'] };
 }
 
 export async function generateDrawingProposal(input: any, config = getDrawingProviderConfig()) {

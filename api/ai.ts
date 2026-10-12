@@ -107,9 +107,9 @@ async function getDynamicSystemPrompt(service: string, actionName: string, defau
 // Chuỗi fallback cố định theo thứ tự ưu tiên (đã xác thực khả dụng 100% với Google GenAI)
 // 3.7-flash (mặc định) → 3.6-flash → 3.5-flash-lite
 const DEFAULT_FALLBACK_CHAIN = [
-  "gemini-3.7-flash",
-  "gemini-3.6-flash",
+  "gemini-3.8-flash",
   "gemini-3.5-flash-lite",
+  "gemini-3.1-pro-preview",
 ];
 
 // Các lỗi hạ tầng — được phép fallback sang model tiếp theo
