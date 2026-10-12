@@ -5,7 +5,7 @@ import {
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
   FileType, FileText, Image as ImageIcon, Layout, 
   Layers, Clock, AlertCircle, RotateCcw, XCircle, CheckCircle2, Sliders,
-  Trash2, Plus, X, ChevronDown, Zap, FileSpreadsheet, Presentation
+  Trash2, Plus, X, ChevronDown, Zap, FileSpreadsheet, Presentation, Activity
 } from "lucide-react";
 import Markdown from 'react-markdown';
 import remarkMath from "remark-math";
@@ -33,6 +33,14 @@ export interface ChunkItem {
   title?: string;
 }
 
+export type AnalysisStage = 
+  | "idle"
+  | "reading"         // Đang đọc tệp & phân tích cấu trúc
+  | "fast_extracted"  // Đã trích xuất siêu tốc & hiển thị bản nháp
+  | "ai_polishing"    // Đang chuẩn hóa công thức Toán LaTeX qua AI
+  | "completed"       // Hoàn tất chuẩn hóa
+  | "error";          // Gặp lỗi
+
 export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, userDoc, onMarkItDownUsage, currentMultiplier = 1 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [outputMarkdown, setOutputMarkdown] = useState("");
@@ -42,12 +50,19 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [isQueueSettingsOpen, setIsQueueSettingsOpen] = useState(false);
   const [conversionMode, setConversionMode] = useState<"fast" | "ai">("ai");
   const [isCopied, setIsCopied] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
   const [hasChargedCurrentFile, setHasChargedCurrentFile] = useState(false);
   const petResult = useRef<CodexPetResult>("ready");
+
+  // Tiến trình phân tích 2 giai đoạn & báo lỗi
+  const [analysisStage, setAnalysisStage] = useState<AnalysisStage>("idle");
+  const [stageErrorMsg, setStageErrorMsg] = useState<string | null>(null);
+  const [fastDraftMarkdown, setFastDraftMarkdown] = useState<string>("");
+  const [chunks, setChunks] = useState<ChunkItem[]>([]);
+  const [, setCurrentChunkIndex] = useState<number>(-1);
+  const abortControllerRef = useRef<boolean>(false);
 
   const getPetErrorResult = (error: unknown, status?: number): CodexPetResult => {
     const message = error instanceof Error ? error.message : String(error ?? "");
@@ -62,17 +77,8 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     return () => finishActivity(petResult.current);
   }, [isProcessing]);
 
-  // Queue & Chunking configuration
-  const [chunkSize, setChunkSize] = useState<number>(15); // Hỗ trợ 5, 10, 15, 20 trang
-  const [interChunkDelay, setInterChunkDelay] = useState<number>(3500); // 3.5 giây nghỉ giữa các request
-  const [chunks, setChunks] = useState<ChunkItem[]>([]);
-  const [, setCurrentChunkIndex] = useState<number>(-1);
-  const [cooldownCountdown, setCooldownCountdown] = useState<number>(0);
-  const [includePageDividers, setIncludePageDividers] = useState<boolean>(true);
-  const abortControllerRef = useRef<boolean>(false);
-
   // Helper để làm sạch và ghép các đoạn Markdown
-  const stitchChunks = (chunkList: ChunkItem[], withDividers: boolean = true): string => {
+  const stitchChunks = (chunkList: ChunkItem[]): string => {
     return chunkList
       .filter((c) => c.markdown && typeof c.markdown === "string" && c.markdown.trim().length > 0 && c.markdown.trim() !== "undefined")
       .map((c) => {
@@ -86,13 +92,11 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
           text = text.replace(/^```[a-zA-Z]*\s*/, "").replace(/\s*```$/, "");
         }
 
-        if (withDividers) {
-          if (c.title) {
-            return `\n\n<!-- ====== ${c.title.toUpperCase()} ====== -->\n\n${text}`;
-          }
-          if (c.startPage > 0) {
-            return `\n\n<!-- ====== TRANG ${c.startPage} - ${c.endPage} ====== -->\n\n${text}`;
-          }
+        if (c.title) {
+          return `\n\n<!-- ====== ${c.title.toUpperCase()} ====== -->\n\n${text}`;
+        }
+        if (c.startPage > 0) {
+          return `\n\n<!-- ====== TRANG ${c.startPage} - ${c.endPage} ====== -->\n\n${text}`;
         }
         return text;
       })
@@ -100,20 +104,13 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   };
 
   // Hàm sleep có kiểm tra cờ hủy
-  const sleep = (ms: number, updateCountdown = false) => {
+  const sleep = (ms: number) => {
     return new Promise<void>((resolve) => {
-      let remaining = Math.ceil(ms / 1000);
-      if (updateCountdown) setCooldownCountdown(remaining);
-      
-      const interval = setInterval(() => {
-        remaining -= 1;
-        if (updateCountdown && remaining >= 0) setCooldownCountdown(remaining);
-        if (remaining <= 0 || abortControllerRef.current) {
-          clearInterval(interval);
-          if (updateCountdown) setCooldownCountdown(0);
-          resolve();
-        }
-      }, 1000);
+      const timer = setTimeout(resolve, ms);
+      if (abortControllerRef.current) {
+        clearTimeout(timer);
+        resolve();
+      }
     });
   };
 
@@ -254,137 +251,48 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     throw new Error("Vượt quá số lần thử lại cho phân đoạn này.");
   };
 
-  // Xử lý phân tích File (hỗ trợ phân trang PDF lớn)
-  const processFile = async (file: File) => {
-    petResult.current = "ready";
+  // GIAI ĐOẠN 2: Gọi AI Polish chuẩn hóa công thức Toán LaTeX ($...$, $$...$$)
+  const runAiPolishStage = async (rawContent: string): Promise<string> => {
+    setAnalysisStage("ai_polishing");
+    setStageErrorMsg(null);
     setIsProcessing(true);
-    abortControllerRef.current = false;
-    setFileName(file.name);
-    setMobileView("output");
-    setHasChargedCurrentFile(false);
-    setOutputMarkdown("");
-    setChunks([]);
-    setCurrentChunkIndex(-1);
-
-    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    triggerToast("AI đang chuẩn hóa công thức Toán LaTeX...", true);
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
+      const res = await authFetch("/api/markitdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "text",
+          rawText: rawContent,
+          mode: "ai",
+        }),
+      });
 
-      // TRƯỜNG HỢP 1: File PDF cần chia đoạn
-      if (isPdf) {
-        let pdfDoc: PDFDocument;
-        try {
-          pdfDoc = await PDFDocument.load(arrayBuffer);
-        } catch (pdfErr) {
-          console.warn("Không thể tải cấu trúc PDF bằng pdf-lib, chuyển sang gửi nguyên file:", pdfErr);
-          await processSingleWholeFile(file, arrayBuffer);
-          return;
-        }
-
-        const totalPages = pdfDoc.getPageCount();
-
-        // Nếu file nhỏ hơn hoặc bằng 1 chunk -> xử lý trực tiếp
-        if (totalPages <= chunkSize) {
-          triggerToast(`Tài liệu ${totalPages} trang, phân tích trực tiếp...`, true);
-          await processSingleWholeFile(file, arrayBuffer);
-          return;
-        }
-
-        // Tạo danh sách các chunks (15-20 trang/lần)
-        const chunkList: ChunkItem[] = [];
-        let chunkIndex = 0;
-        for (let i = 0; i < totalPages; i += chunkSize) {
-          chunkIndex++;
-          const startPage = i + 1;
-          const endPage = Math.min(i + chunkSize, totalPages);
-          chunkList.push({
-            id: chunkIndex,
-            startPage: startPage,
-            endPage: endPage,
-            status: "waiting",
-            retryCount: 0,
-          });
-        }
-
-        setChunks(chunkList);
-        triggerToast(`Đã chia tài liệu ${totalPages} trang thành ${chunkList.length} phân đoạn (${chunkSize} trang/lần)`, true);
-
-        // Chạy hàng đợi xử lý tuần tự từng chunk
-        const updatedChunks = [...chunkList];
-
-        for (let idx = 0; idx < updatedChunks.length; idx++) {
-          if (abortControllerRef.current) {
-            triggerToast("Đã dừng hàng đợi xử lý", false);
-            break;
-          }
-
-          setCurrentChunkIndex(idx);
-          updatedChunks[idx].status = "processing";
-          setChunks([...updatedChunks]);
-
-          try {
-            // Tách các trang của chunk này thành 1 sub-PDF
-            const subPdf = await PDFDocument.create();
-            const pageIndices: number[] = [];
-            for (let p = updatedChunks[idx].startPage - 1; p < updatedChunks[idx].endPage; p++) {
-              pageIndices.push(p);
-            }
-            const copiedPages = await subPdf.copyPages(pdfDoc, pageIndices);
-            copiedPages.forEach((page) => subPdf.addPage(page));
-            const subPdfBase64 = await subPdf.saveAsBase64({ dataUri: false });
-
-            // Gửi API
-            const resultMarkdown = await sendChunkToApi(
-              subPdfBase64,
-              "application/pdf",
-              `${file.name.replace(/\.[^/.]+$/, "")}_part_${idx + 1}.pdf`,
-              3,
-              conversionMode
-            );
-
-            updatedChunks[idx].status = "completed";
-            updatedChunks[idx].markdown = resultMarkdown;
-            setChunks([...updatedChunks]);
-
-            // Cập nhật Markdown ghép nối thời gian thực
-            const currentCombined = stitchChunks(updatedChunks, includePageDividers);
-            setOutputMarkdown(currentCombined);
-
-            // Nghỉ cooldown giữa các chunk để bảo vệ hạn mức RPM (Requests Per Minute)
-            if (idx < updatedChunks.length - 1 && !abortControllerRef.current) {
-              updatedChunks[idx + 1].status = "cooldown";
-              setChunks([...updatedChunks]);
-              await sleep(interChunkDelay, true);
-            }
-          } catch (err: any) {
-            console.error(`Lỗi tại Chunk ${idx + 1}:`, err);
-            petResult.current = getPetErrorResult(err);
-            updatedChunks[idx].status = "error";
-            updatedChunks[idx].errorMsg = err.message || "Lỗi phân tích đoạn này";
-            setChunks([...updatedChunks]);
-            triggerToast(`Phân đoạn ${idx + 1} gặp lỗi: ${err.message || "Lỗi kết nối"}`, false);
-          }
-        }
-
-
-        const finalCombined = stitchChunks(updatedChunks, includePageDividers);
-        setOutputMarkdown(finalCombined);
-        triggerToast("Đã hoàn tất phân tích và ghép file thành công!", true);
-
-      } else {
-        // TRƯỜNG HỢP 2: File khác (DOCX, XLSX, Image, Audio...)
-        await processSingleWholeFile(file, arrayBuffer);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
       }
-    } catch (error: any) {
-      console.error(error);
-      petResult.current = getPetErrorResult(error);
-      triggerToast(`Lỗi xử lý: ${error.message || "Lỗi không xác định"}`, false);
+
+      const data = await res.json();
+      if (data.success && typeof data.markdown === "string" && data.markdown.trim().length > 0 && data.markdown.trim() !== "undefined") {
+        const finalMarkdown = data.markdown.trim();
+        setOutputMarkdown(finalMarkdown);
+        setAnalysisStage("completed");
+        triggerToast("Chuẩn hóa công thức Toán LaTeX thành công!", true);
+        return finalMarkdown;
+      } else {
+        throw new Error(data.error || "Không nhận được nội dung Markdown hợp lệ từ AI");
+      }
+    } catch (err: any) {
+      console.error("Lỗi AI Polish:", err);
+      const errMsg = err.message || "Kết nối AI gián đoạn, không thể chuẩn hóa LaTeX.";
+      setStageErrorMsg(errMsg);
+      setAnalysisStage("error");
+      triggerToast("AI gián đoạn, hệ thống giữ nguyên bản Markdown siêu tốc.", false);
+      return rawContent;
     } finally {
       setIsProcessing(false);
-      setCurrentChunkIndex(-1);
-      setCooldownCountdown(0);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -402,37 +310,90 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     });
   };
 
-  // Xử lý gửi 1 file trọn vẹn
-  const processSingleWholeFile = async (file: File, _arrayBuffer?: ArrayBuffer) => {
-    triggerToast("Đang phân tích tài liệu...", true);
+  // Pipeline xử lý 1 tệp qua 2 giai đoạn: Siêu tốc -> AI Polish
+  const processSingleFilePipeline = async (file: File): Promise<string> => {
+    setAnalysisStage("reading");
+    setStageErrorMsg(null);
+    triggerToast(`Đang đọc tệp ${file.name}...`, true);
+
     const base64Data = await fileToBase64(file);
+    const mimeType = file.type || getFallbackMimeType(file.name);
 
-    const res = await authFetch("/api/markitdown", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "file",
-        fileData: base64Data,
-        mimeType: file.type || getFallbackMimeType(file.name),
-        fileName: file.name,
-        mode: conversionMode,
-      }),
-    });
+    // GIAI ĐOẠN 1: Trích xuất siêu tốc tức thì (<300ms)
+    let fastMarkdown = "";
+    try {
+      const fastRes = await authFetch("/api/markitdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "file",
+          fileData: base64Data,
+          mimeType: mimeType,
+          fileName: file.name,
+          mode: "fast",
+        }),
+      });
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || "Lỗi máy chủ khi xử lý file");
+      if (fastRes.ok) {
+        const fastData = await fastRes.json();
+        if (fastData.success && typeof fastData.markdown === "string" && fastData.markdown.trim().length > 0) {
+          fastMarkdown = fastData.markdown.trim();
+          setFastDraftMarkdown(fastMarkdown);
+          setOutputMarkdown(fastMarkdown);
+          setAnalysisStage("fast_extracted");
+          triggerToast("Trích xuất siêu tốc thành công!", true);
+        }
+      }
+    } catch (fastErr) {
+      console.warn("Chế độ siêu tốc không trích xuất được (file scan ảnh hoặc cần OCR):", fastErr);
     }
 
-    const data = await res.json();
-    if (data.success && typeof data.markdown === "string" && data.markdown.trim().length > 0 && data.markdown.trim() !== "undefined") {
-      setOutputMarkdown(data.markdown.trim());
-      triggerToast("Chuyển đổi thành công!", true);
+    // Nếu người dùng chọn chế độ Siêu tốc thuần túy (0 token AI)
+    if (conversionMode === "fast") {
+      if (fastMarkdown) {
+        setAnalysisStage("completed");
+        return fastMarkdown;
+      } else {
+        throw new Error("Không thể trích xuất văn bản ở chế độ Siêu tốc (file scan/ảnh cần OCR). Vui lòng chọn chế độ 'AI Math Polish'.");
+      }
+    }
+
+    // GIAI ĐOẠN 2: AI Math Polish
+    setAnalysisStage("ai_polishing");
+
+    if (fastMarkdown) {
+      // Đã có text siêu tốc -> Gửi text để AI chuẩn hóa LaTeX (nhẹ, nhanh, tiết kiệm token)
+      return await runAiPolishStage(fastMarkdown);
     } else {
-      petResult.current = "blocked";
-      const errMsg = data.error || "Không thể chuyển đổi tài liệu này";
-      triggerToast(errMsg, false);
-      throw new Error(errMsg);
+      // File dạng ảnh hoặc PDF scan không có text -> Gửi multimodal AI
+      triggerToast("Đang nhận diện nội dung & chuẩn hóa LaTeX qua AI...", true);
+      const aiRes = await authFetch("/api/markitdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "file",
+          fileData: base64Data,
+          mimeType: mimeType,
+          fileName: file.name,
+          mode: "ai",
+        }),
+      });
+
+      if (!aiRes.ok) {
+        const errData = await aiRes.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${aiRes.status}`);
+      }
+
+      const aiData = await aiRes.json();
+      if (aiData.success && typeof aiData.markdown === "string" && aiData.markdown.trim().length > 0 && aiData.markdown.trim() !== "undefined") {
+        const aiMarkdown = aiData.markdown.trim();
+        setOutputMarkdown(aiMarkdown);
+        setAnalysisStage("completed");
+        triggerToast("Chuyển đổi AI thành công!", true);
+        return aiMarkdown;
+      } else {
+        throw new Error(aiData.error || "Không thể chuyển đổi tài liệu này qua AI");
+      }
     }
   };
 
@@ -443,24 +404,37 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       return;
     }
 
-    // TRƯỜNG HỢP 1: Chỉ có 1 file PDF -> Phân đoạn theo trang nếu vượt quá chunkSize
-    const firstFile = selectedFiles[0];
-    const isPdf = firstFile.type === "application/pdf" || firstFile.name.toLowerCase().endsWith(".pdf");
-
-    if (selectedFiles.length === 1 && isPdf) {
-      await processFile(firstFile);
-      return;
-    }
-
-    // TRƯỜNG HỢP 2: Nhiều tệp hỗn hợp hoặc 1 tệp đơn lẻ phi PDF
     petResult.current = "ready";
     setIsProcessing(true);
     abortControllerRef.current = false;
-    setFileName(selectedFiles.length === 1 ? firstFile.name : `${selectedFiles.length}_tep_tin`);
     setMobileView("output");
     setHasChargedCurrentFile(false);
     setOutputMarkdown("");
+    setFastDraftMarkdown("");
+    setStageErrorMsg(null);
+    setAnalysisStage("reading");
 
+    // TRƯỜNG HỢP 1: Chỉ có 1 tệp duy nhất
+    if (selectedFiles.length === 1) {
+      const file = selectedFiles[0];
+      setFileName(file.name);
+      setChunks([]);
+      try {
+        await processSingleFilePipeline(file);
+      } catch (err: any) {
+        console.error("Lỗi chuyển đổi tệp:", err);
+        petResult.current = getPetErrorResult(err);
+        setStageErrorMsg(err.message || "Lỗi xử lý tài liệu");
+        setAnalysisStage("error");
+        triggerToast(`Lỗi: ${err.message || "Lỗi xử lý tài liệu"}`, false);
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+
+    // TRƯỜNG HỢP 2: Hàng đợi nhiều tệp
+    setFileName(`${selectedFiles.length}_tep_tin`);
     const chunkList: ChunkItem[] = selectedFiles.map((file, i) => ({
       id: i + 1,
       startPage: 0,
@@ -469,9 +443,8 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       status: "waiting",
       retryCount: 0,
     }));
-
     setChunks(chunkList);
-    triggerToast(`Bắt đầu xử lý hàng đợi ${selectedFiles.length} tệp...`, true);
+    triggerToast(`Bắt đầu xử lý ${selectedFiles.length} tệp tin...`, true);
 
     const updatedChunks = [...chunkList];
 
@@ -487,45 +460,32 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
       try {
         const file = selectedFiles[idx];
-        const base64Data = await fileToBase64(file);
-        const mimeType = file.type || getFallbackMimeType(file.name);
-        const resultMarkdown = await sendChunkToApi(
-          base64Data,
-          mimeType,
-          file.name,
-          3,
-          conversionMode
-        );
-
+        const resMarkdown = await processSingleFilePipeline(file);
         updatedChunks[idx].status = "completed";
-        updatedChunks[idx].markdown = resultMarkdown;
+        updatedChunks[idx].markdown = resMarkdown;
         setChunks([...updatedChunks]);
-
-        setOutputMarkdown(stitchChunks(updatedChunks, includePageDividers));
-
-        if (idx < updatedChunks.length - 1 && !abortControllerRef.current) {
-          updatedChunks[idx + 1].status = "cooldown";
-          setChunks([...updatedChunks]);
-          await sleep(interChunkDelay, true);
-        }
+        setOutputMarkdown(stitchChunks(updatedChunks));
       } catch (err: any) {
         console.error(`Lỗi tại tệp ${idx + 1}:`, err);
         petResult.current = getPetErrorResult(err);
         updatedChunks[idx].status = "error";
         updatedChunks[idx].errorMsg = err.message || "Lỗi phân tích tệp này";
         setChunks([...updatedChunks]);
-        triggerToast(`Tệp ${idx + 1} (${selectedFiles[idx].name}) gặp lỗi: ${err.message || "Lỗi xử lý"}`, false);
+        setStageErrorMsg(`Tệp "${selectedFiles[idx].name}": ${err.message}`);
+        triggerToast(`Tệp ${selectedFiles[idx].name} gặp lỗi: ${err.message}`, false);
       }
     }
 
-    const finalCombined = stitchChunks(updatedChunks, includePageDividers);
-    setOutputMarkdown(finalCombined);
+    const finalCombined = stitchChunks(updatedChunks);
+    if (finalCombined) {
+      setOutputMarkdown(finalCombined);
+      setAnalysisStage("completed");
+    }
     if (!abortControllerRef.current) {
-      triggerToast("Đã hoàn tất chuyển đổi tất cả tệp tin!", true);
+      triggerToast("Đã hoàn tất xử lý danh sách tệp tin!", true);
     }
     setIsProcessing(false);
     setCurrentChunkIndex(-1);
-    setCooldownCountdown(0);
   };
 
   // Thử lại 1 chunk bị lỗi
@@ -553,7 +513,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         targetChunk.markdown = resultMarkdown;
         targetChunk.errorMsg = undefined;
         setChunks([...chunks]);
-        setOutputMarkdown(stitchChunks(chunks, includePageDividers));
+        setOutputMarkdown(stitchChunks(chunks));
         triggerToast(`Đã phân tích lại tệp "${file.name}" thành công!`, true);
       } catch (err: any) {
         petResult.current = getPetErrorResult(err);
@@ -594,7 +554,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       targetChunk.errorMsg = undefined;
       setChunks([...chunks]);
 
-      setOutputMarkdown(stitchChunks(chunks, includePageDividers));
+      setOutputMarkdown(stitchChunks(chunks));
       triggerToast(`Đã phân tích lại phân đoạn ${chunkIndex + 1} thành công!`, true);
     } catch (err: any) {
       petResult.current = getPetErrorResult(err);
@@ -944,118 +904,98 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                 </div>
                 <p className="text-[11px] text-slate-400 leading-tight">
                   {conversionMode === "fast" 
-                    ? "⚡ Trích xuất Markdown thuần tức thì qua AnyDoc (<100ms), 0 token AI."
-                    : "✨ Tự động chuẩn hóa công thức Toán/Lý/Hóa sang LaTeX ($...$, $$...$$) với Gemini 3.7 Flash."}
+                    ? "⚡ Trích xuất Markdown thuần tức thì qua AnyDoc (<300ms), 0 token AI."
+                    : "✨ Xuất kết quả siêu tốc tức thì trước, sau đó gọi AI chuẩn hóa công thức Toán LaTeX ($...$, $$...$$)."}
                 </p>
               </div>
 
-              {/* Accordion Cấu hình Hàng đợi 1 hàng (Thu gọn mặc định) */}
-              <div id="tour-markitdown-queue-settings" className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden transition-all">
-                {/* Accordion Summary Header (1 hàng) */}
-                <button
-                  type="button"
-                  onClick={() => setIsQueueSettingsOpen((prev) => !prev)}
-                  className="w-full p-3 sm:p-3.5 flex items-center justify-between text-left hover:bg-slate-50/80 transition-colors cursor-pointer select-none"
-                >
-                  <div className="flex items-center gap-2 min-w-0 mr-2">
-                    <Sliders className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                    <span className="text-xs font-bold text-slate-700 shrink-0">Cấu hình Hàng đợi &amp; Cắt trang</span>
-                    <span className="hidden sm:inline text-slate-300">|</span>
-                    <span className="text-[11px] text-slate-500 font-medium truncate">
-                      {chunkSize} trang/lần • {(interChunkDelay / 1000).toFixed(1)}s • Mốc trang {includePageDividers ? "ON" : "OFF"}
+              {/* Khu vực Tiến trình Hệ thống Phân tích & Báo lỗi */}
+              {(isProcessing || analysisStage !== "idle") && (
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-xs flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Activity className="w-4 h-4 text-indigo-600" />
+                      Tiến trình phân tích
                     </span>
+                    {isProcessing && (
+                      <span className="text-[11px] font-semibold text-indigo-600 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Đang chạy...
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <ChevronDown
-                      className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
-                        isQueueSettingsOpen ? "rotate-180 text-indigo-600" : ""
-                      }`}
-                    />
-                  </div>
-                </button>
 
-                {/* Accordion Expandable Content */}
-                {isQueueSettingsOpen && (
-                  <div className="px-3.5 pb-4 pt-1 border-t border-slate-100 flex flex-col gap-3.5">
-                    {/* Chunk Size Selector */}
-                    <div>
-                      <div className="flex justify-between text-xs text-slate-600 mb-1.5 font-medium">
-                        <span>Kích thước phân đoạn:</span>
-                        <span className="font-bold text-indigo-600">{chunkSize} trang / lần</span>
-                      </div>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {[5, 10, 15, 20].map((sz) => (
-                          <button
-                            key={sz}
-                            type="button"
-                            disabled={isProcessing}
-                            onClick={() => setChunkSize(sz)}
-                            className={`py-1.5 px-2 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
-                              chunkSize === sz
-                                ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
-                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                            } disabled:opacity-50`}
-                          >
-                            {sz} trang
-                          </button>
-                        ))}
-                      </div>
+                  {/* Stepper trực quan 3 bước */}
+                  <div className="flex flex-col gap-2 pt-1">
+                    {/* Bước 1: Trích xuất siêu tốc */}
+                    <div className="flex items-center gap-2.5 text-xs">
+                      {analysisStage === "reading" ? (
+                        <Loader2 className="w-4 h-4 text-amber-500 animate-spin shrink-0" />
+                      ) : analysisStage === "fast_extracted" || analysisStage === "ai_polishing" || analysisStage === "completed" ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />
+                      )}
+                      <span className={analysisStage === "reading" ? "font-bold text-amber-700" : "text-slate-600"}>
+                        Trích xuất siêu tốc (&lt;300ms)
+                      </span>
                     </div>
 
-                    {/* Cooldown Delay Setting */}
-                    <div>
-                      <div className="flex justify-between text-xs text-slate-600 mb-1.5 font-medium">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          Khoảng nghỉ giữa các đoạn:
+                    {/* Bước 2: Hiển thị bản xem trước */}
+                    <div className="flex items-center gap-2.5 text-xs">
+                      {outputMarkdown ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : analysisStage === "reading" ? (
+                        <div className="w-4 h-4 rounded-full border border-slate-200 shrink-0" />
+                      ) : (
+                        <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />
+                      )}
+                      <span className={outputMarkdown && analysisStage === "ai_polishing" ? "font-medium text-slate-700" : "text-slate-600"}>
+                        Xuất kết quả bản nháp tức thì
+                      </span>
+                    </div>
+
+                    {/* Bước 3: AI Math Polish */}
+                    {conversionMode === "ai" && (
+                      <div className="flex items-center gap-2.5 text-xs">
+                        {analysisStage === "ai_polishing" ? (
+                          <Loader2 className="w-4 h-4 text-indigo-600 animate-spin shrink-0" />
+                        ) : analysisStage === "completed" ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        ) : stageErrorMsg ? (
+                          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                        ) : (
+                          <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />
+                        )}
+                        <span className={analysisStage === "ai_polishing" ? "font-bold text-indigo-700" : "text-slate-600"}>
+                          AI chuẩn hóa công thức LaTeX ($...$)
                         </span>
-                        <span className="font-bold text-slate-700">{interChunkDelay / 1000}s</span>
                       </div>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {[
-                          { label: "2.5s (Nhanh)", val: 2500 },
-                          { label: "3.5s (Chuẩn)", val: 3500 },
-                          { label: "5.0s (An toàn)", val: 5000 },
-                        ].map((item) => (
-                          <button
-                            key={item.val}
-                            type="button"
-                            disabled={isProcessing}
-                            onClick={() => setInterChunkDelay(item.val)}
-                            className={`py-1.5 px-1.5 text-[11px] font-semibold rounded-lg border transition-all text-center cursor-pointer ${
-                              interChunkDelay === item.val
-                                ? "bg-slate-800 text-white border-slate-800 shadow-xs"
-                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                            } disabled:opacity-50`}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Switch Page Dividers */}
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                      <label htmlFor="dividerToggle" className="cursor-pointer select-none flex items-center gap-1.5">
-                        <span>Ghi chú mốc phân cách</span>
-                        <span className="text-[10px] text-slate-400">(&lt;!-- Mốc trang / Tệp --&gt;)</span>
-                      </label>
-                      <input
-                        id="dividerToggle"
-                        type="checkbox"
-                        checked={includePageDividers}
-                        onChange={(e) => {
-                          setIncludePageDividers(e.target.checked);
-                          if (chunks.length > 0) {
-                            setOutputMarkdown(stitchChunks(chunks, e.target.checked));
-                          }
-                        }}
-                        className="w-4 h-4 text-indigo-600 rounded accent-indigo-600 cursor-pointer"
-                      />
-                    </div>
+                    )}
                   </div>
-                )}
-              </div>
+
+                  {/* Báo lỗi chi tiết nếu có */}
+                  {stageErrorMsg && (
+                    <div className="mt-1 bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-700 flex flex-col gap-2">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-rose-800">Thông báo lỗi chi tiết:</p>
+                          <p className="text-[11px] leading-relaxed break-words text-rose-700">{stageErrorMsg}</p>
+                        </div>
+                      </div>
+                      {fastDraftMarkdown && conversionMode === "ai" && !isProcessing && (
+                        <button
+                          type="button"
+                          onClick={() => runAiPolishStage(fastDraftMarkdown)}
+                          className="self-end px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Thử lại chuẩn hóa AI
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Active File Card */}
               {fileName && (
@@ -1123,12 +1063,32 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
           mobileView === "output" ? "flex" : "hidden md:flex"
         }`}>
           {/* Header Action Bar */}
-          <div className="flex items-center justify-between mb-3 shrink-0">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between mb-3 shrink-0 flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-bold text-slate-800 text-base">Kết quả Markdown</h3>
+
+              {/* Badge giai đoạn xử lý */}
+              {analysisStage === "fast_extracted" || (analysisStage === "ai_polishing" && outputMarkdown) ? (
+                <span className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 font-semibold px-2.5 py-0.5 rounded-md flex items-center gap-1 animate-pulse">
+                  <Zap className="w-3 h-3 text-amber-500" /> Bản nháp Siêu tốc (Đang AI tinh chỉnh...)
+                </span>
+              ) : analysisStage === "completed" && conversionMode === "ai" ? (
+                <span className="text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-emerald-600" /> Đã chuẩn hóa LaTeX
+                </span>
+              ) : analysisStage === "completed" && conversionMode === "fast" ? (
+                <span className="text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-indigo-600" /> Bản Siêu tốc (0 AI token)
+                </span>
+              ) : stageErrorMsg && outputMarkdown ? (
+                <span className="text-[11px] bg-rose-50 text-rose-800 border border-rose-200 font-semibold px-2.5 py-0.5 rounded-md flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 text-rose-600" /> Bản Siêu tốc (AI gián đoạn)
+                </span>
+              ) : null}
+
               {chunks.length > 0 && (
                 <span className="text-xs bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded-md">
-                  {completedChunksCount}/{chunks.length} phân đoạn
+                  {completedChunksCount}/{chunks.length} tệp
                 </span>
               )}
             </div>
@@ -1152,19 +1112,14 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
             )}
           </div>
 
-          {/* Queue Monitor Bar (hiện khi có chunks) */}
-          {chunks.length > 0 && (
+          {/* Queue Monitor Bar (hiện khi có danh sách nhiều tệp) */}
+          {chunks.length > 1 && (
             <div className="mb-4 bg-slate-50 border border-slate-200/90 rounded-2xl p-4 shrink-0 shadow-xs">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700">Tiến độ Hàng đợi phân tích:</span>
+                  <span className="text-xs font-bold text-slate-700">Tiến độ hàng đợi tệp tin:</span>
                   <span className="text-xs font-bold text-indigo-600">{progressPercent}%</span>
                 </div>
-                {cooldownCountdown > 0 && (
-                  <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1">
-                    <Clock className="w-3 h-3 animate-spin" /> Nghỉ {cooldownCountdown}s hạ nhiệt API...
-                  </span>
-                )}
               </div>
 
               {/* Progress Bar */}

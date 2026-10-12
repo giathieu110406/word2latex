@@ -145,7 +145,15 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     let inlineParts: any[] = [];
 
     // Xử lý dữ liệu đầu vào
-    if (type === "url" && url) {
+    if (type === "text" || type === "rawText" || (!base64Data && !url && req.body.rawText)) {
+      rawText = (req.body.rawText || req.body.text || req.body.content || "").trim();
+      if (!rawText) {
+        return res.status(400).json({ error: "Nội dung văn bản để AI chuẩn hóa không được rỗng" });
+      }
+      if (conversionMode === "fast") {
+        return res.json({ success: true, markdown: rawText });
+      }
+    } else if (type === "url" && url) {
       const extracted = await parseUrl(url);
       if (!extracted) {
         return res.status(400).json({ error: "Không thể trích xuất nội dung từ liên kết URL" });
