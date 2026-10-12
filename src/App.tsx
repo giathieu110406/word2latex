@@ -6670,8 +6670,6 @@ ${bodyHtml}
                     <HelpCircle className="w-4 h-4" />
                   </div>
                 </div>
-                <span data-testid="prompt-usage" className="text-sm font-bold text-slate-700">{userDoc?.promptCount || 0} lượt đã dùng{isApproved ? ' · Không giới hạn theo quyền tài khoản' : ` / ${15 * currentMultiplier} lượt`}</span>
-                <span className="text-xs text-slate-500">Dùng chung cho tinh chỉnh AI, MarkItDown AI và AI Vẽ hình.</span>
                 <div className="mt-1">
                   <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div
