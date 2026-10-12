@@ -74,7 +74,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   // Helper để làm sạch và ghép các đoạn Markdown
   const stitchChunks = (chunkList: ChunkItem[], withDividers: boolean = true): string => {
     return chunkList
-      .filter((c) => c.markdown && c.markdown.trim().length > 0)
+      .filter((c) => c.markdown && typeof c.markdown === "string" && c.markdown.trim().length > 0 && c.markdown.trim() !== "undefined")
       .map((c) => {
         let text = c.markdown!.trim();
         // Xóa code fence bao quanh nếu AI trả về ```markdown ... ```
@@ -238,7 +238,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         }
 
         const data = await res.json();
-        if (data.success && data.markdown) {
+        if (data.success && typeof data.markdown === "string" && data.markdown.trim().length > 0 && data.markdown.trim() !== "undefined") {
           return data.markdown;
         } else {
           throw new Error(data.error || "Không thể phân tích dữ liệu phân đoạn này");
@@ -417,12 +417,11 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     }
 
     const data = await res.json();
-    if (data.success && data.markdown) {
-
+    if (data.success && typeof data.markdown === "string" && data.markdown.trim().length > 0 && data.markdown.trim() !== "undefined") {
       setOutputMarkdown(data.markdown);
       triggerToast("Chuyển đổi thành công!", true);
     } else {
-        petResult.current = "blocked";
+      petResult.current = "blocked";
       triggerToast(data.error || "Không thể chuyển đổi tài liệu này", false);
     }
   };

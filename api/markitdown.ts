@@ -38,7 +38,7 @@ function getAiClient(): any {
   return aiClient;
 }
 
-async function generateContentWithRetry(params: any, retries = 3, delay = 1500, overrideModelsToTry?: string[]) {
+async function generateContentWithRetry(params: any, retries = 2, delay = 1000, overrideModelsToTry?: string[]) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("Không thể kết nối đến Trợ lý AI. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
   }
@@ -46,11 +46,12 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
   let lastError: any = null;
   let firstImportantError: any = null;
   
+  // Chuỗi fallback: Đặt 3.5-flash-lite lên đầu để phản hồi siêu tốc (<1.5s), 3.8-flash, và 2.5-flash cực kỳ ổn định
   const modelsToTry = overrideModelsToTry || [
-    params.model || "gemini-3.8-flash",
-    "gemini-3.8-flash",
+    params.model || "gemini-3.5-flash-lite",
     "gemini-3.5-flash-lite",
-    "gemini-3.1-pro-preview"
+    "gemini-3.8-flash",
+    "gemini-2.5-flash"
   ].filter((value, index, self) => self.indexOf(value) === index && value);
   
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -58,11 +59,29 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
       try {
         console.log(`[Gemini API] Đang gửi yêu cầu bằng model: ${model} (Lần thử ${attempt}/${retries})`);
         const aiInstance = getAiClient();
-        const response = await aiInstance.models.generateContent({
+        
+        // Timeout 15 giây cho mỗi lần gọi để tránh bị treo request vô thời hạn
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Timeout sau 15000ms khi gọi model ${model}`)), 15000)
+        );
+
+        const callPromise = aiInstance.models.generateContent({
           ...params,
           model: model
         });
-        return response;
+
+        const response: any = await Promise.race([callPromise, timeoutPromise]);
+        
+        // Đảm bảo kết quả trả về có chứa nội dung văn bản
+        const extracted = response?.text 
+          || response?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || "").join("")
+          || "";
+
+        if (extracted && extracted.trim().length > 0) {
+          return { ...response, text: extracted };
+        } else {
+          console.warn(`[Gemini API] Model ${model} trả về nội dung rỗng, thử model tiếp theo...`);
+        }
       } catch (error: any) {
         lastError = error;
         if (!firstImportantError && error.status !== 404) {
@@ -79,7 +98,7 @@ async function generateContentWithRetry(params: any, retries = 3, delay = 1500, 
           break; 
         }
         
-        if (error.status === 429 || error.status === 503 || (error.message && (error.message.includes("quota") || error.message.includes("Quota") || error.message.includes("high demand") || error.message.includes("overloaded")))) {
+        if (error.status === 429 || error.status === 503 || error.message?.includes("Timeout") || (error.message && (error.message.includes("quota") || error.message.includes("Quota") || error.message.includes("high demand") || error.message.includes("overloaded")))) {
           continue;
         }
       }
@@ -195,11 +214,16 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const response = await generateContentWithRetry({
-      model: "gemini-3.8-flash",
+      model: "gemini-3.5-flash-lite",
       contents: contents
-    }, 3, 2000, ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"]);
+    }, 2, 1000, ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"]);
 
-    return res.json({ success: true, markdown: response.text });
+    const markdownText = response?.text?.trim();
+    if (!markdownText || markdownText === "undefined") {
+      throw new Error("Không thể trích xuất Markdown từ tài liệu này qua AI");
+    }
+
+    return res.json({ success: true, markdown: markdownText });
 
   } catch (error: any) {
     console.error("MarkItDown error:", error);
