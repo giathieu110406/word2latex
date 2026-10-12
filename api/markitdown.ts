@@ -2,6 +2,7 @@ import { withActivity } from '../server/activity.js';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 import { verifyAuthAndApproval } from '../server/auth-guard.js';
+import { normalizeMarkdownMath } from '../src/utils/markdown-math.js';
 
 // Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
 let GoogleGenAISDK: any = null;
@@ -201,7 +202,22 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     const contents: any = {
       parts: [
         { 
-          text: "Chuyển đổi toàn bộ nội dung tài liệu này thành định dạng Markdown chuẩn xác cao. Giữ nguyên toàn bộ cấu trúc tiêu đề, bảng biểu biểu đồ, công thức toán học/hóa học (sử dụng LaTeX $...$ cho inline và $$...$$ cho block), danh sách và trật tự logic. Tuyệt đối không thêm lời chào, nhận xét hay giải thích bên ngoài. Chỉ trả về nội dung Markdown thuần túy." 
+          text: `Chuyển đổi toàn bộ nội dung tài liệu này thành định dạng Markdown chuẩn xác cao. Giữ nguyên toàn bộ cấu trúc tiêu đề, bảng biểu biểu đồ, công thức toán học/hóa học, danh sách và trật tự logic.
+
+QUY TẮC CÔNG THỨC TOÁN (LATEX):
+- Công thức nội dòng (inline): dùng $...$ (ví dụ: $x_1 \\ge 0$).
+- Công thức khối (display math): BẮT BUỘC dùng $$...$$ trên CÁC DÒNG RIÊNG BIỆT.
+  Ví dụ chuẩn:
+  $$
+  \\begin{cases}
+  2x_1 + 14x_2 + 2x_3 \\le 0 \\\\
+  x_1 - 7x_2 - x_3 \\le 1
+  \\end{cases}
+  $$
+- TUYỆT ĐỐI KHÔNG viết dính liền $$ với cú pháp môi trường (như $$\\begin{cases} hoặc \\end{cases}$$).
+- Các khối $$ liên tiếp nhau bắt buộc phải cách nhau bằng ít nhất 1 dòng trống.
+
+Tuyệt đối không thêm lời chào, nhận xét hay giải thích bên ngoài. Chỉ trả về nội dung Markdown thuần túy.` 
         }
       ]
     };
@@ -223,7 +239,8 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error("Không thể trích xuất Markdown từ tài liệu này qua AI");
     }
 
-    return res.json({ success: true, markdown: markdownText });
+    const cleanedMarkdown = normalizeMarkdownMath(markdownText);
+    return res.json({ success: true, markdown: cleanedMarkdown });
 
   } catch (error: any) {
     console.error("MarkItDown error:", error);

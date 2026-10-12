@@ -13,6 +13,7 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import { PDFDocument } from "pdf-lib";
 import { beginCodexPetActivity, type CodexPetResult } from "../utils/codex-pet-activity";
+import { normalizeMarkdownMath } from "../utils/markdown-math";
 
 interface MarkItDownProps {
   triggerToast: (msg: string, success?: boolean) => void;
@@ -79,7 +80,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
   // Helper để làm sạch và ghép các đoạn Markdown
   const stitchChunks = (chunkList: ChunkItem[]): string => {
-    return chunkList
+    const stitched = chunkList
       .filter((c) => c.markdown && typeof c.markdown === "string" && c.markdown.trim().length > 0 && c.markdown.trim() !== "undefined")
       .map((c) => {
         let text = c.markdown!.trim();
@@ -101,6 +102,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         return text;
       })
       .join("\n\n");
+    return normalizeMarkdownMath(stitched);
   };
 
   // Hàm sleep có kiểm tra cờ hủy
@@ -386,7 +388,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
       const aiData = await aiRes.json();
       if (aiData.success && typeof aiData.markdown === "string" && aiData.markdown.trim().length > 0 && aiData.markdown.trim() !== "undefined") {
-        const aiMarkdown = aiData.markdown.trim();
+        const aiMarkdown = normalizeMarkdownMath(aiData.markdown.trim());
         setOutputMarkdown(aiMarkdown);
         setAnalysisStage("completed");
         triggerToast("Chuyển đổi AI thành công!", true);
@@ -1180,9 +1182,9 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
               <div className="markdown-body prose prose-sm max-w-none prose-indigo">
                 <Markdown
                   remarkPlugins={[remarkMath, remarkGfm]}
-                  rehypePlugins={[rehypeKatex]}
+                  rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
                 >
-                  {outputMarkdown}
+                  {normalizeMarkdownMath(outputMarkdown)}
                 </Markdown>
               </div>
             ) : (
