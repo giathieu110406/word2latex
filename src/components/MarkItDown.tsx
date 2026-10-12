@@ -5,7 +5,7 @@ import {
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
   FileType, FileText, Image as ImageIcon, Layout, 
   Layers, Clock, AlertCircle, RotateCcw, XCircle, CheckCircle2, Sliders,
-  Trash2, Plus, X, ChevronDown, Zap, FileSpreadsheet, Presentation, Activity
+  Trash2, Plus, X, Zap, FileSpreadsheet, Presentation, Activity
 } from "lucide-react";
 import Markdown from 'react-markdown';
 import remarkMath from "remark-math";
@@ -62,7 +62,6 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   const [stageErrorMsg, setStageErrorMsg] = useState<string | null>(null);
   const [fastDraftMarkdown, setFastDraftMarkdown] = useState<string>("");
   const [chunks, setChunks] = useState<ChunkItem[]>([]);
-  const [, setCurrentChunkIndex] = useState<number>(-1);
   const abortControllerRef = useRef<boolean>(false);
 
   const getPetErrorResult = (error: unknown, status?: number): CodexPetResult => {
@@ -456,7 +455,6 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         break;
       }
 
-      setCurrentChunkIndex(idx);
       updatedChunks[idx].status = "processing";
       setChunks([...updatedChunks]);
 
@@ -487,7 +485,6 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       triggerToast("Đã hoàn tất xử lý danh sách tệp tin!", true);
     }
     setIsProcessing(false);
-    setCurrentChunkIndex(-1);
   };
 
   // Thử lại 1 chunk bị lỗi
