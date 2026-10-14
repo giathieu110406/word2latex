@@ -13,8 +13,11 @@ export const tools3D = [
   ['point3d', '•', 'Thêm đỉnh 3D', 0, 'Thêm đỉnh mới với tọa độ (x, y, z) tùy ý'],
   ['segment3d', '╱', 'Nối 2 đỉnh', 2, 'Chọn 2 đỉnh bất kỳ trong không gian để nối đoạn thẳng mới'],
   ['midpoint3d', '⊙', 'Trung điểm', 2, 'Chọn 1 đoạn thẳng 3D hoặc 2 đỉnh để lấy trung điểm'],
+  ['centroid3d', '◬', 'Trọng tâm', 3, 'Chọn 3 đỉnh trong không gian để dựng trọng tâm tam giác'],
   ['ratio3d', '⊸', 'Chia tỉ lệ', 2, 'Chọn 1 đoạn thẳng 3D hoặc 2 đỉnh và nhập tỉ số t để chia tỉ lệ'],
   ['altitude3d', '⊥', 'Hạ đường cao', 4, 'Chọn đỉnh và 3 điểm của mặt phẳng đáy để hạ đường cao'],
+  ['footLine3d', '⏋', 'Kẻ vuông góc cạnh', 3, 'Chọn đỉnh và 2 đầu mút đoạn thẳng để kẻ vuông góc'],
+  ['planeLine3d', '✕', 'Giao đường & mặt', 5, 'Chọn 3 điểm mặt phẳng (ABC), rồi chọn 2 điểm đường thẳng (PQ)'],
   ['crosssection3d', '▱', 'Dựng thiết diện', 3, 'Chọn 3 điểm trong không gian để dựng mặt phẳng thiết diện']
 ];
 
@@ -365,6 +368,72 @@ export function createCrossSection3D(doc, planeRefs, options = {}) {
     color: options.color || '#dfac48',
     opacity: options.opacity ?? 0.35
   });
+  return next;
+}
+
+export function createCentroid3D(doc, refs, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.points ??= [];
+
+  const gId = options.id || freshSolidPointId(next, 'G');
+  const label = options.label || gId;
+
+  next.solid.points.push({
+    id: gId,
+    kind: 'centroid',
+    refs: [...refs],
+    label
+  });
+  return next;
+}
+
+export function createPlaneLineIntersection3D(doc, planeRefs, lineRefs, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.points ??= [];
+
+  const intId = options.id || freshSolidPointId(next, 'I');
+  const label = options.label || intId;
+
+  next.solid.points.push({
+    id: intId,
+    kind: 'planeLineIntersection',
+    refs: [...planeRefs, ...lineRefs],
+    label
+  });
+  return next;
+}
+
+export function createFootLine3D(doc, apexId, edgeRefs, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.points ??= [];
+  next.solid.segments ??= [];
+
+  const footId = options.id || options.footId || freshSolidPointId(next, 'K');
+  const label = options.label || options.footLabel || footId;
+
+  next.solid.points.push({
+    id: footId,
+    kind: 'foot',
+    refs: [apexId, ...edgeRefs],
+    label
+  });
+
+  const segId = options.segmentId || ('seg_' + apexId + '_' + footId);
+  const exists = next.solid.segments.some(s =>
+    (s.refs[0] === apexId && s.refs[1] === footId) || (s.refs[0] === footId && s.refs[1] === apexId)
+  );
+  if (!exists) {
+    next.solid.segments.push({
+      id: segId,
+      refs: [apexId, footId],
+      styleMode: options.styleMode || 'auto',
+      color: options.color || '#176b52'
+    });
+  }
+
   return next;
 }
 
@@ -1282,6 +1351,24 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
         }
         return;
       }
+      if(tool==='centroid3d'){
+        if(pending.includes(hitVertex)){
+          notify('Đỉnh này đã được chọn. Chọn đỉnh khác.');
+        }else{
+          pending.push(hitVertex);
+          if(pending.length<3){
+            render();
+            notify(`Đã chọn ${pending.length}/3 đỉnh (${pending.join(', ')}). Chọn tiếp.`);
+          }else{
+            const refs=[...pending];
+            pending=[];
+            const next=createCentroid3D(doc,refs);
+            commit(next);
+            notify(`Đã tạo trọng tâm tam giác (${refs.join('')}).`);
+          }
+        }
+        return;
+      }
       if(tool==='ratio3d'){
         if(!pending.length){
           pending=[hitVertex];
@@ -1326,6 +1413,55 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
         }
         return;
       }
+      if(tool==='footLine3d'){
+        if(!pending.length){
+          pending=[hitVertex];
+          render();
+          notify(`Đã chọn đỉnh ${hitVertex}. Hãy chọn 2 đầu mút của đoạn thẳng cần kẻ vuông góc.`);
+        }else{
+          if(pending.includes(hitVertex)){
+            notify('Đỉnh này đã được chọn. Chọn đỉnh khác.');
+          }else{
+            pending.push(hitVertex);
+            if(pending.length<3){
+              render();
+              notify(`Đã chọn đầu mút thứ nhất (${hitVertex}). Chọn tiếp đầu mút thứ hai.`);
+            }else{
+              const [apex, e1, e2] = pending;
+              pending=[];
+              const next=createFootLine3D(doc, apex, [e1, e2]);
+              commit(next);
+              notify(`Đã kẻ đường vuông góc từ ${apex} xuống đoạn [${e1}, ${e2}].`);
+            }
+          }
+        }
+        return;
+      }
+      if(tool==='planeLine3d'){
+        if(pending.includes(hitVertex)){
+          notify('Đỉnh này đã được chọn trong tập. Chọn đỉnh khác.');
+        }else{
+          pending.push(hitVertex);
+          if(pending.length<3){
+            render();
+            notify(`Đã chọn ${pending.length}/3 đỉnh mặt phẳng (${pending.join(', ')}). Chọn tiếp.`);
+          }else if(pending.length===3){
+            render();
+            notify(`Đã chọn xong mặt phẳng (${pending.join('')}). Chọn điểm thứ 1 của đường thẳng.`);
+          }else if(pending.length===4){
+            render();
+            notify(`Đã chọn điểm thứ nhất của đường thẳng (${hitVertex}). Chọn tiếp điểm thứ 2.`);
+          }else{
+            const planeRefs=pending.slice(0,3);
+            const lineRefs=pending.slice(3,5);
+            pending=[];
+            const next=createPlaneLineIntersection3D(doc,planeRefs,lineRefs);
+            commit(next);
+            notify(`Đã tìm giao điểm giữa đường [${lineRefs.join('')}] và mặt phẳng (${planeRefs.join('')}).`);
+          }
+        }
+        return;
+      }
       if(tool==='crosssection3d'){
         if(pending.includes(hitVertex)){
           notify('Đỉnh này đã được chọn. Chọn đỉnh khác.');
@@ -1361,6 +1497,22 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
         const next=createMidpoint3D(doc,s.refs[0],s.refs[1]);
         commit(next);
         notify(`Đã tạo trung điểm đoạn [${s.refs.join(', ')}].`);
+        return;
+      }
+      if(tool==='footLine3d'&&s&&pending.length===1){
+        const apex=pending[0];
+        pending=[];
+        const next=createFootLine3D(doc,apex,s.refs);
+        commit(next);
+        notify(`Đã kẻ đường vuông góc từ ${apex} xuống đoạn [${s.refs.join(', ')}].`);
+        return;
+      }
+      if(tool==='planeLine3d'&&s&&pending.length===3){
+        const planeRefs=[...pending];
+        pending=[];
+        const next=createPlaneLineIntersection3D(doc,planeRefs,s.refs);
+        commit(next);
+        notify(`Đã tìm giao điểm giữa đoạn [${s.refs.join('')}] và mặt phẳng (${planeRefs.join('')}).`);
         return;
       }
       if(tool==='ratio3d'&&s){
