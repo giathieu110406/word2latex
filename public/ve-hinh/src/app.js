@@ -1264,7 +1264,13 @@ function renderRestoreControl(){if(mode==='geometry')return;const key=mode==='gr
 function addPoint(x,y){const next=structuredClone(doc),id=freshId();next.points.push({id,x,y});selected=id;commit(next);}
 function usePoint(id){if(tool==='select'||tool==='region'){selectedIds.clear();selected=id;render();return;}if(tool==='point')return;if(tool==='pan')return notify('Kéo nền để di chuyển khung.');notify('');const definition=tools.find(t=>t[0]===tool);
   if(tool==='polygon'&&id===pending[0]&&pending.length>=3){const next=structuredClone(doc);addShape(next,'polygon',pending);finishConstruction(next);return;}
-  pending.push(id);if(definition[3]===-1||pending.length<definition[3]){render();return;}
+  pending.push(id);
+  if(['equilateralTriangle','square'].includes(tool)&&pending.length===2){
+    notify('Di chuyển chuột để chọn hướng lật của hình và nhấp để chốt.');
+    render();
+    return;
+  }
+  if(definition[3]===-1||pending.length<definition[3]){render();return;}
   const next=structuredClone(doc),refs=[...pending];pending=[];
   if(['segment','line','ray','polygon','circle','vector','angle','length','dot','vectorAngle','vectorCoords'].includes(tool))addShape(next,tool,refs);
   else if(tool==='perpendicularBisector'){const mid=freshId(next);next.points.push({id:mid,kind:'midpoint',refs});const direction=freshId(next);next.points.push({id:direction,kind:'perpendicular',refs:[mid,...refs],visible:false});addShape(next,'line',[mid,direction]);}
@@ -1634,6 +1640,31 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
   }
   if(mode!=='geometry')return;if(tool==='pan'||e.shiftKey){const svg=$('canvas').querySelector('svg');drag={pan:true,before:structuredClone(doc),base:{...pan},sx:e.clientX,sy:e.clientY,factor:svg.getScreenCTM().a};$('canvas').setPointerCapture(e.pointerId);return;}
   if(tool==='region'){drag={region:true,start:svgCoords(e),current:svgCoords(e),px:e.clientX,py:e.clientY,clickId:point||shape,previous:[...selectedIds]};selected='';selectedIds.clear();$('canvas').setPointerCapture(e.pointerId);renderCanvas();drawMarquee();return;}selectedIds.clear();
+  if(['equilateralTriangle','square'].includes(tool)&&pending.length===2){
+    let q=coords(e);
+    const pA=resolve(doc).points[pending[0]],pB=resolve(doc).points[pending[1]];
+    if(pA&&pB){
+      const cross=(pB.x-pA.x)*(q.y-pA.y)-(pB.y-pA.y)*(q.x-pA.x);
+      const flip=cross>=0?1:-1;
+      const next=structuredClone(doc),refs=[...pending];pending=[];
+      if(tool==='equilateralTriangle'){
+        const c=freshId(next);
+        next.points.push({id:c,kind:'rotateAround',refs:[refs[1],refs[0]],angle:flip*Math.PI/3});
+        addShape(next,'polygon',[refs[0],refs[1],c]);
+        selected=c;
+      }else if(tool==='square'){
+        const d=freshId(next);
+        next.points.push({id:d,kind:'rotateAround',refs:[refs[1],refs[0]],angle:flip*Math.PI/2});
+        const c=freshId(next);
+        next.points.push({id:c,kind:'rotateAround',refs:[refs[0],refs[1]],angle:-flip*Math.PI/2});
+        addShape(next,'polygon',[refs[0],refs[1],c,d]);
+        selected=c;
+      }
+      if(draftBefore)addSourceGuides(next,tool,refs);
+      finishConstruction(next);
+      return;
+    }
+  }
   if(point){if(tool!=='select')return usePoint(point);selected=point;const p=doc.points.find(p=>p.id===point);if(!p.kind||['onLine','onCircle'].includes(p.kind)){drag={id:point,before:structuredClone(doc),start:coords(e),pointer:e.pointerId};$('canvas').setPointerCapture(e.pointerId);}render();}
   else if(shape&&tool!=='select'&&tool!=='point'){useShape(shape);return;}else if(tool==='point'){
     let q=coords(e);
@@ -1727,6 +1758,27 @@ $('canvas').addEventListener('pointermove',e=>{
       if(tool==='polygon')addShape(vDoc,pending.length>1?'polygon':'segment',[...pending,ghostId]);
       if (['segment','line','ray','vector','circle'].includes(tool)) addShape(vDoc, tool==='vector'?'vector':tool, [pending[0], ghostId]);
       if (['parallel','perpendicular'].includes(tool)) addShape(vDoc, 'line', [pending[0], ghostId]);
+      if (['equilateralTriangle', 'square'].includes(tool) && pending.length === 2) {
+        const pA = resolve(doc).points[pending[0]];
+        const pB = resolve(doc).points[pending[1]];
+        if (pA && pB) {
+          const cross = (pB.x - pA.x) * (y - pA.y) - (pB.y - pA.y) * (x - pA.x);
+          const flip = cross >= 0 ? 1 : -1;
+          if (tool === 'equilateralTriangle') {
+            const ghostC = 'GHOST_TRI_C';
+            vDoc.points.push({ id: ghostC, kind: 'rotateAround', refs: [pending[1], pending[0]], angle: flip * Math.PI / 3, visible: false });
+            addShape(vDoc, 'polygon', [pending[0], pending[1], ghostC], { color: '#176b52', fill: 'rgba(23, 107, 82, 0.18)', dashed: true });
+          } else if (tool === 'square') {
+            const ghostD = 'GHOST_SQ_D';
+            const ghostC = 'GHOST_SQ_C';
+            vDoc.points.push(
+              { id: ghostD, kind: 'rotateAround', refs: [pending[1], pending[0]], angle: flip * Math.PI / 2, visible: false },
+              { id: ghostC, kind: 'rotateAround', refs: [pending[0], pending[1]], angle: -flip * Math.PI / 2, visible: false }
+            );
+            addShape(vDoc, 'polygon', [pending[0], pending[1], ghostC, ghostD], { color: '#176b52', fill: 'rgba(23, 107, 82, 0.18)', dashed: true });
+          }
+        }
+      }
       
       const lastShape = vDoc.shapes[vDoc.shapes.length - 1];
       if (lastShape && lastShape.refs.includes(ghostId)) lastShape.color = '#888888';
