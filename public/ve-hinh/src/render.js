@@ -6,19 +6,157 @@ export const screen=(p,scale=55)=>({x:W/2+p.x*scale,y:H/2-p.y*scale});
 const line=(a,b,attrs='')=>`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" ${attrs}/>`;
 const text=(x,y,t,attrs='')=>`<text x="${x}" y="${y}" ${attrs}>${escape(t)}</text>`;
 const wrapper=body=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Bảng vẽ toán học"><rect width="1000" height="660" fill="#ffffff"/><defs><pattern id="dots" width="25" height="25" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#cddcd5"/></pattern><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/></marker></defs><style>text{font:18px system-ui,sans-serif;fill:#27483c} .label{font-weight:600;font-style:italic} .point{cursor:grab} .point:focus{outline:none} .point:focus circle{stroke:#dfac48;stroke-width:4}</style>${body}</svg>`;
+
+export function distToSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const l2 = dx * dx + dy * dy;
+  if (l2 < 1e-6) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+export function computeLabelPlacement(p, neighbors = [], segments = [], circles = [], placedLabels = [], pointId = '') {
+  const angles = [];
+  for (const n of neighbors) {
+    if (!n) continue;
+    const dx = n.x - p.x, dy = n.y - p.y;
+    if (Math.hypot(dx, dy) > 1e-3) angles.push(Math.atan2(dy, dx));
+  }
+
+  const candidateAngles = [];
+  if (angles.length >= 2) {
+    const norm = angles.map(a => (a < 0 ? a + 2 * Math.PI : a)).sort((a, b) => a - b);
+    for (let i = 0; i < norm.length; i++) {
+      const a1 = norm[i];
+      const a2 = i === norm.length - 1 ? norm[0] + 2 * Math.PI : norm[i + 1];
+      const gap = a2 - a1;
+      const bisector = (a1 + gap / 2) % (2 * Math.PI);
+      candidateAngles.push(bisector);
+      if (gap > Math.PI * 0.8) {
+        candidateAngles.push((bisector - Math.PI / 6 + 2 * Math.PI) % (2 * Math.PI));
+        candidateAngles.push((bisector + Math.PI / 6) % (2 * Math.PI));
+      }
+    }
+  } else if (angles.length === 1) {
+    const opp = (angles[0] + Math.PI) % (2 * Math.PI);
+    candidateAngles.push(opp, (opp - Math.PI / 4 + 2 * Math.PI) % (2 * Math.PI), (opp + Math.PI / 4) % (2 * Math.PI));
+  }
+
+  for (const c of circles) {
+    const dist = Math.hypot(p.x - c.center.x, p.y - c.center.y);
+    if (Math.abs(dist - c.r) < 6) {
+      const radial = Math.atan2(p.y - c.center.y, p.x - c.center.x);
+      candidateAngles.push(radial, (radial + Math.PI) % (2 * Math.PI));
+    }
+  }
+
+  for (let k = 0; k < 8; k++) candidateAngles.push((k * Math.PI) / 4);
+
+  let bestCandidate = null;
+  let bestScore = -Infinity;
+
+  for (const theta of candidateAngles) {
+    const cos = Math.cos(theta), sin = Math.sin(theta);
+    let anchor = 'middle', textX = p.x;
+    if (cos > 0.35) { anchor = 'start'; textX = p.x + 8; }
+    else if (cos < -0.35) { anchor = 'end'; textX = p.x - 8; }
+
+    let baseline = 'central', textY = p.y;
+    if (sin > 0.35) { baseline = 'hanging'; textY = p.y + 8; }
+    else if (sin < -0.35) { baseline = 'auto'; textY = p.y - 8; }
+
+    const centerX = anchor === 'start' ? textX + 7 : anchor === 'end' ? textX - 7 : textX;
+    const centerY = baseline === 'hanging' ? textY + 6 : baseline === 'auto' ? textY - 6 : textY;
+
+    let score = 100;
+    for (const a of angles) {
+      const diff = Math.abs(Math.atan2(Math.sin(theta - a), Math.cos(theta - a)));
+      if (diff < 0.35) score -= 5000;
+      else if (diff < 0.6) score -= (0.6 - diff) * 2000;
+      else score += diff * 40;
+    }
+
+    for (const s of segments) {
+      const d = distToSegment(centerX, centerY, s.a.x, s.a.y, s.b.x, s.b.y);
+      if (d < 8) score -= 6000;
+      else if (d < 16) score -= (16 - d) * 300;
+      else score += Math.min(d, 35) * 6;
+    }
+
+    for (const c of circles) {
+      const dCirc = Math.abs(Math.hypot(centerX - c.center.x, centerY - c.center.y) - c.r);
+      if (dCirc < 8) score -= 6000;
+      else if (dCirc < 16) score -= (16 - dCirc) * 300;
+      else score += Math.min(dCirc, 30) * 5;
+    }
+
+    for (const pl of placedLabels) {
+      const dPl = Math.hypot(centerX - pl.x, centerY - pl.y);
+      if (dPl < 20) score -= 3000;
+    }
+
+    if (centerX < 20 || centerX > 980 || centerY < 20 || centerY > 640) score -= 5000;
+    score += Math.abs(Math.sin(2 * theta)) * 8;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestCandidate = { x: Math.round(textX), y: Math.round(textY), anchor, baseline, centerX, centerY };
+    }
+  }
+
+  return bestCandidate || { x: p.x + 12, y: p.y - 12, anchor: 'start', baseline: 'auto', centerX: p.x + 16, centerY: p.y - 12 };
+}
+
 export function renderSVG(doc,{grid=true,scale=55,selected='',pending=[],selectedIds=[]}={}){
   const {points}=resolve(doc),chosen=new Set(selectedIds),to=p=>screen(p,scale);let out=grid?'<rect width="1000" height="660" fill="url(#dots)"/>':'';
+  const allSegments = [];
+  const incidentMap = new Map();
+  for (const p of Object.values(points)) incidentMap.set(p.id, []);
+
   for(const s of doc.shapes){const p=s.refs.map(r=>points[r]);if(s.visible===false||p.some(v=>!v))continue;const q=p.map(to),color=s.color||'#176b52',attrs=`stroke="${chosen.has(s.id)?'#b07519':color}" stroke-width="${s.id===selected||chosen.has(s.id)?4:2.4}" fill="none" ${s.dashed?'stroke-dasharray="8 6"':''} data-shape="${escape(s.id)}"`;
     if(['segment','line','ray','vector'].includes(s.type)){let[a,b]=q;if(Math.hypot(b.x-a.x,b.y-a.y)<1e-7)continue;if(s.type==='line'||s.type==='ray'){const dx=b.x-a.x,dy=b.y-a.y,n=Math.hypot(dx,dy);if(s.type==='line')a={x:a.x-dx/n*2000,y:a.y-dy/n*2000};b={x:b.x+dx/n*2000,y:b.y+dy/n*2000};}out+=line(a,b,attrs+(s.type==='vector'?' marker-end="url(#arrow)"':''));
+      allSegments.push({ a: q[0], b: q[1] });
+      if (incidentMap.has(s.refs[0])) incidentMap.get(s.refs[0]).push(q[1]);
+      if (incidentMap.has(s.refs[1])) incidentMap.get(s.refs[1]).push(q[0]);
       if(['tick','double','parallel'].includes(s.mark)){const mx=(q[0].x+q[1].x)/2,my=(q[0].y+q[1].y)/2,dx=q[1].x-q[0].x,dy=q[1].y-q[0].y,n=Math.hypot(dx,dy);for(const offset of s.mark==='double'?[-4,4]:[0])out+=line({x:mx+dx/n*offset-dy/n*7,y:my+dy/n*offset+dx/n*7},{x:mx+dx/n*offset+dy/n*7,y:my+dy/n*offset-dx/n*7},`stroke="${color}" stroke-width="2"`);if(s.mark==='parallel')out+=text(mx+8,my-8,'∥');}
-    }else if(s.type==='polygon')out+=`<polygon points="${q.map(v=>`${v.x},${v.y}`).join(' ')}" ${attrs} style="fill:${s.fill||color};fill-opacity:${s.fill?0.3:0.035}"/>`;
-    else if(s.type==='circle'){const r=Math.hypot(q[1].x-q[0].x,q[1].y-q[0].y);if(r>1e-7)out+=`<circle cx="${q[0].x}" cy="${q[0].y}" r="${r}" ${attrs}/>`;}
+    }else if(s.type==='polygon'){
+      out+=`<polygon points="${q.map(v=>`${v.x},${v.y}`).join(' ')}" ${attrs} style="fill:${s.fill||color};fill-opacity:${s.fill?0.3:0.035}"/>`;
+      for (let i = 0; i < q.length; i++) {
+        const j = (i + 1) % q.length;
+        allSegments.push({ a: q[i], b: q[j] });
+        if (incidentMap.has(s.refs[i])) incidentMap.get(s.refs[i]).push(q[j]);
+        if (incidentMap.has(s.refs[j])) incidentMap.get(s.refs[j]).push(q[i]);
+      }
+    }else if(s.type==='circle'){const r=Math.hypot(q[1].x-q[0].x,q[1].y-q[0].y);if(r>1e-7)out+=`<circle cx="${q[0].x}" cy="${q[0].y}" r="${r}" ${attrs}/>`;}
     else if(s.type==='length')out+=text((q[0].x+q[1].x)/2+8,(q[0].y+q[1].y)/2-12,Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y).toFixed(2),`data-shape="${escape(s.id)}" style="fill:${chosen.has(s.id)?'#b07519':color};font-weight:${chosen.has(s.id)?600:400}"`);
     else if(s.type==='vectorCoords'){out+=text((q[0].x+q[1].x)/2+8,(q[0].y+q[1].y)/2+25,`(${(p[1].x-p[0].x).toFixed(2)}; ${(p[1].y-p[0].y).toFixed(2)})`,`data-shape="${escape(s.id)}" style="fill:${chosen.has(s.id)?'#b07519':color};font-weight:${chosen.has(s.id)?600:400}"`);}
     else if(['dot','vectorAngle'].includes(s.type)){const u={x:p[1].x-p[0].x,y:p[1].y-p[0].y},v={x:p[3].x-p[2].x,y:p[3].y-p[2].y},prod=u.x*v.x+u.y*v.y,den=Math.hypot(u.x,u.y)*Math.hypot(v.x,v.y);if(s.type==='dot'||den>1e-9)out+=text(q[0].x+12,q[0].y+35,s.type==='dot'?`${s.refs[0]}${s.refs[1]} · ${s.refs[2]}${s.refs[3]} = ${prod.toFixed(2)}`:`Góc vectơ = ${(Math.acos(Math.max(-1,Math.min(1,prod/den)))*180/Math.PI).toFixed(1)}°`,`data-shape="${escape(s.id)}" style="fill:${chosen.has(s.id)?'#b07519':color};font-weight:${chosen.has(s.id)?600:400}"`);}
-    else if(s.type==='angle'){const[a,b,c]=q,u={x:a.x-b.x,y:a.y-b.y},v={x:c.x-b.x,y:c.y-b.y},nu=Math.hypot(u.x,u.y),nv=Math.hypot(v.x,v.y);if(nu<1e-7||nv<1e-7)continue;const dot=(u.x*v.x+u.y*v.y)/(nu*nv),angle=Math.acos(Math.max(-1,Math.min(1,dot))),r=25;if(s.mark==='right'||Math.abs(angle-Math.PI/2)<1e-3){const r2=18,p1={x:b.x+u.x/nu*r2,y:b.y+u.y/nu*r2},p2={x:b.x+(u.x/nu+v.x/nv)*r2,y:b.y+(u.y/nu+v.y/nv)*r2},p3={x:b.x+v.x/nv*r2,y:b.y+v.y/nv*r2};out+=`<path d="M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p3.x} ${p3.y}" ${attrs}/>`;}else{const start={x:b.x+u.x/nu*r,y:b.y+u.y/nu*r},end={x:b.x+v.x/nv*r,y:b.y+v.y/nv*r};out+=`<path d="M ${start.x} ${start.y} A ${r} ${r} 0 0 ${u.x*v.y-u.y*v.x>0?1:0} ${end.x} ${end.y}" ${attrs}/>`;const midAngle=Math.atan2(u.y/nu+v.y/nv,u.x/nu+v.x/nv);out+=text(b.x+Math.cos(midAngle)*(r+16),b.y+Math.sin(midAngle)*(r+16),(angle*180/Math.PI).toFixed(0)+'°',`style="font-size:13px;fill:${chosen.has(s.id)?'#b07519':color}"`);}}
+    else if(s.type==='angle'){const[a,b,c]=q,u={x:a.x-b.x,y:a.y-b.y},v={x:c.x-b.x,y:c.y-b.y},nu=Math.hypot(u.x,u.y),nv=Math.hypot(v.x,v.y);if(nu<1e-7||nv<1e-7)continue;const dot=(u.x*v.x+u.y*v.y)/(nu*nv),angle=Math.acos(Math.max(-1,Math.min(1,dot))),r=25;if(s.mark==='right'||Math.abs(angle-Math.PI/2)<1e-3){const r2=18,p1={x:b.x+u.x/nu*r2,y:b.y+u.y/nu*r2},p2={x:b.x+(u.x/nu+v.x/nv)*r2,y:b.y+(u.y/nu+v.y/nv)*r2},p3={x:b.x+v.x/nv*r2,y:b.y+v.y/nv*r2};out+=`<path d="M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p3.x} ${p3.y}" ${attrs}/>`;allSegments.push({a:p1,b:p2},{a:p2,b:p3});}else{const start={x:b.x+u.x/nu*r,y:b.y+u.y/nu*r},end={x:b.x+v.x/nv*r,y:b.y+v.y/nv*r};out+=`<path d="M ${start.x} ${start.y} A ${r} ${r} 0 0 ${u.x*v.y-u.y*v.x>0?1:0} ${end.x} ${end.y}" ${attrs}/>`;const midAngle=Math.atan2(u.y/nu+v.y/nv,u.x/nu+v.x/nv);out+=text(b.x+Math.cos(midAngle)*(r+16),b.y+Math.sin(midAngle)*(r+16),(angle*180/Math.PI).toFixed(0)+'°',`style="font-size:13px;fill:${chosen.has(s.id)?'#b07519':color}"`);}}
   }
-  for(const p of Object.values(points)){if(p.visible===false)continue;const q=to(p),isSelected=p.id===selected||chosen.has(p.id)||pending.includes(p.id);out+=`<g class="point" tabindex="0" role="button" aria-label="Điểm ${escape(p.label||p.id)}" data-point="${escape(p.id)}"><circle cx="${q.x}" cy="${q.y}" r="20" fill="transparent"/><circle cx="${q.x}" cy="${q.y}" r="${isSelected?7:5.5}" fill="${p.kind?'#dfac48':'#176b52'}" stroke="${isSelected?'#b07519':'#fff'}" stroke-width="2"/>${p.labelVisible===false?'':text(q.x+12,q.y-12,p.label||p.id,'class="label" pointer-events="none"')}</g>`;}
+
+  const allCircles = [];
+  for (const s of doc.shapes) {
+    if (s.visible === false || s.type !== 'circle') continue;
+    const p = s.refs.map(r => points[r]);
+    if (p.some(v => !v)) continue;
+    const q = p.map(to);
+    const r = Math.hypot(q[1].x - q[0].x, q[1].y - q[0].y);
+    if (r > 1e-4) allCircles.push({ center: q[0], r });
+  }
+
+  const placedLabels = [];
+  for(const p of Object.values(points)){
+    if(p.visible===false)continue;
+    const q=to(p),isSelected=p.id===selected||chosen.has(p.id)||pending.includes(p.id);
+    let labelSVG = '';
+    if(p.labelVisible!==false){
+      const placement = computeLabelPlacement(q, incidentMap.get(p.id) || [], allSegments, allCircles, placedLabels, p.id);
+      placedLabels.push({ x: placement.centerX, y: placement.centerY });
+      labelSVG = text(placement.x, placement.y, p.label||p.id, `class="label" text-anchor="${placement.anchor}" dominant-baseline="${placement.baseline}" pointer-events="none"`);
+    }
+    out+=`<g class="point" tabindex="0" role="button" aria-label="Điểm ${escape(p.label||p.id)}" data-point="${escape(p.id)}"><circle cx="${q.x}" cy="${q.y}" r="20" fill="transparent"/><circle cx="${q.x}" cy="${q.y}" r="${isSelected?7:5.5}" fill="${p.kind?'#dfac48':'#176b52'}" stroke="${isSelected?'#b07519':'#fff'}" stroke-width="2"/>${labelSVG}</g>`;
+  }
   return wrapper(out);
 }
 export function graphPaths(expression,params,scale=55){const fn=compileExpressionP(expression),paths=[];let current='',previous=null;const xmin=-W/(2*scale),xmax=-xmin;
@@ -89,15 +227,23 @@ export function solidSVG(solid,{selectedFace=null}={}){
     face.forEach((index,j)=>{const next=face[(j+1)%face.length],key=[index,next].sort((a,b)=>a-b).join(',');edges.set(key,(edges.get(key)||false)||visible);if(!edgeFaces.has(key))edgeFaces.set(key,[]);edgeFaces.get(key).push(visible);});});
   out+=renderedFaces.sort((a,b)=>a.depth-b.depth).map(face=>face.svg).join('');
   for(const visible of [false,true])for(const[key,front]of edges)if(front===visible){const[a,b]=key.split(',').map(Number);if(curved&&a<n&&b>=n){const adjacent=edgeFaces.get(key);if(!adjacent.includes(true)||!adjacent.includes(false))continue;}out+=line(q[a],q[b],`stroke="${front?'#176b52':'#8bada0'}" stroke-width="${curved?1.8:2.5}" ${front?'':'stroke-dasharray="8 7"'}`);}
-  const labelPositions=[];
-  q.forEach((p,i)=>{if(curved&&i%12!==0&&i!==n)return;const label=curved?(solid.type==='cone'&&i===n?'S':i<n?String.fromCharCode(65+i/12):String.fromCharCode(65+(i-n)/12)+'′'):i<26?String.fromCharCode(65+i):'V'+(i+1);
-    const distance=Math.hypot(p.x-500,p.y-330),ux=distance?(p.x-500)/distance:0,uy=distance?(p.y-330)/distance:-1;
-    let outside=Math.max(...q.map(v=>(v.x-500)*ux+(v.y-330)*uy))+24,lx=500+ux*outside,ly=330+uy*outside;
-    // ponytail: short fixed vertex labels use approximate 24×20 boxes; a text-metric layout is unnecessary here.
-    while(labelPositions.some(v=>Math.abs(v.x-lx)<24&&Math.abs(v.y-ly)<20)){outside+=24;lx=500+ux*outside;ly=330+uy*outside;}
-    labelPositions.push({x:lx,y:ly});
-    if(outside-distance>38)out+=line(p,{x:lx-ux*12,y:ly-uy*12},'stroke="#8bada0" stroke-width=".8" pointer-events="none"');
-    out+=`<circle data-vertex="${i}" cx="${p.x}" cy="${p.y}" r="3.5" fill="#176b52"/>`+text(lx,ly,label,`data-vertex-label="${i}" text-anchor="${ux>.3?'start':ux<-.3?'end':'middle'}" dominant-baseline="middle" pointer-events="none"`);});
+  const solidSegments = [];
+  const solidNeighbors = new Map();
+  for (let i = 0; i < q.length; i++) solidNeighbors.set(i, []);
+  for (const [key] of edges) {
+    const [a, b] = key.split(',').map(Number);
+    solidSegments.push({ a: q[a], b: q[b] });
+    if (solidNeighbors.has(a)) solidNeighbors.get(a).push(q[b]);
+    if (solidNeighbors.has(b)) solidNeighbors.get(b).push(q[a]);
+  }
+  const labelPositions = [];
+  q.forEach((p,i)=>{
+    if(curved&&i%12!==0&&i!==n)return;
+    const label=curved?(solid.type==='cone'&&i===n?'S':i<n?String.fromCharCode(65+i/12):String.fromCharCode(65+(i-n)/12)+'′'):i<26?String.fromCharCode(65+i):'V'+(i+1);
+    const placement = computeLabelPlacement(p, solidNeighbors.get(i) || [], solidSegments, [], labelPositions, i);
+    labelPositions.push({ x: placement.centerX, y: placement.centerY });
+    out+=`<circle data-vertex="${i}" cx="${p.x}" cy="${p.y}" r="3.5" fill="#176b52"/>`+text(placement.x, placement.y, label, `data-vertex-label="${i}" text-anchor="${placement.anchor}" dominant-baseline="${placement.baseline}" pointer-events="none"`);
+  });
   return wrapper(`<g data-solid="${solid.type}">${out}</g>`);
 }
 
