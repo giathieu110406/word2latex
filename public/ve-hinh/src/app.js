@@ -5,6 +5,7 @@ import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG} from '
 import {templateLibrary,applyLibraryTemplate} from './library.js';
 import {requestProposal} from './ai.js';
 import {buildCodexPrompt,parseCodexDraft} from './codex-bridge.js';
+import {exportTikZ} from './tikz.js';
 const $=id=>document.getElementById(id);
 if(window.parent!==window)document.body.classList.add('embedded');
 const testing=new URLSearchParams(location.search).get('testing')==='1';
@@ -446,6 +447,7 @@ function showProposal(result,before,originalImage){proposal={...result,revision:
 const workspaceReview=document.getElementById('workspace-review-template').content.cloneNode(true);$('extracted').previousElementSibling.before(workspaceReview);
 function renderProposalWorkspaces(next){let html=`<h3>Toàn bộ thay đổi sẽ áp dụng</h3><p>Tên: ${escape(doc.title)} → ${escape(next.title)}. Điểm ${doc.points.length} → ${next.points.length}; hình/đường ${doc.shapes.length} → ${next.shapes.length}.</p>`;for(const [key,label,renderer]of [['graph','Đồ thị',graphSVG],['chart','Thống kê',chartSVG],['solid','Không gian',solidSVG]]){if(JSON.stringify(doc[key])===JSON.stringify(next[key])){html+=`<p>${label}: giữ nguyên.</p>`;continue;}html+=`<details open><summary>${label}: có thay đổi</summary><div class="compare"><figure><figcaption>Hiện tại</figcaption>${renderer(doc[key])}</figure><figure><figcaption>Đề xuất</figcaption>${renderer(next[key])}</figure></div><p>Dữ liệu hiện tại: ${escape(JSON.stringify(doc[key]))}</p><p>Dữ liệu đề xuất: ${escape(JSON.stringify(next[key]))}</p></details>`;}$('proposal-workspaces').innerHTML=html;}
 $('export-json').onclick=()=>{download(JSON.stringify(doc,null,2),'ve-hinh.json','application/json');$('export-dialog').close();};
+if($('export-tikz'))$('export-tikz').onclick=()=>{try{const code=exportTikZ(doc);if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(code).then(()=>notify('Đã sao chép mã TikZ (LaTeX) vào bộ nhớ tạm!')).catch(()=>download(code,'hinh-ve.tikz','text/plain'));}else{download(code,'hinh-ve.tikz','text/plain');}notify('Đã xuất mã TikZ (LaTeX) thành công!');$('export-dialog').close();}catch(e){notify('Không xuất được TikZ: '+e.message);}};
 const deleteButton=document.createElement('button');deleteButton.id='delete-selected';deleteButton.className='delete';deleteButton.textContent='Xóa';deleteButton.title='Xóa đối tượng đã chọn · Delete';deleteButton.onclick=deleteSelection;document.querySelector('.canvas-bar').append(deleteButton);
 $('confirm-delete').onclick=()=>{if(deletion&&deletion.revision===revision){selected='';pending=[];commit(deletion.next);}else notify('Tài liệu đã đổi; chọn lại đối tượng cần xóa.');deletion=null;$('delete-dialog').close();};
 const detailsButton=document.createElement('button');detailsButton.id='toggle-details';detailsButton.textContent='Đối tượng';detailsButton.title='Mở thuộc tính trong sidebar';detailsButton.onclick=()=>{cancelConstruction();sidebarView=sidebarView==='properties'?'tools':'properties';setSidebar(true);syncSidebarTabs();render();};document.querySelector('.canvas-bar').append(detailsButton);
