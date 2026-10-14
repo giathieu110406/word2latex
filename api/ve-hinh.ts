@@ -42,7 +42,7 @@ Shape {id:string duy nhất khác id điểm,type:'segment'|'line'|'vector'|'cir
 type DrawingEnvironment = Record<string, string | undefined>;
 const clean = (value?: string) => (value || '').trim().replace(/^(["'])(.*)\1$/, '$2');
 
-const DEFAULT_GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"];
+const DEFAULT_GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash-lite"];
 
 export function getDrawingProviderConfig(env: DrawingEnvironment = process.env) {
  const endpoint = clean(env.DRAWING_AI_ENDPOINT || env.AI_ENDPOINT);
@@ -53,7 +53,7 @@ export function getDrawingProviderConfig(env: DrawingEnvironment = process.env) 
   return { provider: 'openai-compatible', configured: missing.length === 0, endpoint, model, key: customKey, missing };
  }
  const key = clean(env.GEMINI_API_KEY);
- return { provider: 'gemini', configured: !!key, endpoint: '', model: model || 'gemini-3.8-flash', key, missing: key ? [] : ['GEMINI_API_KEY'] };
+ return { provider: 'gemini', configured: !!key, endpoint: '', model: model || 'gemini-2.5-flash', key, missing: key ? [] : ['GEMINI_API_KEY'] };
 }
 
 export async function generateDrawingProposal(input: any, config = getDrawingProviderConfig()) {
@@ -62,10 +62,13 @@ export async function generateDrawingProposal(input: any, config = getDrawingPro
  if (config.provider === 'gemini') {
   const parts: any[] = [{ text }];
   if (input.image) {
-   const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(input.image);
-   if (match) parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+   const match = /^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/.exec(input.image);
+   if (match) {
+    const mimeType = match[1] === 'image/jpg' ? 'image/jpeg' : match[1];
+    parts.push({ inlineData: { mimeType, data: match[2].replace(/\s+/g, '') } });
+   }
   }
-  const client = new GoogleGenAI({ apiKey: config.key, httpOptions: { timeout: 45000 } });
+  const client = new GoogleGenAI({ apiKey: config.key, httpOptions: { timeout: 15000 } });
   const modelsToTry = config.model ? [config.model, ...DEFAULT_GEMINI_MODELS.filter(m => m !== config.model)] : DEFAULT_GEMINI_MODELS;
 
   let lastError: any = null;
@@ -134,7 +137,12 @@ export function createDrawingHandler({
    input = req.body;
    if (typeof input.prompt !== 'string' || input.prompt.length > 12000 || (!input.prompt.trim() && !input.image)) throw Error('Mô tả không hợp lệ');
    input.document = validateDocument(input.document);
-   if (input.image !== null && input.image !== undefined && (typeof input.image !== 'string' || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(input.image) || input.image.length > 5700000)) throw Error('Ảnh không hợp lệ');
+   if (input.image !== null && input.image !== undefined) {
+    if (typeof input.image !== 'string' || input.image.length > 5700000) throw Error('Ảnh không hợp lệ');
+    const cleanedImage = input.image.trim();
+    if (!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=\s]+$/.test(cleanedImage)) throw Error('Ảnh không hợp lệ');
+    input.image = cleanedImage.replace(/\s+/g, '');
+   }
   } catch { return send(400, { error: 'Đề / tài liệu / ảnh không hợp lệ' }); }
   if (!config.configured) return send(503, { error: 'Chưa cấu hình AI provider trên server. Cần ' + config.missing.join(', ') + '.' });
   const auth = req.verifiedActivityAuth || await authenticate(req);
