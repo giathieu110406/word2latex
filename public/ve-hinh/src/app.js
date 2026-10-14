@@ -1708,8 +1708,10 @@ $('canvas').addEventListener('pointermove',e=>{
               x = ang.x;
               y = ang.y;
             }
+            angularSnap = ang;
+          } else {
+            angularSnap = findAngularSnap(originPoint.x, originPoint.y, x, y, { thresholdDeg: 4.5 });
           }
-          angularSnap = findAngularSnap(originPoint.x, originPoint.y, x, y, { thresholdDeg: 1.0 });
         }
 
         snapInfo = { snapTarget, angularSnap, cursor: { x, y } };
