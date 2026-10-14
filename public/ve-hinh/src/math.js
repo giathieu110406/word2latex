@@ -287,3 +287,117 @@ export function removePoint(doc,id){
 }
 export function triangleTemplate(){const d=emptyDocument();d.points=[{id:'A',x:-3,y:-2},{id:'B',x:4,y:-2},{id:'C',x:0,y:3},{id:'M',kind:'midpoint',refs:['A','B']},{id:'H',kind:'foot',refs:['C','A','B']}];d.shapes=[{id:'tri',type:'polygon',refs:['A','B','C'],color:'#176b52'},{id:'alt',type:'segment',refs:['C','H'],color:'#d09232',dashed:true},{id:'med',type:'segment',refs:['C','M'],color:'#789589',dashed:true},{id:'right',type:'angle',refs:['C','H','B'],mark:'right',color:'#d09232'}];return d;}
 
+export function findSnapTarget(x, y, doc, options = {}) {
+  const radius = options.radius ?? 0.28;
+  const snapPoints = options.snapPoints !== false;
+  const snapMidpoints = options.snapMidpoints !== false;
+  const snapGrid = options.snapGrid === true;
+  const gridStep = options.gridStep ?? 1;
+
+  let best = { x, y, type: null, dist: Infinity };
+
+  // 1. Point Snap (highest priority)
+  if (snapPoints && doc?.points) {
+    const resolved = resolve(doc).points;
+    for (const p of doc.points) {
+      if (p.visible === false) continue;
+      const rp = resolved[p.id];
+      if (!rp) continue;
+      const d = Math.hypot(rp.x - x, rp.y - y);
+      if (d < radius && d < best.dist) {
+        best = { x: rp.x, y: rp.y, type: 'point', refId: p.id, label: p.label || p.id, dist: d };
+      }
+    }
+  }
+
+  // 2. Midpoint Snap (second priority)
+  if (snapMidpoints && doc?.shapes) {
+    const resolved = resolve(doc).points;
+    for (const s of doc.shapes) {
+      if (s.visible === false || !['segment', 'polygon'].includes(s.type)) continue;
+      const refs = s.refs || [];
+      const edgeCount = s.type === 'polygon' ? refs.length : refs.length - 1;
+      for (let i = 0; i < edgeCount; i++) {
+        const id1 = refs[i];
+        const id2 = refs[(i + 1) % refs.length];
+        const p1 = resolved[id1];
+        const p2 = resolved[id2];
+        if (!p1 || !p2) continue;
+        const mx = (p1.x + p2.x) / 2;
+        const my = (p1.y + p2.y) / 2;
+        const d = Math.hypot(mx - x, my - y);
+        if (d < radius && d < best.dist) {
+          best = { x: mx, y: my, type: 'midpoint', refId: s.id, edgeRefs: [id1, id2], dist: d };
+        }
+      }
+    }
+  }
+
+  // 3. Grid Snap (fallback)
+  if (best.type === null && snapGrid) {
+    const gx = Math.round(x / gridStep) * gridStep;
+    const gy = Math.round(y / gridStep) * gridStep;
+    const d = Math.hypot(gx - x, gy - y);
+    if (d < radius * 0.75) {
+      best = { x: gx, y: gy, type: 'grid', dist: d };
+    }
+  }
+
+  return best;
+}
+
+export const STANDARD_SNAP_ANGLES = [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, -15, -30, -45, -60, -75, -90, -105, -120, -135, -150, -165];
+
+export function findAngularSnap(originX, originY, targetX, targetY, options = {}) {
+  const thresholdDeg = options.thresholdDeg ?? 4.0;
+  const angles = options.angles || STANDARD_SNAP_ANGLES;
+
+  const dx = targetX - originX;
+  const dy = targetY - originY;
+  const len = Math.hypot(dx, dy);
+
+  if (len < 0.1) {
+    return { x: targetX, y: targetY, angleDeg: 0, snapped: false, isRightAngle: false, length: len };
+  }
+
+  let rawAngleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+  let closestAngle = null;
+  let minDiff = Infinity;
+
+  for (const a of angles) {
+    let diff = Math.abs(rawAngleDeg - a);
+    if (diff > 180) diff = Math.abs(diff - 360);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestAngle = a;
+    }
+  }
+
+  if (minDiff <= thresholdDeg && closestAngle !== null) {
+    const rad = closestAngle * Math.PI / 180;
+    const sx = originX + len * Math.cos(rad);
+    const sy = originY + len * Math.sin(rad);
+    const isRightAngle = Math.abs(Math.abs(closestAngle) - 90) < 1e-4;
+    return {
+      x: sx,
+      y: sy,
+      angleDeg: closestAngle < 0 ? closestAngle + 360 : closestAngle,
+      snapped: true,
+      isRightAngle,
+      length: len
+    };
+  }
+
+  const normalizedRaw = rawAngleDeg < 0 ? rawAngleDeg + 360 : rawAngleDeg;
+  return {
+    x: targetX,
+    y: targetY,
+    angleDeg: normalizedRaw,
+    snapped: false,
+    isRightAngle: false,
+    length: len
+  };
+}
+
+
