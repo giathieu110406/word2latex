@@ -10,6 +10,7 @@ import {exportTikZ} from './tikz.js';
 export const tools3D = [
   ['orbit3d', '🔄', 'Xoay góc nhìn', 0, 'Kéo chuột trên bảng vẽ để xoay tự do góc nhìn 3D'],
   ['select3d', '↖', 'Chọn đối tượng', 0, 'Nhấp vào điểm hoặc đoạn thẳng 3D để xem và chỉnh thuộc tính'],
+  ['point3d', '•', 'Thêm đỉnh 3D', 0, 'Thêm đỉnh mới với tọa độ (x, y, z) tùy ý'],
   ['segment3d', '╱', 'Nối 2 đỉnh', 2, 'Chọn 2 đỉnh bất kỳ trong không gian để nối đoạn thẳng mới'],
   ['midpoint3d', '⊙', 'Trung điểm', 2, 'Chọn 1 đoạn thẳng 3D hoặc 2 đỉnh để lấy trung điểm'],
   ['ratio3d', '⊸', 'Chia tỉ lệ', 2, 'Chọn 1 đoạn thẳng 3D hoặc 2 đỉnh và nhập tỉ số t để chia tỉ lệ'],
@@ -23,7 +24,8 @@ export const primitiveNames = {
   'regular-pyramid': 'Chóp đều đáy tứ giác',
   prism: 'Lăng trụ tam giác',
   box: 'Hình hộp chữ nhật',
-  cube: 'Hình lập phương'
+  cube: 'Hình lập phương',
+  'blank-3d': 'Bảng vẽ trống'
 };
 
 export const modeNames = {
@@ -44,7 +46,50 @@ export function freshSolidPointId(doc, prefix = 'P') {
   return prefix + i;
 }
 
+export function createBlank3D(options = {}) {
+  const baseDoc = options.baseDoc || blankDocument();
+  const next = structuredClone(baseDoc);
+  next.solid = {
+    enabled: true,
+    type: 'custom',
+    rotation: options.rotation ?? next.solid?.rotation ?? 30,
+    tilt: options.tilt ?? next.solid?.tilt ?? 20,
+    points: [],
+    segments: [],
+    planes: [],
+    crossSections: []
+  };
+  return next;
+}
+
+export function createPoint3D(doc, x, y, z, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.points ??= [];
+  next.solid.segments ??= [];
+  next.solid.planes ??= [];
+  next.solid.crossSections ??= [];
+  next.solid.enabled = true;
+
+  const ptId = options.id || freshSolidPointId(next, 'P');
+  const label = options.label || ptId;
+
+  next.solid.points.push({
+    id: ptId,
+    label,
+    kind: 'free',
+    x: Number(x) || 0,
+    y: Number(y) || 0,
+    z: Number(z) || 0
+  });
+
+  return next;
+}
+
 export function create3DPrimitive(type = 'pyramid4', options = {}) {
+  if (type === 'blank' || type === 'blank-3d') {
+    return createBlank3D(options);
+  }
   let points = [];
   let segments = [];
   let planes = [];
@@ -952,12 +997,35 @@ function renderProperties(){const target=$('properties');if(mode==='geometry'&&s
 
     // Default 3D controls when nothing is selected
     target.innerHTML=objSelect+
+      `<div class="solid-card" style="margin-top:10px">`+
+      `<strong>＋ Thêm đỉnh 3D mới</strong><small>Tạo đỉnh tự do với tọa độ x, y, z</small>`+
+      field('Tên / Nhãn',`<input id="new-solid-point-label" maxlength="20" value="${freshSolidPointId(doc, 'P')}">`)+
+      `<div class="solid-coords-grid">`+
+      field('x',number('new-solid-point-x',0))+
+      field('y',number('new-solid-point-y',1.5))+
+      field('z',number('new-solid-point-z',0))+
+      `</div>`+
+      `<button id="btn-add-point-3d" class="primary full" style="margin-top:8px">＋ Thêm đỉnh 3D</button>`+
+      `</div>`+
       field('Khối hình',`<select id="solid-type">${Object.entries(solidNames).map(([v,n])=>`<option value="${v}" ${doc.solid.type===v?'selected':''}>${n}</option>`).join('')}</select>`)+
       (['pyramid','prism'].includes(doc.solid.type)?field('Số cạnh đáy đều',number('solid-sides',doc.solid.sides??(doc.solid.type==='prism'?3:4),'min="3" max="12" step="1"')):'')+
       field('Xoay ngang',`<input id="rotation" type="range" min="-180" max="180" value="${doc.solid.rotation}">`)+
       field('Góc nâng',`<input id="tilt" type="range" min="-80" max="80" value="${doc.solid.tilt}">`)+
       `<button id="solid-reset-camera" class="secondary full" style="margin-top:6px">Đặt lại góc nhìn chuẩn (30°, 20°)</button>`+
       '<p class="tiny">Kéo chuột trên bảng vẽ để xoay tự do. Cạnh khuất tự động đổi nét đứt. Nhấp đối tượng 3D để chỉnh thuộc tính.</p>';
+
+    if($('btn-add-point-3d')){
+      $('btn-add-point-3d').onclick=()=>{
+        const id=($('new-solid-point-label').value.trim()||freshSolidPointId(doc,'P')).toUpperCase();
+        const x=Number($('new-solid-point-x').value)||0;
+        const y=Number($('new-solid-point-y').value)||0;
+        const z=Number($('new-solid-point-z').value)||0;
+        const next=createPoint3D(doc,x,y,z,{id,label:id});
+        selected=id;
+        commit(next);
+        notify(`Đã thêm điểm 3D ${id} tại (${x}, ${y}, ${z}).`);
+      };
+    }
 
     $('solid-object-select').onchange=e=>{selected=e.target.value;render();};
     $('solid-type').onchange=e=>{
@@ -1321,6 +1389,22 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
       notify(`Đang chọn thiết diện: ${hitCrossSection}`);
       drag={before:structuredClone(doc),px:e.clientX,py:e.clientY,solid:true,moved:false};
       $('canvas').setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if(tool==='point3d'){
+      const id=freshSolidPointId(doc,'P');
+      const coordsStr=prompt(`Thêm đỉnh 3D ${id}: Nhập tọa độ x, y, z cách nhau bởi dấu phẩy (mặc định 0, 1.5, 0):`,'0, 1.5, 0');
+      if(coordsStr!==null){
+        const parts=coordsStr.split(',').map(s=>Number(s.trim()));
+        const x=Number.isFinite(parts[0])?parts[0]:0;
+        const y=Number.isFinite(parts[1])?parts[1]:1.5;
+        const z=Number.isFinite(parts[2])?parts[2]:0;
+        const next=createPoint3D(doc,x,y,z,{id,label:id});
+        selected=id;
+        commit(next);
+        notify(`Đã thêm điểm 3D ${id} tại (${x}, ${y}, ${z}).`);
+      }
       return;
     }
 
