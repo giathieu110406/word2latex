@@ -409,7 +409,8 @@ $('analyze').onclick=async()=>{
   if(!prompt&&!image)return notify('Vui lòng nhập ý tưởng đề bài hoặc tải ảnh để AI vẽ');
   busy=true;
   $('analyze').disabled=true;
-  $('analyze').textContent='Đang phân tích và vẽ hình với AI…';
+  $('analyze').textContent='Đang phân tích và dựng hình với Gemini…';
+  notify('Đang gửi yêu cầu đến Gemini AI để phân tích và dựng hình...');
   const before=revision,originalImage=image;
   try{
     const result=await requestProposal({prompt,document:doc,image:originalImage});
