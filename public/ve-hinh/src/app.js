@@ -25,7 +25,10 @@ export const primitiveNames = {
   pyramid4: 'Chóp tứ giác S.ABCD',
   pyramid3: 'Chóp tam giác S.ABC',
   'regular-pyramid': 'Chóp đều đáy tứ giác',
+  'sa-perp-pyramid': 'Chóp SA ⊥ đáy',
+  'trapezoid-pyramid': 'Chóp đáy hình thang',
   prism: 'Lăng trụ tam giác',
+  prism4: 'Lăng trụ tứ giác',
   box: 'Hình hộp chữ nhật',
   cube: 'Hình lập phương',
   'blank-3d': 'Bảng vẽ trống'
@@ -98,7 +101,7 @@ export function create3DPrimitive(type = 'pyramid4', options = {}) {
   let planes = [];
   let solidType = 'pyramid';
 
-  if (type === 'pyramid4' || type === 'pyramid') {
+  if (type === 'pyramid4' || type === 'pyramid' || type === 'sa-perp-pyramid') {
     solidType = 'pyramid';
     points = [
       { id: 'A', label: 'A', x: -1.8, y: -1.2, z: -1.2 },
@@ -119,6 +122,58 @@ export function create3DPrimitive(type = 'pyramid4', options = {}) {
     ];
     planes = [
       { id: 'base', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 }
+    ];
+  } else if (type === 'trapezoid-pyramid') {
+    solidType = 'pyramid';
+    points = [
+      { id: 'A', label: 'A', x: -1.8, y: -1.2, z: -1.2 },
+      { id: 'B', label: 'B', x: 1.8, y: -1.2, z: -1.2 },
+      { id: 'C', label: 'C', x: 0.9, y: -1.2, z: 1.2 },
+      { id: 'D', label: 'D', x: -0.9, y: -1.2, z: 1.2 },
+      { id: 'S', label: 'S', x: 0, y: 1.8, z: 0 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CD', refs: ['C', 'D'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DA', refs: ['D', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SA', refs: ['S', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SB', refs: ['S', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SC', refs: ['S', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SD', refs: ['S', 'D'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'base', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 }
+    ];
+  } else if (type === 'prism4') {
+    solidType = 'prism';
+    points = [
+      { id: 'A', label: 'A', x: -1.6, y: -1.2, z: -1.0 },
+      { id: 'B', label: 'B', x: 1.6, y: -1.2, z: -1.0 },
+      { id: 'C', label: 'C', x: 1.4, y: -1.2, z: 1.2 },
+      { id: 'D', label: 'D', x: -1.4, y: -1.2, z: 1.2 },
+      { id: 'A1', label: "A'", x: -1.6, y: 1.4, z: -1.0 },
+      { id: 'B1', label: "B'", x: 1.6, y: 1.4, z: -1.0 },
+      { id: 'C1', label: "C'", x: 1.4, y: 1.4, z: 1.2 },
+      { id: 'D1', label: "D'", x: -1.4, y: 1.4, z: 1.2 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CD', refs: ['C', 'D'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DA', refs: ['D', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'A1B1', refs: ['A1', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'B1C1', refs: ['B1', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'C1D1', refs: ['C1', 'D1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'D1A1', refs: ['D1', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'AA1', refs: ['A', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BB1', refs: ['B', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CC1', refs: ['C', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DD1', refs: ['D', 'D1'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'bottom', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 },
+      { id: 'top', refs: ['A1', 'B1', 'C1'], color: '#176b52', opacity: 0.1 }
     ];
   } else if (type === 'pyramid3' || type === 'tetrahedron') {
     solidType = 'tetrahedron';
