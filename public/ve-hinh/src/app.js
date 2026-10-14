@@ -633,7 +633,7 @@ if (typeof document !== 'undefined') {
     $('toolbar-3d').addEventListener('click',e=>{
       const bPrim=e.target.closest('[data-primitive-3d]');
       if(bPrim){
-        const pType=bPrim.dataset.primitive3d;
+        const pType=bPrim.getAttribute('data-primitive-3d')||bPrim.dataset.primitive3d||bPrim.dataset['primitive-3d'];
         const next=create3DPrimitive(pType,{baseDoc:doc});
         commit(next);
         notify(`Đã khởi tạo khối cơ sở: ${primitiveNames[pType]||pType}`);
