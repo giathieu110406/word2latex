@@ -10,60 +10,14 @@ import activityHandler from "./api/activity";
 
 
 import * as path from "path";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, updateDoc, getDoc } from "firebase/firestore";
 import * as crypto from "crypto";
 
 import payosCreateHandler from "./api/payos-create";
 import payosWebhookHandler from "./api/payos-webhook";
+import payosCheckHandler from "./api/payos-check";
+import approveUserHandler from "./api/approve-user";
+import adminPaymentsHandler from "./api/admin/payments";
 import { getFirebaseAdmin } from "./server/firebase-admin.js";
-
-const getValidVal = (val: string | undefined, fallback: string) => {
-  if (!val || val.includes("your_") || val.includes("MY_") || val.trim() === "") return fallback;
-  return val;
-};
-
-// Firebase config matching standard client config
-const firebaseConfig = {
-  apiKey: getValidVal(process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY, "AIzaSyCVpL5IwumfJ5PuTkERYxjDsA9ypr1M2_8"),
-  authDomain: getValidVal(process.env.FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN, "word2latex-prod-fde7b.firebaseapp.com"),
-  databaseURL: getValidVal(process.env.FIREBASE_DATABASE_URL || process.env.VITE_FIREBASE_DATABASE_URL, "https://word2latex-prod-fde7b-default-rtdb.asia-southeast1.firebasedatabase.app"),
-  projectId: getValidVal(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID, "word2latex-prod-fde7b"),
-  storageBucket: getValidVal(process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET, "word2latex-prod-fde7b.firebasestorage.app"),
-  messagingSenderId: getValidVal(process.env.FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID, "341505323323"),
-  appId: getValidVal(process.env.FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID, "1:341505323323:web:8ba2fc4bb7e14a6fa6871e"),
-  measurementId: getValidVal(process.env.FIREBASE_MEASUREMENT_ID || process.env.VITE_FIREBASE_MEASUREMENT_ID, "G-2BF1P0L333")
-};
-// Use the databaseId provisioned for this project, sanitizing URLs or malformed values if present
-const getCleanDatabaseId = (rawId: string | undefined): string | undefined => {
-  if (!rawId) return undefined;
-  const clean = rawId.trim();
-
-  // If it's a URL, parse it
-  if (clean.startsWith("http:") || clean.startsWith("https:") || clean.includes("/") || clean.includes(":")) {
-    if (clean.includes("/databases/")) {
-      const parts = clean.split("/databases/");
-      const subParts = parts[1].split("/");
-      const dbName = subParts[0] ? subParts[0].trim() : "";
-      if (dbName && dbName !== "(default)" && dbName !== "default") {
-        return dbName;
-      }
-    }
-    // If it's some other URL (like console URL, RTDB, etc.), use the default database
-    return undefined;
-  }
-
-  if (clean === "(default)" || clean === "default" || !clean) {
-    return undefined;
-  }
-  return clean;
-};
-
-const databaseId = getCleanDatabaseId(process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID);
-
-const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const db = databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
-
 
 
 const app = express();
@@ -92,7 +46,6 @@ app.all(["/api/payos-webhook", "/api/webhook/payos"], async (req, res) => {
 });
 
 app.post("/api/payos-check", async (req, res) => {
-  const payosCheckHandler = (await import("./api/payos-check")).default;
   await payosCheckHandler(req as any, res as any);
 });
 
@@ -114,186 +67,13 @@ app.post("/api/email-verification", async (req, res) => {
 
 
 app.get("/api/approve-user", async (req, res) => {
-  const { uid, token } = req.query;
-
-  if (!uid || !token) {
-    return res.status(400).send(`
-      <div style="font-family: 'Segoe UI', system-ui, sans-serif; text-align: center; padding: 50px; background: #fafafa; min-height: 100vh; display: flex; align-items: center; justify-content: center;">
-        <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); max-width: 500px; border: 1px solid #fca5a5;">
-          <h2 style="color: #ef4444; margin-top: 0;">Lỗi Phê Duyệt</h2>
-          <p style="color: #64748b; font-size: 15px; line-height: 1.6;">Yêu cầu phê duyệt không hợp lệ. Vui lòng kiểm tra lại liên kết trong email.</p>
-        </div>
-      </div>
-    `);
-  }
-
-  const expectedToken = generateApprovalToken(uid as string);
-
-  if (token !== expectedToken) {
-    return res.status(403).send(`
-      <div style="font-family: 'Segoe UI', system-ui, sans-serif; text-align: center; padding: 50px; background: #fafafa; min-height: 100vh; display: flex; align-items: center; justify-content: center;">
-        <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); max-width: 500px; border: 1px solid #fca5a5;">
-          <h2 style="color: #ef4444; margin-top: 0;">Xác Thực Thất Bại</h2>
-          <p style="color: #64748b; font-size: 15px; line-height: 1.6;">Chữ ký xác thực không khớp hoặc đã hết hạn. Bạn không thể phê duyệt yêu cầu này.</p>
-        </div>
-      </div>
-    `);
-  }
-
-  try {
-    const userRef = doc(db, "users", uid as string);
-    // Standard get to check if user exists
-    const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
-      return res.status(404).send(`
-        <div style="font-family: 'Segoe UI', system-ui, sans-serif; text-align: center; padding: 50px; background: #fafafa; min-height: 100vh; display: flex; align-items: center; justify-content: center;">
-          <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); max-width: 500px; border: 1px solid #cbd5e1;">
-            <h2 style="color: #f59e0b; margin-top: 0;">Không Tìm Thấy Người Dùng</h2>
-            <p style="color: #64748b; font-size: 15px; line-height: 1.6;">Tài khoản yêu cầu phê duyệt không tồn tại trong hệ thống.</p>
-          </div>
-        </div>
-      `);
-    }
-
-    const userData = userSnap.data();
-    
-    // Perform update with secretApprovalToken to bypass normal client rule limits
-    await updateDoc(userRef, {
-      status: "approved",
-      secretApprovalToken: SECRET_KEY
-    });
-
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Phê duyệt thành công</title>
-        <style>
-          body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-            background: #f1f5f9;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-          }
-          .card {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.05);
-            max-width: 500px;
-            text-align: center;
-            border-top: 8px solid #10b981;
-          }
-          .icon-box {
-            width: 72px;
-            height: 72px;
-            background: #d1fae5;
-            color: #10b981;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 36px;
-            margin: 0 auto 24px auto;
-          }
-          h2 {
-            color: #1e293b;
-            margin: 0 0 12px 0;
-            font-size: 24px;
-            font-weight: 700;
-          }
-          p {
-            color: #64748b;
-            font-size: 16px;
-            line-height: 1.6;
-            margin: 0 0 28px 0;
-          }
-          .badge {
-            background: #f1f5f9;
-            border: 1px solid #e2e8f0;
-            padding: 10px 16px;
-            border-radius: 8px;
-            display: inline-block;
-            margin-bottom: 24px;
-            font-weight: bold;
-            color: #334155;
-          }
-          .btn-success {
-            background-color: #2563eb;
-            color: white;
-            padding: 12px 28px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 15px;
-            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
-            transition: all 0.2s;
-          }
-          .btn-success:hover {
-            background-color: #1d4ed8;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="card" id="success-card">
-          <div class="icon-box">✓</div>
-          <h2>Phê Duyệt Thành Công!</h2>
-          <p>Tài khoản sau đây đã được phê duyệt làm người dùng chính thức và có thể truy cập toàn bộ chức năng của hệ thống:</p>
-          <div class="badge">${userData.email}</div>
-          <div>
-            <a href="/" class="btn-success">Đến Trang Chủ</a>
-          </div>
-        </div>
-      </body>
-      </html>
-    `);
-
-  } catch (error) {
-    console.error("Lỗi khi cập nhật Firestore:", error);
-    return res.status(500).send(`
-      <div style="font-family: 'Segoe UI', system-ui, sans-serif; text-align: center; padding: 50px; background: #fafafa; min-height: 100vh; display: flex; align-items: center; justify-content: center;">
-        <div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); max-width: 500px; border: 1px solid #fca5a5;">
-          <h2 style="color: #ef4444; margin-top: 0;">Lỗi Hệ Thống</h2>
-          <p style="color: #64748b; font-size: 15px; line-height: 1.6;">Có lỗi xảy ra khi phê duyệt tài khoản. Vui lòng thử lại sau.</p>
-        </div>
-      </div>
-    `);
-  }
+  await approveUserHandler(req as any, res as any);
 });
 
 // 2. API: Notify admin of access registration (POST) - SMTP removed by request
 
 app.get("/api/admin/payments", async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Missing token' });
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const { auth: adminAuth, db } = getFirebaseAdmin();
-    const decodedToken = await adminAuth.verifyIdToken(token);
-    
-    // Check if user is admin
-    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-    const isOwner = decodedToken.email === 'giathieu110406@gmail.com';
-    const isAdmin = isOwner || userDoc.data()?.role === 'admin';
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    const snapshot = await db.collection('payosPayments').get();
-    const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    payments.sort((a: any, b: any) => (b.activatedAt || 0) - (a.activatedAt || 0));
-    return res.json(payments);
-  } catch (error: any) {
-    console.error("Lỗi /api/admin/payments:", error);
-    return res.status(500).json({ error: error?.message || 'Internal Server Error' });
-  }
+  await adminPaymentsHandler(req as any, res as any);
 });
 
 app.post('/api/admin/grant-plan', (req,res) => grantPlanHandler(req as any,res as any));
