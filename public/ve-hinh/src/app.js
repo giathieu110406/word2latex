@@ -565,6 +565,8 @@ const testing=typeof location !== 'undefined' && new URLSearchParams(location.se
 function sizeViewport(){if(typeof document !== 'undefined' && typeof window !== 'undefined')document.documentElement.style.setProperty('--app-height',window.innerHeight+'px');}
 if(typeof window !== 'undefined'){window.addEventListener('resize',sizeViewport,{passive:true});sizeViewport();}
 let doc=blankDocument(),mode='geometry',tool='select',selected='',pending=[],snappedPointId=null,scale=55,history=[],future=[],drag=null,image=null,proposal=null,revision=0,busy=false,pan={x:0,y:0};
+export let magnetActive=true;
+let currentSnapInfo=null;
 const tools=[
  ['select','↖','Chọn / kéo',0,'Chọn đối tượng hoặc kéo điểm tự do'],['region','▧','Chọn vùng',0,'Kéo chuột trái tạo khung; hình hữu hạn nằm trọn, đường/tia cắt khung. Esc bỏ chọn'],['point','•','Điểm',0,'Nhấn vào bảng để tạo điểm'],
  ['segment','╱','Đoạn',2,'Chọn hai đầu đoạn'],['line','⟋','Đường',2,'Chọn hai điểm trên đường'],['polygon','⬠','Đa giác',-1,'Chọn ≥3 điểm, chọn lại điểm đầu để đóng'],['circle','○','Đường tròn',2,'Chọn tâm rồi điểm trên đường tròn'],
@@ -1719,6 +1721,7 @@ document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{
 $('undo').onclick=()=>{cancelConstruction();selectedIds.clear();if(history.length){future.push(doc);doc=history.pop();revision++;selected='';pending=[];persist();render();}};$('redo').onclick=()=>{cancelConstruction();selectedIds.clear();if(future.length){history.push(doc);doc=future.pop();revision++;selected='';pending=[];persist();render();}};
 document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||e.target.isContentEditable||document.querySelector('dialog[open]'))return;if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelection();return;}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$(e.shiftKey?'redo':'undo').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();$('redo').click();}if(e.key==='Escape'){endDrag(true);cancelConstruction();selectedIds.clear();selected='';notify('');tool='select';render();}});
 for(const[id,factor]of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{scale=Math.max(15,Math.min(160,scale*factor));render();};$('reset-view').onclick=()=>{scale=55;pan={x:0,y:0};render();};$('grid').onchange=render;
+if($('snap-magnet'))$('snap-magnet').onchange=e=>{magnetActive=e.target.checked;renderCanvas();};
 $('title').onchange=e=>{const title=e.target.value;cancelConstruction();commit({...doc,title});};
 
 

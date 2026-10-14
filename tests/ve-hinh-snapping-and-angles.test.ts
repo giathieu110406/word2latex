@@ -72,3 +72,10 @@ test('renderSnapOverlay: generates SVG elements for point snap halo and angle HU
   assert.ok(svg.includes('L: 3.50') || svg.includes('L: 3.5'));
 });
 
+test('index.html contains #snap-magnet checkbox for toggling smart snapping', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync('public/ve-hinh/index.html', 'utf-8');
+  assert.ok(html.includes('id="snap-magnet"'));
+});
+
+
