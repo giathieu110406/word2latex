@@ -29,7 +29,7 @@
 - Consumes: `process.env.GEMINI_API_KEY`, `@google/genai` SDK
 - Produces: `getDrawingProviderConfig()`, `generateDrawingProposal(input, config)`, API `POST /api/ve-hinh?action=reconstruct`
 
-- [ ] **Step 1: Viết test kiểm tra cấu hình provider và fallback chain**
+- [x] **Step 1: Viết test kiểm tra cấu hình provider và fallback chain**
 
 Tạo tệp `tests/ve-hinh-backend.test.ts`:
 ```ts
@@ -67,12 +67,12 @@ test('parseProposal parses valid proposal JSON', () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để xác nhận test ban đầu thất bại**
+- [x] **Step 2: Chạy test để xác nhận test ban đầu thất bại**
 
 Run: `node --import tsx --test tests/ve-hinh-backend.test.ts`
 Expected: FAIL vì `config.model` hiện tại đang trả về `'gemini-3.8-flash'`.
 
-- [ ] **Step 3: Cập nhật `api/ve-hinh.ts`**
+- [x] **Step 3: Cập nhật `api/ve-hinh.ts`**
 
 Chỉnh sửa dòng 45-56 và 68-75 trong `api/ve-hinh.ts`:
 ```ts
@@ -105,12 +105,12 @@ Trong hàm kiểm tra đầu vào ảnh (dòng ~137):
   }
 ```
 
-- [ ] **Step 4: Chạy lại test để xác nhận PASS**
+- [x] **Step 4: Chạy lại test để xác nhận PASS**
 
 Run: `node --import tsx --test tests/ve-hinh-backend.test.ts`
 Expected: PASS cả 2 tests.
 
-- [ ] **Step 5: Commit thay đổi Task 1**
+- [x] **Step 5: Commit thay đổi Task 1**
 
 ```bash
 git add api/ve-hinh.ts tests/ve-hinh-backend.test.ts
@@ -129,7 +129,7 @@ git commit -m "fix(ve-hinh): optimize gemini fallback chain and sanitize base64 
 - Consumes: `/api/ve-hinh?action=reconstruct`
 - Produces: `requestProposal(input)` với 75s timeout và thông báo trực quan
 
-- [ ] **Step 1: Viết test cho `ai.js` client timeout handling**
+- [x] **Step 1: Viết test cho `ai.js` client timeout handling**
 
 Tạo tệp `tests/ve-hinh-client.test.ts`:
 ```ts
@@ -142,12 +142,12 @@ test('client requestProposal handles timeout message properly', async () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test xác nhận cấu trúc**
+- [x] **Step 2: Chạy test xác nhận cấu trúc**
 
 Run: `node --import tsx --test tests/ve-hinh-client.test.ts`
 Expected: PASS.
 
-- [ ] **Step 3: Cập nhật `public/ve-hinh/src/ai.js` & `public/ve-hinh/src/app.js`**
+- [x] **Step 3: Cập nhật `public/ve-hinh/src/ai.js` & `public/ve-hinh/src/app.js`**
 
 Trong `public/ve-hinh/src/ai.js`:
 Tăng thời gian timeout của controller từ 65000ms lên 75000ms:
@@ -186,12 +186,12 @@ Khi click, hiển thị nhãn trạng thái trực quan:
 $('analyze').textContent = 'Đang phân tích đề bài với Gemini...';
 ```
 
-- [ ] **Step 4: Kiểm tra lại bằng lệnh curl hoặc test API local**
+- [x] **Step 4: Kiểm tra lại bằng lệnh curl hoặc test API local**
 
 Run: `node -e "fetch('http://localhost:3000/api/ve-hinh?action=config').then(r => r.json()).then(console.log);"`
 Expected: `{ configured: true, provider: 'gemini', missing: [] }`
 
-- [ ] **Step 5: Commit thay đổi Task 2**
+- [x] **Step 5: Commit thay đổi Task 2**
 
 ```bash
 git add public/ve-hinh/src/ai.js public/ve-hinh/src/app.js tests/ve-hinh-client.test.ts
@@ -211,7 +211,7 @@ git commit -m "feat(ve-hinh): increase client timeout and enhance analysis statu
 - Consumes: Danh sách điểm đã chọn từ người dùng
 - Produces: Các đối tượng `Point` và `Shape` polygon khép kín
 
-- [ ] **Step 1: Viết test cho hàm sinh hình học preset**
+- [x] **Step 1: Viết test cho hàm sinh hình học preset**
 
 Tạo tệp `tests/ve-hinh-presets.test.ts`:
 ```ts
@@ -240,12 +240,12 @@ test('makeEquilateral creates a valid third vertex', () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test xác minh công thức**
+- [x] **Step 2: Chạy test xác minh công thức**
 
 Run: `node --import tsx --test tests/ve-hinh-presets.test.ts`
 Expected: PASS.
 
-- [ ] **Step 3: Tích hợp công cụ vào `public/ve-hinh/src/app.js`**
+- [x] **Step 3: Tích hợp công cụ vào `public/ve-hinh/src/app.js`**
 
 Thêm các công cụ vào mảng `tools` trong `public/ve-hinh/src/app.js`:
 ```js
@@ -259,12 +259,12 @@ Bổ sung logic hoàn thành dựng hình trong hàm xử lý click:
 - Khi chọn đủ 2 điểm cho `equilateralTriangle`: tự động tạo điểm thứ 3 (quay $60^\circ$) và polygon 3 cạnh.
 - Khi chọn đủ 2 điểm cho `square`: tự động tính 2 đỉnh còn lại (quay $90^\circ$) và polygon 4 cạnh.
 
-- [ ] **Step 4: Kiểm tra lint và build**
+- [x] **Step 4: Kiểm tra lint và build**
 
 Run: `npm run lint`
 Expected: Không có lỗi TypeScript.
 
-- [ ] **Step 5: Commit thay đổi Task 3**
+- [x] **Step 5: Commit thay đổi Task 3**
 
 ```bash
 git add public/ve-hinh/src/app.js tests/ve-hinh-presets.test.ts
@@ -283,7 +283,7 @@ git commit -m "feat(ve-hinh): add quick construction presets for equilateral tri
 - Consumes: `Shape` kiểu `angle` với `s.mark = 'right' | 'arc' | 'double-arc'`
 - Produces: SVG đường vuông góc chuẩn hoặc cung tròn kép kèm số đo góc
 
-- [ ] **Step 1: Viết test cho hàm sinh SVG góc vuông và cung tròn**
+- [x] **Step 1: Viết test cho hàm sinh SVG góc vuông và cung tròn**
 
 Tạo tệp `tests/ve-hinh-angle-render.test.ts`:
 ```ts
@@ -304,12 +304,12 @@ test('renderRightAnglePath creates correct square mark', () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test xác nhận**
+- [x] **Step 2: Chạy test xác nhận**
 
 Run: `node --import tsx --test tests/ve-hinh-angle-render.test.ts`
 Expected: PASS.
 
-- [ ] **Step 3: Cập nhật `render.js` để hiển thị cung tròn góc và góc vuông hoàn chỉnh**
+- [x] **Step 3: Cập nhật `render.js` để hiển thị cung tròn góc và góc vuông hoàn chỉnh**
 
 Trong `public/ve-hinh/src/render.js`:
 Cập nhật nhánh `s.type === 'angle'`:
@@ -327,11 +327,11 @@ if (s.mark === 'right') {
 }
 ```
 
-- [ ] **Step 4: Kiểm tra hiển thị góc trên canvas**
+- [x] **Step 4: Kiểm tra hiển thị góc trên canvas**
 
 Chạy Playwright test hoặc mở trình duyệt kiểm tra hiển thị.
 
-- [ ] **Step 5: Commit thay đổi Task 4**
+- [x] **Step 5: Commit thay đổi Task 4**
 
 ```bash
 git add public/ve-hinh/src/render.js tests/ve-hinh-angle-render.test.ts
@@ -352,7 +352,7 @@ git commit -m "feat(ve-hinh): improve right angle and arc angle annotations"
 - Consumes: Đối tượng `doc` ({ points, shapes })
 - Produces: Chuỗi mã nguồn LaTeX TikZ `exportTikZ(doc): string`
 
-- [ ] **Step 1: Viết test cho `exportTikZ`**
+- [x] **Step 1: Viết test cho `exportTikZ`**
 
 Tạo tệp `tests/ve-hinh-tikz.test.ts`:
 ```ts
@@ -409,12 +409,12 @@ test('exportTikZ produces valid TikZ code for a triangle', () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test xác nhận**
+- [x] **Step 2: Chạy test xác nhận**
 
 Run: `node --import tsx --test tests/ve-hinh-tikz.test.ts`
 Expected: PASS.
 
-- [ ] **Step 3: Tạo `public/ve-hinh/src/tikz.js` và tích hợp vào UI**
+- [x] **Step 3: Tạo `public/ve-hinh/src/tikz.js` và tích hợp vào UI**
 
 Tạo tệp `public/ve-hinh/src/tikz.js` với logic tương tự test trên.
 Trong `public/ve-hinh/index.html`:
@@ -425,12 +425,12 @@ Bổ sung nút xuất TikZ trong dialog `#export-dialog`:
 Trong `public/ve-hinh/src/app.js`:
 Bắt sự kiện click `#export-tikz`, gọi `exportTikZ(doc)`, copy vào `navigator.clipboard.writeText` và hiển thị thông báo "Đã sao chép mã TikZ vào Clipboard!".
 
-- [ ] **Step 4: Chạy test và typecheck toàn dự án**
+- [x] **Step 4: Chạy test và typecheck toàn dự án**
 
 Run: `npm run lint`
 Expected: PASS không có lỗi.
 
-- [ ] **Step 5: Commit thay đổi Task 5**
+- [x] **Step 5: Commit thay đổi Task 5**
 
 ```bash
 git add public/ve-hinh/src/tikz.js public/ve-hinh/index.html public/ve-hinh/src/app.js tests/ve-hinh-tikz.test.ts
