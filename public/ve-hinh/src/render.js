@@ -1,5 +1,11 @@
 import {resolve} from './math.js';
 import {compileExpression, compileExpressionP, detectExpressionType, normalizeToLHS} from './expression.js';
+import {screen3D, project3D} from './engine3d/projection.js';
+import {evaluatePolyhedronEdges, evaluateSegmentOcclusion, resolveSegmentDashed, orientPolyhedronFaces, edgeKey} from './engine3d/occlusion.js';
+import {computeLabelPlacement3D} from './engine3d/label3d.js';
+import {getStandardSolidGeometry} from './engine3d/tikz3d.js';
+
+export {screen3D, project3D, computeLabelPlacement3D};
 export const escape=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const W=1000,H=660;
 export const screen=(p,scale=55)=>({x:W/2+p.x*scale,y:H/2-p.y*scale});
@@ -200,16 +206,143 @@ const sphereCurves=[...[-60,-30,0,30,60].map(latitude=>{
 }),...Array.from({length:6},(_,j)=>{const t=j*Math.PI/6;return Array.from({length:97},(_,i)=>{const a=i*2*Math.PI/96;return[2*Math.cos(a)*Math.cos(t),2*Math.sin(a),2*Math.cos(a)*Math.sin(t)];});})];
 export function solidSVG(solid,{selectedFace=null}={}){
   if(solid.enabled===false)return wrapper(text(500,330,'Chưa có khối hình · chọn Vẽ lại','text-anchor="middle"'));
-  const rad=solid.rotation*Math.PI/180,tilt=solid.tilt*Math.PI/180;
+  const rad=(solid.rotation??30)*Math.PI/180,tilt=(solid.tilt??20)*Math.PI/180;
   const cr=Math.cos(rad),sr=Math.sin(rad),ct=Math.cos(tilt),st=Math.sin(tilt);
   const rotate=([x,y,z])=>{const xx=x*cr+z*sr,zz=-x*sr+z*cr;return[xx,y*ct-zz*st,y*st+zz*ct];};
-  let out='<rect width="1000" height="660" fill="url(#dots)"/>'+text(30,40,solidNames[solid.type]);
+  const camera={rotation:solid.rotation??30,tilt:solid.tilt??20};
+  let out='<rect width="1000" height="660" fill="url(#dots)"/>'+text(30,40,solidNames[solid.type]||solid.type||'Hình học không gian');
+
   if(solid.type==='sphere'){
     const paths=['',''],xy=p=>`${(500+p[0]*90).toFixed(2)} ${(330-p[1]*90).toFixed(2)}`;
     for(const curve of sphereCurves){const points=curve.map(rotate);let previous=-1;for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],front=Number(a[2]+b[2]>0);paths[front]+=(front===previous?' L ':' M '+xy(a)+' L ')+xy(b);previous=front;}}
     for(const front of [0,1])out+=`<path data-sphere-depth="${front?'front':'back'}" d="${paths[front]}" fill="none" stroke="${front?'#176b52':'#a4bfb0'}" stroke-width="${front?1.8:1}" ${front?'':'stroke-dasharray="4 5"'}/>`;
     out+='<path data-center-leader="true" d="M 500 330 L 709 348" stroke="#8bada0" stroke-width="1" fill="none"/>'+text(715,350,'O');return wrapper('<g data-solid="sphere">'+out+'</g>');
   }
+
+  // Handle explicit 3D points & segments
+  if(Array.isArray(solid.points)&&solid.points.length>0){
+    const ptsMap={},ptsScreen={},ptsProj={};
+    for(const p of solid.points){
+      if(p.visible===false)continue;
+      const pt3d={x:p.x??0,y:p.y??0,z:p.z??0};
+      ptsMap[p.id]=pt3d;
+      ptsProj[p.id]=project3D(pt3d,camera);
+      ptsScreen[p.id]=screen3D(pt3d,camera);
+    }
+
+    let faces=[];
+    if(solid.type&&solid.type!=='custom'){
+      const std=getStandardSolidGeometry(solid.type,solid.sides);
+      faces=std.faces.filter(f=>f.verts.every(vid=>ptsMap[vid]));
+    }
+    const orientedFaces=orientPolyhedronFaces(
+      faces.map(f=>({
+        ...f,
+        verts:f.verts.map(vid=>ptsMap[vid]).filter(Boolean)
+      })),
+      ptsMap
+    );
+    const polyOcclusion=evaluatePolyhedronEdges(orientedFaces,camera);
+
+    // Cross sections
+    if(Array.isArray(solid.crossSections)){
+      for(const cs of solid.crossSections){
+        if(cs.visible===false)continue;
+        const refs=cs.planeRefs||cs.refs;
+        if(refs&&refs.length>=3&&refs.every(r=>ptsScreen[r])){
+          const color=cs.color||'#176b52';
+          const opacity=cs.opacity??0.15;
+          const polyPts=refs.map(r=>`${ptsScreen[r].x.toFixed(1)},${ptsScreen[r].y.toFixed(1)}`).join(' ');
+          out+=`<polygon points="${polyPts}" fill="${escape(color)}" fill-opacity="${opacity}" stroke="${escape(color)}" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+        }
+      }
+    }
+
+    // Segments
+    const segsToDraw=[];
+    if(Array.isArray(solid.segments)&&solid.segments.length>0){
+      for(const s of solid.segments){
+        if(s.visible===false||!s.refs||s.refs.length<2)continue;
+        const[a,b]=s.refs;
+        if(!ptsScreen[a]||!ptsScreen[b])continue;
+        segsToDraw.push({
+          id:s.id,
+          a,
+          b,
+          color:s.color,
+          strokeWidth:s.strokeWidth,
+          styleMode:s.styleMode??'auto'
+        });
+      }
+    }
+
+    const canvasSegments=[];
+    const solidNeighbors=new Map();
+    for(const id of Object.keys(ptsScreen))solidNeighbors.set(id,[]);
+
+    const dashedLines=[];
+    const solidLines=[];
+
+    for(const seg of segsToDraw){
+      const pa=ptsScreen[seg.a],pb=ptsScreen[seg.b];
+      canvasSegments.push({a:pa,b:pb});
+      solidNeighbors.get(seg.a)?.push(pb);
+      solidNeighbors.get(seg.b)?.push(pa);
+
+      const key=edgeKey(seg.a,seg.b);
+      let isOccluded=false;
+      if(polyOcclusion.edgeVisibility.has(key)){
+        isOccluded=!polyOcclusion.edgeVisibility.get(key);
+      }else if(orientedFaces.length>0){
+        isOccluded=evaluateSegmentOcclusion(ptsMap[seg.a],ptsMap[seg.b],orientedFaces,camera);
+      }
+
+      const dashed=resolveSegmentDashed(seg,isOccluded);
+      if(dashed){
+        dashedLines.push(seg);
+      }else{
+        solidLines.push(seg);
+      }
+    }
+
+    // Render dashed segments
+    for(const s of dashedLines){
+      const pa=ptsScreen[s.a],pb=ptsScreen[s.b];
+      const color=s.color||'#8bada0';
+      const width=s.strokeWidth||2.5;
+      out+=line(pa,pb,`stroke="${escape(color)}" stroke-width="${width}" stroke-dasharray="8 7"`);
+    }
+
+    // Render solid segments
+    for(const s of solidLines){
+      const pa=ptsScreen[s.a],pb=ptsScreen[s.b];
+      const color=s.color||'#176b52';
+      const width=s.strokeWidth||2.5;
+      out+=line(pa,pb,`stroke="${escape(color)}" stroke-width="${width}"`);
+    }
+
+    // Render vertices and smart labels
+    const labelPositions=[];
+    for(const[id,p]of Object.entries(ptsScreen)){
+      const origP=solid.points.find(pt=>pt.id===id);
+      const label=origP?.label||id;
+      const isApex=id==='S'||label==='S';
+      const placement=computeLabelPlacement3D(
+        p,
+        solidNeighbors.get(id)||[],
+        canvasSegments,
+        labelPositions,
+        {label,isApex}
+      );
+      labelPositions.push({x:placement.centerX,y:placement.centerY});
+      out+=`<circle data-vertex="${id}" cx="${p.x}" cy="${p.y}" r="3.5" fill="#176b52"/>`+
+        text(placement.x,placement.y,label,`data-vertex-label="${id}" text-anchor="${placement.anchor}" dominant-baseline="${placement.baseline}" pointer-events="none"`);
+    }
+
+    return wrapper(`<g data-solid="${solid.type||'custom'}">${out}</g>`);
+  }
+
+  // Legacy solid generation
   let verts,faces;
   const curved=['cone','cylinder'].includes(solid.type),n=curved?48:solid.type==='tetrahedron'?3:(solid.sides??(solid.type==='prism'?3:4));
   if(['box','cube'].includes(solid.type)){

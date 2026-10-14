@@ -1,6 +1,19 @@
 import { resolve } from './math.js';
+import { exportTikZ3D } from './engine3d/tikz3d.js';
 
-export function exportTikZ(doc) {
+export { exportTikZ3D };
+
+export function exportTikZ(doc, options = {}) {
+  const is3D = doc?.mode === 'solid' ||
+    (doc?.solid?.points && doc.solid.points.length > 0) ||
+    (doc?.solid?.segments && doc.solid.segments.length > 0) ||
+    (doc?.points && doc.points.some(p => p.z !== undefined)) ||
+    (doc?.solid?.enabled === true && doc?.mode !== 'geometry');
+
+  if (is3D) {
+    return exportTikZ3D(doc, options);
+  }
+
   const resolved = resolve(doc);
   const points = resolved.points;
   let tikz = '\\begin{tikzpicture}[scale=1, line join=round, line cap=round, >=stealth]\n';

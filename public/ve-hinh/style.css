@@ -34,3 +34,225 @@ main{height:calc(var(--app-height,100dvh) - 40px)}
 
 .canvas-footer .file-actions{order:-1;margin-left:0}
 @media(max-width:700px){.canvas-footer .file-actions{order:0}body.embedded .canvas-footer .file-actions{padding-right:90px}}
+
+/* ==========================================================================
+   MILESTONE 3: 3D INTERACTIVE CANVAS, TOOLBAR & PROPERTIES STYLING
+   ========================================================================== */
+.toolbar-3d {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toolbar-3d[hidden] {
+  display: none !important;
+}
+.toolbar-3d .tool-section {
+  border: 1px solid #dbe6e0;
+  border-radius: 8px;
+  background: #fbfdfc;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+.toolbar-3d .tool-section summary {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #176b52;
+  background: #edf5f1;
+  cursor: pointer;
+  user-select: none;
+}
+.toolbar-3d .tool-section[open] summary {
+  border-bottom: 1px solid #dbe6e0;
+}
+.toolbar-3d .tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  padding: 8px;
+}
+.toolbar-3d .tool-grid button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border: 1px solid #cddcd5;
+  background: #ffffff;
+  color: #263830;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 34px;
+}
+.toolbar-3d .tool-grid button:hover {
+  background: #edf5f1;
+  border-color: #176b52;
+  color: #176b52;
+  transform: translateY(-1px);
+}
+.toolbar-3d .tool-grid button.active,
+.toolbar-3d .tool-grid button[aria-pressed="true"] {
+  background: #176b52;
+  border-color: #176b52;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(23, 107, 82, 0.25);
+}
+.toolbar-3d .tool-grid button .icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* 3-State Dash Toggle Switch [ ⚡ Tự động | ── Nét liền | ┈ Nét đứt ] */
+.dash-toggle-group {
+  display: flex;
+  background: #edf2ef;
+  border: 1px solid #cddcd5;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 3px;
+  margin: 8px 0 12px;
+}
+.dash-toggle-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: #40554d;
+  text-align: center;
+  white-space: nowrap;
+}
+.dash-toggle-btn:hover {
+  background: rgba(23, 107, 82, 0.1);
+  color: #176b52;
+}
+.dash-toggle-btn.active {
+  background: #176b52;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+/* 3D Coordinates Grid */
+.solid-coords-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.solid-coords-grid .field {
+  margin-bottom: 0;
+}
+.solid-coords-grid input {
+  padding: 5px 6px;
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 3D Object Cards */
+.solid-card {
+  padding: 10px;
+  background: #f7faf9;
+  border: 1px solid #dce8e3;
+  border-left: 3px solid #176b52;
+  border-radius: 6px;
+  margin: 10px 0;
+}
+.solid-card strong {
+  display: block;
+  font-size: 13px;
+  color: #176b52;
+}
+.solid-card small {
+  display: block;
+  color: #637a70;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* 3D Canvas Elements Hover & Selection Feedback */
+.canvas [data-vertex] {
+  cursor: pointer;
+  transition: r 0.15s ease, fill 0.15s ease;
+}
+.canvas [data-vertex]:hover {
+  r: 5.5px;
+  fill: #d09232;
+}
+.canvas [data-vertex].selected {
+  r: 6px;
+  fill: #d09232;
+  stroke: #ffffff;
+  stroke-width: 2px;
+}
+.canvas [data-vertex].pending {
+  r: 5px;
+  fill: #e67e22;
+  stroke: #ffcc00;
+  stroke-width: 2px;
+}
+.canvas [data-segment-3d] {
+  cursor: pointer;
+}
+.canvas [data-segment-3d]:hover {
+  stroke-opacity: 0.8;
+}
+
+/* Dark Mode Support for 3D Elements */
+:root.dark .toolbar-3d .tool-section {
+  border-color: #384841;
+  background: #1d2522;
+}
+:root.dark .toolbar-3d .tool-section summary {
+  color: #62bda2;
+  background: #232d29;
+  border-color: #384841;
+}
+:root.dark .toolbar-3d .tool-grid button {
+  background: #26332e;
+  border-color: #3a4c44;
+  color: #e0eae5;
+}
+:root.dark .toolbar-3d .tool-grid button:hover {
+  background: #2e3e37;
+  border-color: #4da689;
+  color: #ffffff;
+}
+:root.dark .toolbar-3d .tool-grid button.active {
+  background: #248a6a;
+  border-color: #248a6a;
+  color: #ffffff;
+}
+:root.dark .dash-toggle-group {
+  background: #232d29;
+  border-color: #384841;
+}
+:root.dark .dash-toggle-btn {
+  color: #9cb3a8;
+}
+:root.dark .dash-toggle-btn:hover {
+  background: rgba(36, 138, 106, 0.2);
+  color: #ffffff;
+}
+:root.dark .dash-toggle-btn.active {
+  background: #248a6a;
+  color: #ffffff;
+}
+:root.dark .solid-card {
+  background: #232d29;
+  border-color: #384841;
+  border-left-color: #4da689;
+}
+:root.dark .solid-card strong {
+  color: #62bda2;
+}
+:root.dark .solid-card small {
+  color: #8fa79c;
+}
+

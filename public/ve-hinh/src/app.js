@@ -1,16 +1,393 @@
 import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection} from './math.js';
 import {generateTable,tableExpressions} from './table.js';
 import {exprToLatex,compileExpressionP,detectExpressionType,normalizeToLHS} from './expression.js';
-import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG} from './render.js';
+import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG,screen3D,distToSegment} from './render.js';
 import {templateLibrary,applyLibraryTemplate} from './library.js';
 import {requestProposal} from './ai.js';
 import {buildCodexPrompt,parseCodexDraft} from './codex-bridge.js';
 import {exportTikZ} from './tikz.js';
-const $=id=>document.getElementById(id);
-if(window.parent!==window)document.body.classList.add('embedded');
-const testing=new URLSearchParams(location.search).get('testing')==='1';
-function sizeViewport(){document.documentElement.style.setProperty('--app-height',window.innerHeight+'px');}
-window.addEventListener('resize',sizeViewport,{passive:true});sizeViewport();
+
+export const tools3D = [
+  ['orbit3d', '🔄', 'Xoay góc nhìn', 0, 'Kéo chuột trên bảng vẽ để xoay tự do góc nhìn 3D'],
+  ['select3d', '↖', 'Chọn đối tượng', 0, 'Nhấp vào điểm hoặc đoạn thẳng 3D để xem và chỉnh thuộc tính'],
+  ['segment3d', '╱', 'Nối 2 đỉnh', 2, 'Chọn 2 đỉnh bất kỳ trong không gian để nối đoạn thẳng mới'],
+  ['midpoint3d', '⊙', 'Trung điểm', 2, 'Chọn 1 đoạn thẳng 3D hoặc 2 đỉnh để lấy trung điểm'],
+  ['ratio3d', '⊸', 'Chia tỉ lệ', 2, 'Chọn 1 đoạn thẳng 3D hoặc 2 đỉnh và nhập tỉ số t để chia tỉ lệ'],
+  ['altitude3d', '⊥', 'Hạ đường cao', 4, 'Chọn đỉnh và 3 điểm của mặt phẳng đáy để hạ đường cao'],
+  ['crosssection3d', '▱', 'Dựng thiết diện', 3, 'Chọn 3 điểm trong không gian để dựng mặt phẳng thiết diện']
+];
+
+export const primitiveNames = {
+  pyramid4: 'Chóp tứ giác S.ABCD',
+  pyramid3: 'Chóp tam giác S.ABC',
+  'regular-pyramid': 'Chóp đều đáy tứ giác',
+  prism: 'Lăng trụ tam giác',
+  box: 'Hình hộp chữ nhật',
+  cube: 'Hình lập phương'
+};
+
+export function freshSolidPointId(doc, prefix = 'P') {
+  const existing = new Set([
+    ...(doc.points || []).map(p => p.id),
+    ...(doc.solid?.points || []).map(p => p.id)
+  ]);
+  if (!existing.has(prefix)) return prefix;
+  let i = 1;
+  while (existing.has(prefix + i)) i++;
+  return prefix + i;
+}
+
+export function create3DPrimitive(type = 'pyramid4', options = {}) {
+  let points = [];
+  let segments = [];
+  let planes = [];
+  let solidType = 'pyramid';
+
+  if (type === 'pyramid4' || type === 'pyramid') {
+    solidType = 'pyramid';
+    points = [
+      { id: 'A', label: 'A', x: -1.8, y: -1.2, z: -1.2 },
+      { id: 'B', label: 'B', x: 1.8, y: -1.2, z: -1.2 },
+      { id: 'C', label: 'C', x: 1.8, y: -1.2, z: 1.2 },
+      { id: 'D', label: 'D', x: -1.8, y: -1.2, z: 1.2 },
+      { id: 'S', label: 'S', x: -1.8, y: 1.8, z: -1.2 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CD', refs: ['C', 'D'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DA', refs: ['D', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SA', refs: ['S', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SB', refs: ['S', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SC', refs: ['S', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SD', refs: ['S', 'D'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'base', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 }
+    ];
+  } else if (type === 'pyramid3' || type === 'tetrahedron') {
+    solidType = 'tetrahedron';
+    points = [
+      { id: 'A', label: 'A', x: 0, y: -1.2, z: -1.8 },
+      { id: 'B', label: 'B', x: 1.8, y: -1.2, z: 1.0 },
+      { id: 'C', label: 'C', x: -1.8, y: -1.2, z: 1.0 },
+      { id: 'S', label: 'S', x: 0, y: 2.0, z: -1.8 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CA', refs: ['C', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SA', refs: ['S', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SB', refs: ['S', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SC', refs: ['S', 'C'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'base', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 }
+    ];
+  } else if (type === 'regular-pyramid') {
+    solidType = 'pyramid';
+    points = [
+      { id: 'A', label: 'A', x: -1.6, y: -1.2, z: -1.6 },
+      { id: 'B', label: 'B', x: 1.6, y: -1.2, z: -1.6 },
+      { id: 'C', label: 'C', x: 1.6, y: -1.2, z: 1.6 },
+      { id: 'D', label: 'D', x: -1.6, y: -1.2, z: 1.6 },
+      { id: 'S', label: 'S', x: 0, y: 2.0, z: 0 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CD', refs: ['C', 'D'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DA', refs: ['D', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SA', refs: ['S', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SB', refs: ['S', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SC', refs: ['S', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SD', refs: ['S', 'D'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'base', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 }
+    ];
+  } else if (type === 'prism') {
+    solidType = 'prism';
+    points = [
+      { id: 'A', label: 'A', x: -1.5, y: -1.2, z: -1.0 },
+      { id: 'B', label: 'B', x: 1.5, y: -1.2, z: -1.0 },
+      { id: 'C', label: 'C', x: 0, y: -1.2, z: 1.2 },
+      { id: 'A1', label: "A'", x: -1.5, y: 1.4, z: -1.0 },
+      { id: 'B1', label: "B'", x: 1.5, y: 1.4, z: -1.0 },
+      { id: 'C1', label: "C'", x: 0, y: 1.4, z: 1.2 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CA', refs: ['C', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'A1B1', refs: ['A1', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'B1C1', refs: ['B1', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'C1A1', refs: ['C1', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'AA1', refs: ['A', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BB1', refs: ['B', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CC1', refs: ['C', 'C1'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'bottom', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 },
+      { id: 'top', refs: ['A1', 'B1', 'C1'], color: '#176b52', opacity: 0.1 }
+    ];
+  } else if (type === 'box') {
+    solidType = 'box';
+    points = [
+      { id: 'A', label: 'A', x: -1.8, y: -1.1, z: -1.2 },
+      { id: 'B', label: 'B', x: 1.8, y: -1.1, z: -1.2 },
+      { id: 'C', label: 'C', x: 1.8, y: -1.1, z: 1.2 },
+      { id: 'D', label: 'D', x: -1.8, y: -1.1, z: 1.2 },
+      { id: 'A1', label: "A'", x: -1.8, y: 1.3, z: -1.2 },
+      { id: 'B1', label: "B'", x: 1.8, y: 1.3, z: -1.2 },
+      { id: 'C1', label: "C'", x: 1.8, y: 1.3, z: 1.2 },
+      { id: 'D1', label: "D'", x: -1.8, y: 1.3, z: 1.2 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CD', refs: ['C', 'D'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DA', refs: ['D', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'A1B1', refs: ['A1', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'B1C1', refs: ['B1', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'C1D1', refs: ['C1', 'D1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'D1A1', refs: ['D1', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'AA1', refs: ['A', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BB1', refs: ['B', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CC1', refs: ['C', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DD1', refs: ['D', 'D1'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'bottom', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 },
+      { id: 'top', refs: ['A1', 'B1', 'C1'], color: '#176b52', opacity: 0.1 }
+    ];
+  } else if (type === 'cube') {
+    solidType = 'cube';
+    const s = 1.3;
+    points = [
+      { id: 'A', label: 'A', x: -s, y: -s, z: -s },
+      { id: 'B', label: 'B', x: s, y: -s, z: -s },
+      { id: 'C', label: 'C', x: s, y: -s, z: s },
+      { id: 'D', label: 'D', x: -s, y: -s, z: s },
+      { id: 'A1', label: "A'", x: -s, y: s, z: -s },
+      { id: 'B1', label: "B'", x: s, y: s, z: -s },
+      { id: 'C1', label: "C'", x: s, y: s, z: s },
+      { id: 'D1', label: "D'", x: -s, y: s, z: s }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CD', refs: ['C', 'D'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DA', refs: ['D', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'A1B1', refs: ['A1', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'B1C1', refs: ['B1', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'C1D1', refs: ['C1', 'D1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'D1A1', refs: ['D1', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'AA1', refs: ['A', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BB1', refs: ['B', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CC1', refs: ['C', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DD1', refs: ['D', 'D1'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'bottom', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 },
+      { id: 'top', refs: ['A1', 'B1', 'C1'], color: '#176b52', opacity: 0.1 }
+    ];
+  }
+
+  const baseDoc = options.baseDoc || blankDocument();
+  const next = structuredClone(baseDoc);
+  next.solid = {
+    enabled: true,
+    type: solidType,
+    rotation: options.rotation ?? next.solid?.rotation ?? 30,
+    tilt: options.tilt ?? next.solid?.tilt ?? 20,
+    points,
+    segments,
+    planes,
+    crossSections: []
+  };
+  return next;
+}
+
+export function createSegment3D(doc, p1, p2, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.segments ??= [];
+  next.solid.points ??= [];
+
+  const exists1 = next.solid.points.some(p => p.id === p1) || next.points.some(p => p.id === p1);
+  const exists2 = next.solid.points.some(p => p.id === p2) || next.points.some(p => p.id === p2);
+  if (!exists1 || !exists2) throw new Error('Đỉnh nối không tồn tại');
+  if (p1 === p2) throw new Error('Hai đầu đoạn phải là 2 đỉnh khác nhau');
+
+  const existing = next.solid.segments.find(s =>
+    (s.refs[0] === p1 && s.refs[1] === p2) || (s.refs[0] === p2 && s.refs[1] === p1)
+  );
+  if (existing) return next;
+
+  let segId = options.id || ('seg_' + p1 + '_' + p2);
+  let counter = 1;
+  while (next.solid.segments.some(s => s.id === segId)) {
+    segId = 'seg_' + p1 + '_' + p2 + '_' + counter++;
+  }
+
+  next.solid.segments.push({
+    id: segId,
+    refs: [p1, p2],
+    styleMode: options.styleMode || 'auto',
+    color: options.color || '#176b52'
+  });
+  return next;
+}
+
+export function createMidpoint3D(doc, p1, p2, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.points ??= [];
+
+  const midId = options.id || freshSolidPointId(next, 'M');
+  const label = options.label || midId;
+
+  next.solid.points.push({
+    id: midId,
+    kind: 'midpoint',
+    refs: [p1, p2],
+    label
+  });
+  return next;
+}
+
+export function createRatio3D(doc, p1, p2, t = 0.5, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.points ??= [];
+
+  const ratioId = options.id || freshSolidPointId(next, 'P');
+  const label = options.label || ratioId;
+
+  next.solid.points.push({
+    id: ratioId,
+    kind: 'ratio',
+    refs: [p1, p2],
+    t: Number(t),
+    label
+  });
+  return next;
+}
+
+export function createAltitude3D(doc, apexId, baseRefs, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.points ??= [];
+  next.solid.segments ??= [];
+
+  const footId = options.footId || freshSolidPointId(next, 'H');
+  const footLabel = options.footLabel || footId;
+
+  next.solid.points.push({
+    id: footId,
+    kind: 'foot',
+    refs: [apexId, ...baseRefs],
+    label: footLabel
+  });
+
+  const segId = options.segmentId || ('alt_' + apexId + '_' + footId);
+  next.solid.segments.push({
+    id: segId,
+    refs: [apexId, footId],
+    styleMode: options.styleMode || 'auto',
+    color: options.color || '#d09232'
+  });
+  return next;
+}
+
+export function createCrossSection3D(doc, planeRefs, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.crossSections ??= [];
+
+  const csId = options.id || ('cs_' + Date.now());
+  next.solid.crossSections.push({
+    id: csId,
+    planeRefs: [...planeRefs],
+    color: options.color || '#dfac48',
+    opacity: options.opacity ?? 0.35
+  });
+  return next;
+}
+
+export function toggleSegmentStyle(doc, segmentId, mode) {
+  const next = structuredClone(doc);
+  if (!next.solid?.segments) return next;
+  const seg = next.solid.segments.find(s => s.id === segmentId);
+  if (!seg) return next;
+  if (mode && ['auto', 'solid', 'dashed'].includes(mode)) {
+    seg.styleMode = mode;
+  } else {
+    const current = seg.styleMode || 'auto';
+    seg.styleMode = current === 'auto' ? 'solid' : current === 'solid' ? 'dashed' : 'auto';
+  }
+  return next;
+}
+
+export function apply3DOrbit(doc, rotationDelta, tiltDelta) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  const currentRot = next.solid.rotation ?? 30;
+  const currentTilt = next.solid.tilt ?? 20;
+  next.solid.rotation = ((currentRot + rotationDelta + 540) % 360) - 180;
+  next.solid.tilt = Math.max(-80, Math.min(80, currentTilt + tiltDelta));
+  return next;
+}
+
+export function create3DHistorySession(initialDoc = blankDocument()) {
+  let doc = structuredClone(initialDoc);
+  let history = [];
+  let future = [];
+
+  function commit(next) {
+    try {
+      next = validateDocument(next);
+    } catch (e) {
+      return false;
+    }
+    if (JSON.stringify(next) === JSON.stringify(doc)) return true;
+    history.push(structuredClone(doc));
+    if (history.length > 80) history.shift();
+    future = [];
+    doc = next;
+    return true;
+  }
+
+  function undo() {
+    if (!history.length) return false;
+    future.push(doc);
+    doc = history.pop();
+    return true;
+  }
+
+  function redo() {
+    if (!future.length) return false;
+    history.push(doc);
+    doc = future.pop();
+    return true;
+  }
+
+  return {
+    get doc() { return doc; },
+    get history() { return history; },
+    get future() { return future; },
+    commit,
+    undo,
+    redo
+  };
+}
+
+const $=id=>typeof document !== 'undefined' ? document.getElementById(id) : null;
+if(typeof window !== 'undefined' && window.parent!==window && typeof document !== 'undefined') document.body?.classList.add('embedded');
+const testing=typeof location !== 'undefined' && new URLSearchParams(location.search).get('testing')==='1';
+function sizeViewport(){if(typeof document !== 'undefined' && typeof window !== 'undefined')document.documentElement.style.setProperty('--app-height',window.innerHeight+'px');}
+if(typeof window !== 'undefined'){window.addEventListener('resize',sizeViewport,{passive:true});sizeViewport();}
 let doc=blankDocument(),mode='geometry',tool='select',selected='',pending=[],snappedPointId=null,scale=55,history=[],future=[],drag=null,image=null,proposal=null,revision=0,busy=false,pan={x:0,y:0};
 const tools=[
  ['select','↖','Chọn / kéo',0,'Chọn đối tượng hoặc kéo điểm tự do'],['region','▧','Chọn vùng',0,'Kéo chuột trái tạo khung; hình hữu hạn nằm trọn, đường/tia cắt khung. Esc bỏ chọn'],['point','•','Điểm',0,'Nhấn vào bảng để tạo điểm'],
@@ -21,34 +398,78 @@ tools.push(['ray','↗','Tia',2,'Chọn gốc tia, rồi điểm xác định h�
 const names=Object.fromEntries(tools.map(t=>[t[0],t[2]]));
 tools.push(['pan','✥','Di chuyển',0,'Kéo nền để di chuyển khung. Đặt lại bằng nút %']);
 tools.push(['vectorDifference','⇠','Hiệu vectơ',4,'Chọn đầu/cuối vectơ 1 rồi đầu/cuối vectơ 2'],['vectorScale','k→','Nhân vectơ',3,'Chọn gốc đặt kết quả, rồi đầu/cuối vectơ nguồn; sửa hệ số k'],['dot','·','Tích vô hướng',4,'Chọn đầu/cuối từng vectơ'],['vectorAngle','∠→','Góc hai vectơ',4,'Chọn đầu/cuối từng vectơ'],['vectorCoords','(x;y)','Tọa độ vectơ',2,'Chọn điểm đầu và cuối'],['circumcenter','⊙','Tâm ngoại tiếp',3,'Chọn ba đỉnh tam giác'],['incenter','◉','Tâm nội tiếp',3,'Chọn ba đỉnh tam giác'],['reflectAxis','↹','Đối xứng trục',3,'Chọn điểm gốc, rồi hai điểm đường trục'],['reflectCenter','⤡','Đối xứng tâm',2,'Chọn điểm gốc, rồi điểm tâm'],['translate','↦','Tịnh tiến',1,'Chọn điểm gốc; sửa vector dịch chuyển trong thuộc tính'],['rotateAround','⟳','Quay',2,'Chọn điểm gốc, rồi tâm quay; sửa góc trong thuộc tính'],['scaleFrom','⤢','Vị tự',2,'Chọn điểm gốc, rồi tâm vị tự; sửa hệ số k trong thuộc tính']);
-Object.assign(names,Object.fromEntries(tools.map(t=>[t[0],t[2]])),{affine:'Dựng theo cạnh gốc',rotate:'Quay quanh tâm',reflectAxis:'Đối xứng trục',reflectCenter:'Đối xứng tâm',translate:'Tịnh tiến',rotateAround:'Quay',scaleFrom:'Vị tự'});
+Object.assign(names,Object.fromEntries(tools.map(t=>[t[0],t[2]])),Object.fromEntries(tools3D.map(t=>[t[0],t[2]])),{
+  affine:'Dựng theo cạnh gốc',rotate:'Quay quanh tâm',reflectAxis:'Đối xứng trục',reflectCenter:'Đối xứng tâm',translate:'Tịnh tiến',rotateAround:'Quay',scaleFrom:'Vị tự',
+  orbit3d:'Xoay góc nhìn 3D',select3d:'Chọn đối tượng 3D',segment3d:'Nối 2 đỉnh 3D',midpoint3d:'Trung điểm 3D',ratio3d:'Chia tỉ lệ 3D',altitude3d:'Hạ đường cao 3D',crosssection3d:'Dựng thiết diện 3D'
+});
 const selectedIds=new Set();
 let keyboardOpen=false,keyboardInput=null,keyboardRange={id:'',start:0,end:0};
 let selectedFace=null,solidFaceMode=false;
 let draftBefore=null,sidebarView='tools';
 function cancelConstruction(){if(draftBefore){doc=draftBefore;draftBefore=null;}pending=[];snappedPointId=null;}
 function finishConstruction(next){const oldErrors=new Set(resolve(draftBefore||doc).errors),errors=resolve(next).errors.filter(e=>!oldErrors.has(e));if(errors.length){cancelConstruction();selected='';render();notify('Không dựng được '+names[tool]+': '+errors[0]+'. Chọn lại các điểm đúng điều kiện; Esc để hủy.');return;}if(draftBefore)doc=draftBefore;draftBefore=null;pending=[];if(commit(next))notify('Đã dựng '+names[tool]+'. Kéo điểm nguồn để kiểm tra; có thể hoàn tác.');else render();}
-const mobile=()=>matchMedia('(max-width:700px)').matches;
-function setSidebar(open){document.body.classList.toggle('sidebar-closed',!open);$('toggle-sidebar').setAttribute('aria-expanded',String(open));$('sidebar-backdrop').hidden=!open||!mobile();}
+const mobile=()=>typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width:700px)').matches : false;
+function setSidebar(open){if(typeof document === 'undefined') return; document.body.classList.toggle('sidebar-closed',!open);$('toggle-sidebar')?.setAttribute('aria-expanded',String(open));$('sidebar-backdrop').hidden=!open||!mobile();}
 function closeMobileSidebar(){if(mobile())setSidebar(false);}
-function syncSidebarTabs(){for(const [id,view]of [['show-tools','tools'],['show-properties','properties']]){$(id).classList.toggle('active',sidebarView===view);$(id).setAttribute('aria-pressed',String(sidebarView===view));}}
-$('toggle-sidebar').onclick=()=>setSidebar(document.body.classList.contains('sidebar-closed'));
-$('sidebar-backdrop').onclick=()=>setSidebar(false);
-document.querySelector('.details').id='details-panel';
-for(const [id,view]of [['show-tools','tools'],['show-properties','properties']])$(id).onclick=()=>{cancelConstruction();sidebarView=view;syncSidebarTabs();render();};
-const mobileBreakpoint=matchMedia('(max-width:700px)');mobileBreakpoint.addEventListener('change',()=>setSidebar(!mobile()));setSidebar(!mobile());
-const zoom=document.querySelector('.zoom-controls');for(const id of ['zoom-in','reset-view','zoom-out'])zoom.append($(id));document.querySelector('.divider').remove();
-function notify(message){$('notice').textContent=message;}
+function syncSidebarTabs(){if(typeof document === 'undefined') return; for(const [id,view]of [['show-tools','tools'],['show-properties','properties']]){$(id)?.classList.toggle('active',sidebarView===view);$(id)?.setAttribute('aria-pressed',String(sidebarView===view));}}
+if (typeof document !== 'undefined') {
+  $('toggle-sidebar').onclick=()=>setSidebar(document.body.classList.contains('sidebar-closed'));
+  $('sidebar-backdrop').onclick=()=>setSidebar(false);
+  document.querySelector('.details').id='details-panel';
+  for(const [id,view]of [['show-tools','tools'],['show-properties','properties']])$(id).onclick=()=>{cancelConstruction();sidebarView=view;syncSidebarTabs();render();};
+  const mobileBreakpoint=window.matchMedia?.('(max-width:700px)');mobileBreakpoint?.addEventListener('change',()=>setSidebar(!mobile()));setSidebar(!mobile());
+  const zoom=document.querySelector('.zoom-controls');for(const id of ['zoom-in','reset-view','zoom-out'])zoom?.append($(id));document.querySelector('.divider')?.remove();
+}
+function notify(message){if($('notice'))$('notice').textContent=message;}
 function persist(){if($('save-state'))$('save-state').textContent=testing?'Kiểm thử · không ghi bản người dùng':'Trong phiên · Lưu JSON để giữ';}
-function commit(next,{keepSelection=false}={}){try{next=validateDocument(next);}catch(e){notify(e.message);return false;}if(draftBefore)doc=draftBefore;draftBefore=null;pending=[];snappedPointId=null;if(!keepSelection)selectedIds.clear();if(JSON.stringify(next)===JSON.stringify(doc)){render();return true;}history.push(structuredClone(doc));if(history.length>80)history.shift();future=[];doc=next;revision++;persist();render();if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: chỉnh sửa');return true;}
+function commit(next,{keepSelection=false}={}){try{next=validateDocument(next);}catch(e){notify(e.message);return false;}if(draftBefore)doc=draftBefore;draftBefore=null;pending=[];snappedPointId=null;if(!keepSelection)selectedIds.clear();if(JSON.stringify(next)===JSON.stringify(doc)){render();return true;}history.push(structuredClone(doc));if(history.length>80)history.shift();future=[];doc=next;revision++;persist();render();if(!testing&&typeof window !== 'undefined')window.parent?.word2latexDrawingLog?.('Vẽ hình: chỉnh sửa');return true;}
 function freshId(source=doc){for(let i=0;i<26;i++){const id=String.fromCharCode(65+i);if(![...source.points,...source.shapes].some(p=>p.id===id))return id;}let i=1;while([...source.points,...source.shapes].some(p=>p.id==='P'+i))i++;return'P'+i;}
 function addShape(next,type,refs,extra={}){let i=1;while(next.shapes.some(s=>s.id==='s'+i)||next.points.some(p=>p.id==='s'+i))i++;next.shapes.push({id:'s'+i,type,refs:[...refs],color:'#176b52',...extra});selected='s'+i;}
 function pickTool(value){cancelConstruction();selectedIds.clear();selected='';notify('');tool=value;closeMobileSidebar();render();}
 const toolGroups=[['Cơ bản',['select','region','point','segment','line','ray','polygon','circle','equilateralTriangle','square','pan']],['Dựng quan hệ',['midpoint','perpendicularBisector','foot','parallel','perpendicular','bisector','equal','onLine','onCircle','circumcenter','incenter','tangent']],['Giao điểm',['intersection','lineCircle','circleCircle']],['Đo lường & vectơ',['length','angle','vector','vectorSum','vectorDifference','vectorScale','dot','vectorAngle','vectorCoords']],['Biến hình',['reflectAxis','reflectCenter','translate','rotateAround','scaleFrom']]];
 const normalize=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').toLowerCase();
-function toolMarkup(){const query=normalize($('tool-search').value);let count=0;const markup=toolGroups.map(([label,ids],index)=>{const items=ids.map(id=>tools.find(t=>t[0]===id)).filter(t=>normalize(t[2]+' '+t[4]).includes(query));count+=items.length;return items.length?'<details class="tool-section" '+(query||index===0?'open':'')+'><summary>'+label+'</summary><div class="tool-grid">'+items.map(t=>`<button data-tool="${t[0]}" title="${t[4]}" class="${tool===t[0]?'active':''}" aria-pressed="${tool===t[0]}"><span class="icon" aria-hidden="true">${t[1]}</span>${t[2]}</button>`).join('')+'</div></details>':'';}).join('');$('no-tools').hidden=count>0;return markup;}
-$('tool-search').oninput=()=>$('toolbar').innerHTML=toolMarkup();
-$('toolbar').innerHTML=toolMarkup();$('toolbar').addEventListener('click',e=>{const b=e.target.closest('[data-tool]');if(b)pickTool(b.dataset.tool);});
+function toolMarkup(){const query=normalize($('tool-search')?.value||'');let count=0;const markup=toolGroups.map(([label,ids],index)=>{const items=ids.map(id=>tools.find(t=>t[0]===id)).filter(t=>normalize(t[2]+' '+t[4]).includes(query));count+=items.length;return items.length?'<details class="tool-section" '+(query||index===0?'open':'')+'><summary>'+label+'</summary><div class="tool-grid">'+items.map(t=>`<button data-tool="${t[0]}" title="${t[4]}" class="${tool===t[0]?'active':''}" aria-pressed="${tool===t[0]}"><span class="icon" aria-hidden="true">${t[1]}</span>${t[2]}</button>`).join('')+'</div></details>':'';}).join('');if($('no-tools'))$('no-tools').hidden=count>0;return markup;}
+function filter3DTools(){
+  if(!$('toolbar-3d'))return;
+  const query=normalize($('tool-search')?.value||'');
+  let count=0;
+  $('toolbar-3d').querySelectorAll('.tool-section').forEach(section=>{
+    let sectionCount=0;
+    section.querySelectorAll('button').forEach(btn=>{
+      const match=!query||normalize((btn.textContent||'')+' '+(btn.getAttribute('title')||'')).includes(query);
+      btn.style.display=match?'':'none';
+      if(match){sectionCount++;count++;}
+    });
+    section.style.display=sectionCount>0?'':'none';
+  });
+  if($('no-tools'))$('no-tools').hidden=count>0;
+}
+if (typeof document !== 'undefined') {
+  $('tool-search').oninput=()=>{
+    if(mode==='solid'){
+      filter3DTools();
+    }else{
+      $('toolbar').innerHTML=toolMarkup();
+    }
+  };
+  $('toolbar').innerHTML=toolMarkup();$('toolbar').addEventListener('click',e=>{const b=e.target.closest('[data-tool]');if(b)pickTool(b.dataset.tool);});
+  if($('toolbar-3d')){
+    $('toolbar-3d').addEventListener('click',e=>{
+      const bPrim=e.target.closest('[data-primitive-3d]');
+      if(bPrim){
+        const pType=bPrim.dataset.primitive3d;
+        const next=create3DPrimitive(pType,{baseDoc:doc});
+        commit(next);
+        notify(`Đã khởi tạo khối cơ sở: ${primitiveNames[pType]||pType}`);
+        return;
+      }
+      const bTool=e.target.closest('[data-tool]');
+      if(bTool){
+        pickTool(bTool.dataset.tool);
+      }
+    });
+  }
+}
 function currentSVG(d = doc){const opts={grid:mode!=='geometry'&&$('grid').checked,scale,selected,pending,selectedIds};const svg=mode==='geometry'?renderSVG(d,opts):mode==='graph'?graphSVG(d.graph,opts):mode==='chart'?chartSVG(d.chart,opts):solidSVG(d.solid,{selectedFace});return mode==='geometry'?svg.replace('<rect width="1000" height="660" fill="#ffffff"/>','').replace('viewBox="0 0 1000 660"',`viewBox="${pan.x} ${pan.y} 1000 660"`):svg;}
 const mathKeys=[['x','x','x'],['y','y','y'],['pi','π','pi'],['e','e','e'],['open','(','('],['close',')',')'],...Array.from({length:10},(_,i)=>[String(i),String(i),String(i)]),['decimal','.', '.'],['add','+','+'],['subtract','−','-'],['multiply','×','*'],['divide','÷','/'],['power','xⁿ','^'],['square','x²','^2'],['sqrt','√','sqrt()',5],['sin','sin','sin()',4],['cos','cos','cos()',4],['tan','tan','tan()',4],['ln','ln','ln()',3],['log','log₁₀','log()',4],['exp','eˣ','exp()',4],['abs','|x|','abs()',4],['equal','=','='],['less','<','<'],['greater','>','>'],['lessEqual','≤','<='],['greaterEqual','≥','>='],['left','←'],['right','→'],['backspace','⌫'],['delete','⌦']];
 function mathKeyboardMarkup(){return '<details id="math-keyboard" class="math-keyboard" '+(keyboardOpen?'open':'')+'><summary>⌨ Bàn phím toán học</summary><p id="keyboard-target" class="tiny">Chọn ô hàm để nhập; y dùng trong phương trình ẩn.</p><div class="math-key-grid" role="group" aria-label="Phím toán học">'+mathKeys.map(([id,label,code])=>'<button type="button" data-math-key="'+id+'" aria-label="'+({sqrt:'Căn bậc hai',backspace:'Xóa ký tự trước con trỏ',delete:'Xóa ký tự sau con trỏ',left:'Dịch con trỏ trái',right:'Dịch con trỏ phải'}[id]||escape(label))+'" title="'+escape(code||label)+'">'+escape(label)+'</button>').join('')+'</div><p class="tiny">Chèn vào con trỏ hoặc thay phần đang chọn. Bấm Cập nhật đồ thị để áp dụng.</p></details>';}
@@ -71,10 +492,154 @@ function graphFeedback(graph){const params=Object.fromEntries(graph.params.map(p
  }catch(err){messages.push(prefix+err.message+'. Sửa biểu thức rồi cập nhật.');}}
  return messages;
 }
-function renderCanvas(d = doc, snapId = null){try{let svgStr=currentSVG(d);if(snapId&&mode==='geometry'){const snapPoint=resolve(d).points[snapId];if(snapPoint){const cx=500+snapPoint.x*scale;const cy=330-snapPoint.y*scale;svgStr=svgStr.replace('</svg>',`<circle cx="${cx}" cy="${cy}" r="15" fill="rgba(255, 204, 0, 0.4)" stroke="#ffcc00" stroke-width="2" pointer-events="none"/></svg>`);}}$('canvas').innerHTML=svgStr;updateCanvasGrid();for(const el of [...$('canvas').querySelectorAll('[data-shape]')]){if(!doc.shapes.some(shape=>shape.id===el.dataset.shape)){el.removeAttribute('data-shape');el.setAttribute('pointer-events','none');continue;}if(el.tagName.toLowerCase()==='text')continue;const hit=el.cloneNode(true);hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','20');hit.setAttribute('fill','none');hit.style.fill='none';hit.setAttribute('pointer-events','stroke');hit.removeAttribute('marker-end');el.before(hit);}}catch(e){notify(e.message);}$('errors').textContent=mode==='geometry'?resolve(doc).errors.map(e=>e+' · Kéo điểm nguồn về vị trí hợp lệ hoặc hoàn tác.').join('\n'):mode==='graph'?graphFeedback(doc.graph).join('\n'):'';}
-function render(){const ids=new Set([...doc.points,...doc.shapes].map(o=>o.id));for(const id of selectedIds)if(!ids.has(id))selectedIds.delete(id);if(mode==='geometry'&&!doc.points.some(p=>p.id===selected)&&!doc.shapes.some(s=>s.id===selected))selected='';renderCanvas(doc);if($('delete-selected'))$('delete-selected').disabled=mode==='geometry'&&!selected&&!selectedIds.size;$('title').value=doc.title;$('undo').disabled=!history.length;$('redo').disabled=!future.length;$('reset-view').textContent=Math.round(scale/55*100)+'%';document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',b.dataset.mode===mode);});document.querySelectorAll('[data-tool]').forEach(b=>{b.classList.toggle('active',b.dataset.tool===tool);b.setAttribute('aria-pressed',b.dataset.tool===tool);});$('toolbar').closest('.tools').hidden=mode!=='geometry'||sidebarView==='properties';$('details-panel').hidden=mode==='geometry'&&sidebarView==='tools';$('show-tools').disabled=mode!=='geometry';const guide=tools.find(t=>t[0]===tool);$('hint').textContent=mode==='geometry'?guide[4]+(guide[3]!==0?' · Bước '+(pending.length+1)+(guide[3]>0?'/'+guide[3]:' · đóng tại điểm đầu'):'')+(pending.length?' · Đã chọn '+pending.join(' → '):''):'';
-  if(mode!=='geometry'&&$('hint'))$('hint').textContent=mode==='graph'?'Sửa hàm và kéo thanh tham số a':mode==='chart'?'Sửa dữ liệu để cập nhật biểu đồ':'';
-  document.querySelector('#open-templates small').textContent=templateLibrary[mode].length+' mẫu · '+modeNames[mode];renderProperties();renderRestoreControl();}
+function renderCanvas(d = doc, snapId = null){
+  try{
+    let svgStr=currentSVG(d);
+    if(snapId&&mode==='geometry'){
+      const snapPoint=resolve(d).points[snapId];
+      if(snapPoint){
+        const cx=500+snapPoint.x*scale;
+        const cy=330-snapPoint.y*scale;
+        svgStr=svgStr.replace('</svg>',`<circle cx="${cx}" cy="${cy}" r="15" fill="rgba(255, 204, 0, 0.4)" stroke="#ffcc00" stroke-width="2" pointer-events="none"/></svg>`);
+      }
+    }
+    $('canvas').innerHTML=svgStr;
+    updateCanvasGrid();
+    if(mode==='geometry'){
+      for(const el of [...$('canvas').querySelectorAll('[data-shape]')]){
+        if(!doc.shapes.some(shape=>shape.id===el.dataset.shape)){
+          el.removeAttribute('data-shape');
+          el.setAttribute('pointer-events','none');
+          continue;
+        }
+        if(el.tagName.toLowerCase()==='text')continue;
+        const hit=el.cloneNode(true);
+        hit.setAttribute('stroke','transparent');
+        hit.setAttribute('stroke-width','20');
+        hit.setAttribute('fill','none');
+        hit.style.fill='none';
+        hit.setAttribute('pointer-events','stroke');
+        hit.removeAttribute('marker-end');
+        el.before(hit);
+      }
+    } else if(mode==='solid'){
+      const camera={rotation:d.solid?.rotation??30,tilt:d.solid?.tilt??20};
+      const resolved=resolve(d);
+      const allPts={...resolved.points,...(resolved.solidPoints||{})};
+
+      // 1. Tag vertex circles
+      $('canvas').querySelectorAll('[data-vertex]').forEach(el=>{
+        const vid=el.getAttribute('data-vertex');
+        el.setAttribute('data-point',vid);
+        el.setAttribute('tabindex','0');
+        if(selected===vid)el.classList.add('selected');
+        if(pending.includes(vid))el.classList.add('pending');
+      });
+
+      // 2. Add invisible segment hit-lines and selection glow
+      if(d.solid?.segments?.length>0){
+        const svg=$('canvas').querySelector('svg');
+        if(svg){
+          let segLayer=svg.querySelector('#solid-segments-hit-layer');
+          if(!segLayer){
+            segLayer=document.createElementNS('http://www.w3.org/2000/svg','g');
+            segLayer.id='solid-segments-hit-layer';
+            svg.appendChild(segLayer);
+          }
+          segLayer.innerHTML='';
+          for(const seg of d.solid.segments){
+            const p1=allPts[seg.refs[0]];
+            const p2=allPts[seg.refs[1]];
+            if(!p1||!p2)continue;
+            const s1=screen3D(p1,camera);
+            const s2=screen3D(p2,camera);
+
+            const hitLine=document.createElementNS('http://www.w3.org/2000/svg','line');
+            hitLine.setAttribute('x1',String(s1.x));
+            hitLine.setAttribute('y1',String(s1.y));
+            hitLine.setAttribute('x2',String(s2.x));
+            hitLine.setAttribute('y2',String(s2.y));
+            hitLine.setAttribute('stroke','transparent');
+            hitLine.setAttribute('stroke-width','16');
+            hitLine.setAttribute('pointer-events','stroke');
+            hitLine.setAttribute('data-segment-3d',seg.id);
+            hitLine.setAttribute('data-segment',seg.id);
+            hitLine.style.cursor='pointer';
+            segLayer.appendChild(hitLine);
+
+            if(selected===seg.id){
+              const selGlow=document.createElementNS('http://www.w3.org/2000/svg','line');
+              selGlow.setAttribute('x1',String(s1.x));
+              selGlow.setAttribute('y1',String(s1.y));
+              selGlow.setAttribute('x2',String(s2.x));
+              selGlow.setAttribute('y2',String(s2.y));
+              selGlow.setAttribute('stroke','#d09232');
+              selGlow.setAttribute('stroke-width','4.5');
+              selGlow.setAttribute('stroke-opacity','0.6');
+              selGlow.setAttribute('pointer-events','none');
+              segLayer.appendChild(selGlow);
+            }
+          }
+        }
+      }
+
+      // 3. Tag cross-section polygons
+      if(d.solid?.crossSections?.length>0){
+        const polyEls=$('canvas').querySelectorAll('polygon');
+        d.solid.crossSections.forEach((cs,i)=>{
+          if(polyEls[i]){
+            polyEls[i].setAttribute('data-crosssection',cs.id);
+            polyEls[i].style.cursor='pointer';
+            if(selected===cs.id){
+              polyEls[i].setAttribute('stroke','#d09232');
+              polyEls[i].setAttribute('stroke-width','3');
+            }
+          }
+        });
+      }
+    }
+  }catch(e){notify(e.message);}
+  $('errors').textContent=mode==='geometry'||mode==='solid'?resolve(doc).errors.map(e=>e+' · Kéo điểm nguồn về vị trí hợp lệ hoặc hoàn tác.').join('\n'):mode==='graph'?graphFeedback(doc.graph).join('\n'):'';
+}
+function render(){
+  const is3D=mode==='solid';
+  const isDrawing=mode==='geometry'||is3D;
+  const ids=new Set([...doc.points,...doc.shapes,...(doc.solid?.points||[]),...(doc.solid?.segments||[]),...(doc.solid?.crossSections||[])].map(o=>o.id));
+  for(const id of selectedIds)if(!ids.has(id))selectedIds.delete(id);
+  if(mode==='geometry'&&!doc.points.some(p=>p.id===selected)&&!doc.shapes.some(s=>s.id===selected))selected='';
+  if(is3D&&!(doc.solid?.points?.some(p=>p.id===selected))&&!(doc.solid?.segments?.some(s=>s.id===selected))&&!(doc.solid?.crossSections?.some(c=>c.id===selected)))selected='';
+  renderCanvas(doc);
+  if($('delete-selected'))$('delete-selected').disabled=(mode==='geometry'&&!selected&&!selectedIds.size)||(is3D&&!selected);
+  $('title').value=doc.title;
+  $('undo').disabled=!history.length;
+  $('redo').disabled=!future.length;
+  $('reset-view').textContent=Math.round(scale/55*100)+'%';
+  document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});
+  document.querySelectorAll('[data-tool]').forEach(b=>{b.classList.toggle('active',b.dataset.tool===tool);b.setAttribute('aria-pressed',String(b.dataset.tool===tool));});
+  $('toolbar').closest('.tools').hidden=!isDrawing||sidebarView==='properties';
+  $('details-panel').hidden=isDrawing&&sidebarView==='tools';
+  $('show-tools').disabled=!isDrawing;
+  if($('tools-badge'))$('tools-badge').textContent=is3D?'3D':'2D';
+  if($('tools-heading'))$('tools-heading').textContent=is3D?'Công cụ 3D':'Công cụ dựng';
+  if($('toolbar-3d'))$('toolbar-3d').hidden=!is3D;
+  if($('toolbar'))$('toolbar').hidden=is3D;
+
+  if(mode==='geometry'){
+    const guide=tools.find(t=>t[0]===tool);
+    $('hint').textContent=guide?guide[4]+(guide[3]!==0?' · Bước '+(pending.length+1)+(guide[3]>0?'/'+guide[3]:' · đóng tại điểm đầu'):'')+(pending.length?' · Đã chọn '+pending.join(' → '):''):'';
+  }else if(is3D){
+    const guide=tools3D.find(t=>t[0]===tool)||tools.find(t=>t[0]===tool);
+    $('hint').textContent=guide?guide[4]+(guide[3]>0?' · Bước '+(pending.length+1)+'/'+guide[3]:'')+(pending.length?' · Đã chọn '+pending.join(' → '):''):'Kéo chuột để xoay góc nhìn 3D · Nhấp đối tượng để xem thuộc tính';
+    if($('toolbar-3d'))$('toolbar-3d').querySelectorAll('[data-tool]').forEach(btn=>{const a=btn.dataset.tool===tool;btn.classList.toggle('active',a);btn.setAttribute('aria-pressed',String(a));});
+    filter3DTools();
+  }else if($('hint')){
+    $('hint').textContent=mode==='graph'?'Sửa hàm và kéo thanh tham số a':mode==='chart'?'Sửa dữ liệu để cập nhật biểu đồ':'';
+  }
+  const tmplSmall=document.querySelector('#open-templates small');
+  if(tmplSmall)tmplSmall.textContent=templateLibrary[mode].length+' mẫu · '+modeNames[mode];
+  renderProperties();
+  renderRestoreControl();
+}
 const field=(label,html)=>`<label class="field">${label}${html}</label>`;
 const number=(id,value,attrs='')=>`<input id="${id}" type="number" value="${value}" ${/\bstep=/.test(attrs)?'':'step="0.1"'} ${attrs}>`;
 function renderProperties(){const target=$('properties');if(mode==='geometry'&&selectedIds.size){$('properties-title').textContent='Tập chọn';renderGroupProperties(target);return;}$('properties-title').textContent=mode==='geometry'?'Thuộc tính':mode==='graph'?'Hàm số & tham số':mode==='chart'?'Dữ liệu thống kê':'Góc nhìn không gian';
@@ -233,7 +798,200 @@ function renderProperties(){const target=$('properties');if(mode==='geometry'&&s
     };
     $('chart-type').onchange=e=>{try{const next=readChart();next.chart.type=e.target.value;next.chart.start??=0;next.chart.width??=10;notify('');if(!commit(next))e.target.value=c.type;}catch(err){e.target.value=c.type;notify(err.message);}};
     $('apply-chart').onclick=()=>{try{notify('');commit(readChart());}catch(err){notify(err.message);}};
-  }else{target.innerHTML=field('Khối hình',`<select id="solid-type">${Object.entries(solidNames).map(([v,n])=>`<option value="${v}" ${doc.solid.type===v?'selected':''}>${n}</option>`).join('')}</select>`)+(['pyramid','prism'].includes(doc.solid.type)?field('Số cạnh đáy đều',number('solid-sides',doc.solid.sides??(doc.solid.type==='prism'?3:4),'min="3" max="12" step="1"')):'')+field('Xoay ngang',`<input id="rotation" type="range" min="-180" max="180" value="${doc.solid.rotation}">`)+field('Góc nâng',`<input id="tilt" type="range" min="-80" max="80" value="${doc.solid.tilt}">`)+'<p class="tiny">Kéo hình để xoay. Cạnh khuất tự đổi nét đứt. Chưa hỗ trợ thiết diện / ràng buộc 3D.</p>';$('solid-type').onchange=e=>{const next=structuredClone(doc);next.solid.type=e.target.value;next.solid.enabled=true;delete next.solid.faceStyles;selectedFace=null;solidFaceMode=false;commit(next);};if($('solid-sides'))$('solid-sides').onchange=e=>{const next=structuredClone(doc);next.solid.sides=Number(e.target.value);delete next.solid.faceStyles;selectedFace=null;commit(next);};for(const id of ['rotation','tilt']){let before;$(id).onpointerdown=()=>before=structuredClone(doc);$(id).oninput=e=>{before??=structuredClone(doc);doc.solid[id]=Number(e.target.value);renderCanvas();};$(id).onchange=()=>{const next=structuredClone(doc);if(before)doc=before;commit(next);before=null;};}renderFaceControls(target);}
+  }else{
+    $('properties-title').textContent='Thuộc tính 3D';
+    const pts=doc.solid?.points||[];
+    const segs=doc.solid?.segments||[];
+    const css=doc.solid?.crossSections||[];
+
+    const p=pts.find(pt=>pt.id===selected);
+    const s=segs.find(sg=>sg.id===selected);
+    const cs=css.find(c=>c.id===selected);
+
+    let objSelect='<select class="object-list" id="solid-object-select" aria-label="Chọn đối tượng 3D"><option value="">Tất cả / Chưa chọn đối tượng…</option>'+
+      pts.map(pt=>`<option value="${escape(pt.id)}" ${pt.id===selected?'selected':''}>Điểm ${escape(pt.label||pt.id)}${pt.kind?' · '+(names[pt.kind]||pt.kind):''}</option>`).join('')+
+      segs.map(sg=>`<option value="${escape(sg.id)}" ${sg.id===selected?'selected':''}>Đoạn ${sg.refs.join(' – ')} · ${sg.styleMode==='dashed'?'Nét đứt':sg.styleMode==='solid'?'Nét liền':'Tự động'}</option>`).join('')+
+      css.map(c=>`<option value="${escape(c.id)}" ${c.id===selected?'selected':''}>Thiết diện ${(c.planeRefs||c.refs||[]).join(' – ')}</option>`).join('')+
+      '</select>';
+
+    if(p){
+      const resolved=resolve(doc);
+      const coords=(resolved.solidPoints||{})[p.id]||resolved.points[p.id]||p;
+      const editable=!p.kind||p.kind==='free'||p.kind==='preset';
+
+      let html=objSelect+
+        `<div class="solid-card"><strong>Điểm 3D: ${escape(p.label||p.id)}</strong><small>${p.kind?'Điểm phụ thuộc ('+(names[p.kind]||p.kind)+(p.refs?' từ '+p.refs.join(', '):'')+')':'Điểm tự do · có thể sửa tọa độ'}</small></div>`+
+        field('Nhãn',`<input id="solid-point-label" maxlength="80" value="${escape(p.label||p.id)}">`)+
+        `<div class="solid-coords-grid">`+
+        field('x',number('solid-point-x',coords?.x!==undefined?coords.x.toFixed(3):0,editable?'':'disabled'))+
+        field('y',number('solid-point-y',coords?.y!==undefined?coords.y.toFixed(3):0,editable?'':'disabled'))+
+        field('z',number('solid-point-z',coords?.z!==undefined?coords.z.toFixed(3):0,editable?'':'disabled'))+
+        `</div>`;
+
+      if(editable){
+        html+=`<button id="solid-apply-coords" class="secondary full">Áp dụng tọa độ</button>`;
+      }
+      if(p.kind==='ratio'){
+        html+=field('Tỉ số chia đoạn t',`<input id="solid-point-t" type="number" step="0.05" value="${p.t??0.5}">`);
+      }
+      html+=`<button id="delete-solid-object" class="secondary full delete">Xóa điểm 3D này</button>`;
+      target.innerHTML=html;
+
+      $('solid-object-select').onchange=e=>{selected=e.target.value;render();};
+      $('solid-point-label').onchange=e=>{
+        const next=structuredClone(doc);
+        const targetPt=next.solid.points.find(pt=>pt.id===p.id);
+        if(targetPt)targetPt.label=e.target.value;
+        commit(next);
+      };
+      if(editable){
+        const applyCoords=()=>{
+          const x=Number($('solid-point-x').value);
+          const y=Number($('solid-point-y').value);
+          const z=Number($('solid-point-z').value);
+          if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(z))return notify('Cần nhập đủ tọa độ x, y, z hợp lệ');
+          const next=movePoint(doc,p.id,x,y,z);
+          commit(next);
+        };
+        $('solid-apply-coords').onclick=applyCoords;
+        for(const axis of ['x','y','z']){
+          $('solid-point-'+axis).onkeydown=e=>{if(e.key==='Enter')applyCoords();};
+        }
+      }
+      if(p.kind==='ratio'&&$('solid-point-t')){
+        $('solid-point-t').onchange=e=>{
+          const next=structuredClone(doc);
+          const targetPt=next.solid.points.find(pt=>pt.id===p.id);
+          if(targetPt)targetPt.t=Number(e.target.value);
+          commit(next);
+        };
+      }
+      $('delete-solid-object').onclick=()=>{
+        const next=removePoint(doc,p.id);
+        selected='';
+        commit(next);
+        notify(`Đã xóa điểm 3D ${p.id}.`);
+      };
+      return;
+    }
+
+    if(s){
+      const curStyle=s.styleMode||'auto';
+      let html=objSelect+
+        `<div class="solid-card"><strong>Đoạn 3D: ${s.refs.join(' – ')}</strong><small>ID: ${s.id}</small></div>`+
+        `<label class="field">Trạng thái nét vẽ</label>`+
+        `<div class="dash-toggle-group">`+
+        `<button type="button" class="dash-toggle-btn ${curStyle==='auto'?'active':''}" data-solid-style="auto">⚡ Tự động</button>`+
+        `<button type="button" class="dash-toggle-btn ${curStyle==='solid'?'active':''}" data-solid-style="solid">── Nét liền</button>`+
+        `<button type="button" class="dash-toggle-btn ${curStyle==='dashed'?'active':''}" data-solid-style="dashed">┈ Nét đứt</button>`+
+        `</div>`+
+        field('Màu nét',`<input type="color" id="solid-segment-color" value="${s.color||'#176b52'}">`)+
+        `<button id="delete-solid-object" class="secondary full delete">Xóa đoạn 3D này</button>`;
+      target.innerHTML=html;
+
+      $('solid-object-select').onchange=e=>{selected=e.target.value;render();};
+      for(const btn of target.querySelectorAll('.dash-toggle-btn')){
+        btn.onclick=()=>{
+          const next=toggleSegmentStyle(doc,s.id,btn.dataset.solidStyle);
+          commit(next);
+        };
+      }
+      $('solid-segment-color').onchange=e=>{
+        const next=structuredClone(doc);
+        const targetSeg=next.solid.segments.find(seg=>seg.id===s.id);
+        if(targetSeg)targetSeg.color=e.target.value;
+        commit(next);
+      };
+      $('delete-solid-object').onclick=()=>{
+        const next=structuredClone(doc);
+        next.solid.segments=next.solid.segments.filter(seg=>seg.id!==s.id);
+        selected='';
+        commit(next);
+        notify(`Đã xóa đoạn 3D ${s.refs.join(' – ')}.`);
+      };
+      return;
+    }
+
+    if(cs){
+      let html=objSelect+
+        `<div class="solid-card"><strong>Thiết diện 3D: ${(cs.planeRefs||cs.refs||[]).join(' – ')}</strong><small>ID: ${cs.id}</small></div>`+
+        field('Màu tô',`<input type="color" id="solid-cs-color" value="${cs.color||'#dfac48'}">`)+
+        field('Độ đậm mờ (opacity)',`<input type="range" min="0" max="1" step="0.05" id="solid-cs-opacity" value="${cs.opacity??0.35}">`)+
+        `<button id="delete-solid-object" class="secondary full delete">Xóa thiết diện này</button>`;
+      target.innerHTML=html;
+
+      $('solid-object-select').onchange=e=>{selected=e.target.value;render();};
+      $('solid-cs-color').onchange=e=>{
+        const next=structuredClone(doc);
+        const targetCs=next.solid.crossSections.find(c=>c.id===cs.id);
+        if(targetCs)targetCs.color=e.target.value;
+        commit(next);
+      };
+      $('solid-cs-opacity').oninput=e=>{
+        const next=structuredClone(doc);
+        const targetCs=next.solid.crossSections.find(c=>c.id===cs.id);
+        if(targetCs)targetCs.opacity=Number(e.target.value);
+        commit(next);
+      };
+      $('delete-solid-object').onclick=()=>{
+        const next=structuredClone(doc);
+        next.solid.crossSections=next.solid.crossSections.filter(c=>c.id!==cs.id);
+        selected='';
+        commit(next);
+        notify(`Đã xóa thiết diện ${(cs.planeRefs||cs.refs||[]).join(' – ')}.`);
+      };
+      return;
+    }
+
+    // Default 3D controls when nothing is selected
+    target.innerHTML=objSelect+
+      field('Khối hình',`<select id="solid-type">${Object.entries(solidNames).map(([v,n])=>`<option value="${v}" ${doc.solid.type===v?'selected':''}>${n}</option>`).join('')}</select>`)+
+      (['pyramid','prism'].includes(doc.solid.type)?field('Số cạnh đáy đều',number('solid-sides',doc.solid.sides??(doc.solid.type==='prism'?3:4),'min="3" max="12" step="1"')):'')+
+      field('Xoay ngang',`<input id="rotation" type="range" min="-180" max="180" value="${doc.solid.rotation}">`)+
+      field('Góc nâng',`<input id="tilt" type="range" min="-80" max="80" value="${doc.solid.tilt}">`)+
+      `<button id="solid-reset-camera" class="secondary full" style="margin-top:6px">Đặt lại góc nhìn chuẩn (30°, 20°)</button>`+
+      '<p class="tiny">Kéo chuột trên bảng vẽ để xoay tự do. Cạnh khuất tự động đổi nét đứt. Nhấp đối tượng 3D để chỉnh thuộc tính.</p>';
+
+    $('solid-object-select').onchange=e=>{selected=e.target.value;render();};
+    $('solid-type').onchange=e=>{
+      const next=structuredClone(doc);
+      next.solid.type=e.target.value;
+      next.solid.enabled=true;
+      delete next.solid.faceStyles;
+      selectedFace=null;
+      solidFaceMode=false;
+      commit(next);
+    };
+    if($('solid-sides'))$('solid-sides').onchange=e=>{
+      const next=structuredClone(doc);
+      next.solid.sides=Number(e.target.value);
+      delete next.solid.faceStyles;
+      selectedFace=null;
+      commit(next);
+    };
+    for(const id of ['rotation','tilt']){
+      let before;
+      $(id).onpointerdown=()=>before=structuredClone(doc);
+      $(id).oninput=e=>{
+        before??=structuredClone(doc);
+        doc.solid[id]=Number(e.target.value);
+        renderCanvas();
+      };
+      $(id).onchange=()=>{
+        const next=structuredClone(doc);
+        if(before)doc=before;
+        commit(next);
+        before=null;
+      };
+    }
+    if($('solid-reset-camera'))$('solid-reset-camera').onclick=()=>{
+      const next=structuredClone(doc);
+      next.solid.rotation=30;
+      next.solid.tilt=20;
+      commit(next);
+    };
+    renderFaceControls(target);
+  }
 }
 function renderFaceControls(target){
  const faces=[...$('canvas').querySelectorAll('[data-face]')].map(el=>Number(el.dataset.face)).sort((a,b)=>a-b);
@@ -252,9 +1010,42 @@ function renderFaceControls(target){
 }
 function editShape(key,value){const next=structuredClone(doc);next.shapes.find(s=>s.id===selected)[key]=value;commit(next);}
 function deleteSelection(){
-  if(mode==='geometry'&&selectedIds.size){const next=removeSelection(doc,selectedIds),points=doc.points.length-next.points.length,shapes=doc.shapes.length-next.shapes.length;requestDeletion(next,'Xóa tập chọn và phụ thuộc: '+points+' điểm, '+shapes+' hình/đường? Undo khôi phục toàn bộ lần xóa.');return;}
-  if(mode!=='geometry'){const next=structuredClone(doc);if(next[mode==='graph'?'graph':mode==='chart'?'chart':'solid'].enabled===false)return;next[mode==='graph'?'graph':mode==='chart'?'chart':'solid'].enabled=false;requestDeletion(next,'Xóa '+(mode==='graph'?'đồ thị':mode==='chart'?'biểu đồ':'khối hình')+' khỏi bảng?');return;}
-  const p=doc.points.find(p=>p.id===selected),s=doc.shapes.find(s=>s.id===selected);if(!p&&!s){selected='';render();return notify('Chọn điểm/đường hoặc dùng danh sách đối tượng trước khi xóa.');}
+  if(mode==='geometry'&&selectedIds.size){
+    const next=removeSelection(doc,selectedIds),points=doc.points.length-next.points.length,shapes=doc.shapes.length-next.shapes.length;
+    requestDeletion(next,'Xóa tập chọn và phụ thuộc: '+points+' điểm, '+shapes+' hình/đường? Undo khôi phục toàn bộ lần xóa.');
+    return;
+  }
+  if(mode==='solid'&&selected){
+    const pts=doc.solid?.points||[],segs=doc.solid?.segments||[],css=doc.solid?.crossSections||[];
+    if(pts.some(p=>p.id===selected)){
+      const next=removePoint(doc,selected);
+      requestDeletion(next,`Xóa điểm 3D ${selected} và các đoạn/thiết diện phụ thuộc?`);
+      return;
+    }
+    if(segs.some(s=>s.id===selected)){
+      const next=structuredClone(doc);
+      next.solid.segments=next.solid.segments.filter(s=>s.id!==selected);
+      requestDeletion(next,`Xóa đoạn thẳng 3D ${selected}?`);
+      return;
+    }
+    if(css.some(c=>c.id===selected)){
+      const next=structuredClone(doc);
+      next.solid.crossSections=next.solid.crossSections.filter(c=>c.id!==selected);
+      requestDeletion(next,`Xóa thiết diện 3D ${selected}?`);
+      return;
+    }
+  }
+  if(mode!=='geometry'&&mode!=='solid'){
+    const next=structuredClone(doc);
+    if(next[mode==='graph'?'graph':'chart'].enabled===false)return;
+    next[mode==='graph'?'graph':'chart'].enabled=false;
+    requestDeletion(next,'Xóa '+(mode==='graph'?'đồ thị':'biểu đồ')+' khỏi bảng?');
+    return;
+  }
+  const p=doc.points.find(p=>p.id===selected),s=doc.shapes.find(s=>s.id===selected);
+  if(!p&&!s){
+    selected='';render();return notify('Chọn điểm/đường hoặc dùng danh sách đối tượng trước khi xóa.');
+  }
   const next=p?removePoint(doc,p.id):{...structuredClone(doc),shapes:doc.shapes.filter(q=>q.id!==s.id)};
   const pointCount=doc.points.length-next.points.length,shapeCount=doc.shapes.length-next.shapes.length;
   requestDeletion(next,`Xóa ${pointCount} điểm và ${shapeCount} hình/đường, gồm các phụ thuộc của ${p?p.label||p.id:names[s.type]+' '+s.refs.join(', ')}?`);
@@ -295,7 +1086,9 @@ function useShape(id){const shape=doc.shapes.find(s=>s.id===id);let accepted=fal
 function svgCoords(e){const canvas=$('canvas'),svg=canvas.querySelector('svg'),p=svg.createSVGPoint(),box=canvas.getBoundingClientRect();p.x=Math.max(box.left,Math.min(box.right,e.clientX));p.y=Math.max(box.top,Math.min(box.bottom,e.clientY));const q=p.matrixTransform(svg.getScreenCTM().inverse());return{x:q.x,y:q.y};}
 function visibleCanvasBounds(){const b=$('canvas').getBoundingClientRect(),a=svgCoords({clientX:b.left,clientY:b.top}),z=svgCoords({clientX:b.right,clientY:b.bottom});return{x:a.x,y:a.y,width:z.x-a.x,height:z.y-a.y};}
 function updateCanvasGrid(){const canvas=$('canvas');canvas.style.backgroundImage=mode==='geometry'&&$('grid').checked?'radial-gradient(circle, #cddcd5 1px, transparent 1px)':'none';if(mode!=='geometry')return;const svg=canvas.querySelector('svg'),matrix=svg.getScreenCTM(),b=canvas.getBoundingClientRect(),step=25*(scale/55)*matrix.a,p=svg.createSVGPoint();p.x=500;p.y=330;const origin=p.matrixTransform(matrix);canvas.style.backgroundSize=step+'px '+step+'px';canvas.style.backgroundPosition=(origin.x-b.left-step/2)+'px '+(origin.y-b.top-step/2)+'px';}
-new ResizeObserver(()=>{if(!$('canvas').clientWidth||!$('canvas').clientHeight)return;renderCanvas();if(drag?.region)drawMarquee();}).observe($('canvas'));
+if (typeof ResizeObserver !== 'undefined' && typeof document !== 'undefined' && $('canvas')) {
+  new ResizeObserver(()=>{if(!$('canvas').clientWidth||!$('canvas').clientHeight)return;renderCanvas();if(drag?.region)drawMarquee();}).observe($('canvas'));
+}
 function selectionRect(a,b){return{x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),right:Math.max(a.x,b.x),bottom:Math.max(a.y,b.y)};}
 function drawMarquee(){const svg=$('canvas').querySelector('svg');let box=svg.querySelector('#selection-marquee');if(!box){box=document.createElementNS('http://www.w3.org/2000/svg','rect');box.id='selection-marquee';box.setAttribute('fill','#dfac4830');box.setAttribute('stroke','#b07519');box.setAttribute('stroke-width','2');box.setAttribute('stroke-dasharray','6 4');box.setAttribute('pointer-events','none');svg.append(box);}const r=selectionRect(drag.start,drag.current);for(const [key,value]of Object.entries({x:r.x,y:r.y,width:r.right-r.x,height:r.bottom-r.y}))box.setAttribute(key,value);}
 function objectsInRect(a,b){const r=selectionRect(a,b),chosen=new Set(),inside=(x,y)=>x>=r.x&&x<=r.right&&y>=r.y&&y<=r.bottom,points=resolve(doc).points;
@@ -311,9 +1104,227 @@ function renderGroupProperties(target){const points=doc.points.filter(p=>selecte
  const apply=(objects,key,value)=>{const ids=new Set(objects.map(o=>o.id)),next=structuredClone(doc);for(const o of [...next.points,...next.shapes])if(ids.has(o.id))o[key]=value;commit(next,{keepSelection:true});};
  if($('multi-color'))$('multi-color').onchange=e=>apply(shapes,'color',e.target.value);if($('multi-dashed'))$('multi-dashed').onchange=e=>apply(strokes,'dashed',e.target.checked);if($('multi-labels'))$('multi-labels').onchange=e=>apply(points,'labelVisible',e.target.checked);$('multi-visible').onchange=e=>apply([...points,...shapes],'visible',e.target.checked);$('delete-group').onclick=deleteSelection;$('clear-group').onclick=()=>{selectedIds.clear();selected='';render();};
 }
-function coords(e){const svg=$('canvas').querySelector('svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());return{x:(q.x-500)/scale,y:(330-q.y)/scale};}
+function coords(e){const svg=$('canvas')?.querySelector('svg');if(!svg)return{x:0,y:0};const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());return{x:(q.x-500)/scale,y:(330-q.y)/scale};}
+if (typeof document !== 'undefined') {
 $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const point=e.target.closest('[data-point]')?.dataset.point,shape=e.target.closest('[data-shape]')?.dataset.shape;
-  if(mode==='solid'){if(solidFaceMode){const face=e.target.closest('[data-face]')?.dataset.face;if(face!==undefined){selectedFace=Number(face);notify('Đã chọn mặt '+(selectedFace+1)+'. Chỉnh màu và độ đậm trong sidebar.');render();}else notify('Chọn bên trong một mặt hữu hạn của khối hoặc chọn trong danh sách. Tắt Chọn mặt để kéo xoay.');return;}drag={before:structuredClone(doc),px:e.clientX,py:e.clientY,solid:true};$('canvas').setPointerCapture(e.pointerId);return;}
+  if(mode==='solid'){
+    if(solidFaceMode){
+      const face=e.target.closest('[data-face]')?.dataset.face;
+      if(face!==undefined){
+        selectedFace=Number(face);
+        notify('Đã chọn mặt '+(selectedFace+1)+'. Chỉnh màu và độ đậm trong sidebar.');
+        render();
+      }else notify('Chọn bên trong một mặt hữu hạn của khối hoặc chọn trong danh sách. Tắt Chọn mặt để kéo xoay.');
+      return;
+    }
+
+    const camera={rotation:doc.solid?.rotation??30,tilt:doc.solid?.tilt??20};
+    const resolved=resolve(doc);
+    const allPts={...resolved.points,...(resolved.solidPoints||{})};
+
+    // Find clicked vertex
+    const vertexTarget=e.target.closest('[data-vertex], [data-point], [data-vertex-label]');
+    let hitVertex=vertexTarget?.dataset?.vertex||vertexTarget?.dataset?.point||vertexTarget?.dataset?.vertexLabel;
+
+    // Geometric hit-test for vertex if slightly missed
+    const svg=$('canvas').querySelector('svg');
+    if(svg&&(!hitVertex||!doc.solid?.points?.some(p=>p.id===hitVertex))){
+      const pt=svg.createSVGPoint();
+      pt.x=e.clientX;pt.y=e.clientY;
+      const q=pt.matrixTransform(svg.getScreenCTM().inverse());
+      if(doc.solid?.points){
+        for(const p of doc.solid.points){
+          const rp=allPts[p.id]||p;
+          if(rp.visible===false)continue;
+          const sc=screen3D(rp,camera);
+          if(Math.hypot(sc.x-q.x,sc.y-q.y)<18){
+            hitVertex=p.id;
+            break;
+          }
+        }
+      }
+    }
+
+    // Find clicked segment
+    const segTarget=e.target.closest('[data-segment-3d], [data-segment]');
+    let hitSegment=segTarget?.dataset?.segment3d||segTarget?.dataset?.segment;
+    if(!hitVertex&&!hitSegment&&svg&&doc.solid?.segments){
+      const pt=svg.createSVGPoint();
+      pt.x=e.clientX;pt.y=e.clientY;
+      const q=pt.matrixTransform(svg.getScreenCTM().inverse());
+      for(const s of doc.solid.segments){
+        const p1=allPts[s.refs[0]];
+        const p2=allPts[s.refs[1]];
+        if(!p1||!p2)continue;
+        const s1=screen3D(p1,camera);
+        const s2=screen3D(p2,camera);
+        const d=distToSegment(q,s1,s2);
+        if(d<12){
+          hitSegment=s.id;
+          break;
+        }
+      }
+    }
+
+    // Find clicked cross section
+    const csTarget=e.target.closest('[data-crosssection]');
+    const hitCrossSection=csTarget?.dataset?.crosssection;
+
+    if(hitVertex){
+      if(tool==='segment3d'){
+        if(!pending.length){
+          pending=[hitVertex];
+          render();
+          notify('Đã chọn đỉnh 1: '+hitVertex+'. Chọn tiếp đỉnh thứ 2.');
+        }else{
+          if(pending[0]===hitVertex){
+            notify('Đỉnh thứ 2 phải khác đỉnh 1.');
+          }else{
+            const v1=pending[0];
+            pending=[];
+            const next=createSegment3D(doc,v1,hitVertex);
+            commit(next);
+            notify(`Đã nối đoạn 3D giữa ${v1} và ${hitVertex}.`);
+          }
+        }
+        return;
+      }
+      if(tool==='midpoint3d'){
+        if(!pending.length){
+          pending=[hitVertex];
+          render();
+          notify('Đã chọn đỉnh 1: '+hitVertex+'. Chọn tiếp đỉnh thứ 2 để lấy trung điểm.');
+        }else{
+          if(pending[0]===hitVertex){
+            notify('Đỉnh thứ 2 phải khác đỉnh 1.');
+          }else{
+            const v1=pending[0];
+            pending=[];
+            const next=createMidpoint3D(doc,v1,hitVertex);
+            commit(next);
+            notify(`Đã tạo trung điểm của [${v1}, ${hitVertex}].`);
+          }
+        }
+        return;
+      }
+      if(tool==='ratio3d'){
+        if(!pending.length){
+          pending=[hitVertex];
+          render();
+          notify('Đã chọn đỉnh 1: '+hitVertex+'. Chọn tiếp đỉnh thứ 2 để chia tỉ lệ.');
+        }else{
+          if(pending[0]===hitVertex){
+            notify('Đỉnh thứ 2 phải khác đỉnh 1.');
+          }else{
+            const p1=pending[0],p2=hitVertex;
+            pending=[];
+            const tVal=prompt(`Nhập tỉ số chia đoạn t trên [${p1}, ${p2}] (mặc định 0.5):`,'0.5');
+            const t=(tVal!==null&&!isNaN(Number(tVal)))?Number(tVal):0.5;
+            const next=createRatio3D(doc,p1,p2,t);
+            commit(next);
+            notify(`Đã tạo điểm chia tỉ lệ trên [${p1}, ${p2}] với t = ${t}.`);
+          }
+        }
+        return;
+      }
+      if(tool==='altitude3d'){
+        if(!pending.length){
+          pending=[hitVertex];
+          render();
+          notify(`Đã chọn đỉnh ${hitVertex}. Hãy chọn lần lượt 3 đỉnh của mặt phẳng đáy.`);
+        }else{
+          if(pending.includes(hitVertex)){
+            notify('Đỉnh này đã được chọn. Chọn đỉnh đáy khác.');
+          }else{
+            pending.push(hitVertex);
+            if(pending.length<4){
+              render();
+              notify(`Đã chọn ${pending.length-1}/3 đỉnh đáy (${pending.slice(1).join(', ')}). Chọn tiếp.`);
+            }else{
+              const [apex,...baseRefs]=pending;
+              pending=[];
+              const next=createAltitude3D(doc,apex,baseRefs);
+              commit(next);
+              notify(`Đã hạ đường cao từ ${apex} xuống mặt đáy (${baseRefs.join('')}).`);
+            }
+          }
+        }
+        return;
+      }
+      if(tool==='crosssection3d'){
+        if(pending.includes(hitVertex)){
+          notify('Đỉnh này đã được chọn. Chọn đỉnh khác.');
+        }else{
+          pending.push(hitVertex);
+          if(pending.length<3){
+            render();
+            notify(`Đã chọn ${pending.length}/3 điểm thiết diện (${pending.join(', ')}). Chọn tiếp.`);
+          }else{
+            const refs=[...pending];
+            pending=[];
+            const next=createCrossSection3D(doc,refs);
+            commit(next);
+            notify(`Đã dựng thiết diện qua 3 điểm [${refs.join(', ')}].`);
+          }
+        }
+        return;
+      }
+      // select3d or orbit3d
+      selected=hitVertex;
+      sidebarView='properties';
+      syncSidebarTabs();
+      render();
+      notify(`Đang chọn điểm 3D: ${hitVertex}`);
+      drag={before:structuredClone(doc),px:e.clientX,py:e.clientY,solid:true,moved:false};
+      $('canvas').setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if(hitSegment){
+      const s=doc.solid?.segments?.find(seg=>seg.id===hitSegment);
+      if(tool==='midpoint3d'&&s){
+        const next=createMidpoint3D(doc,s.refs[0],s.refs[1]);
+        commit(next);
+        notify(`Đã tạo trung điểm đoạn [${s.refs.join(', ')}].`);
+        return;
+      }
+      if(tool==='ratio3d'&&s){
+        const tVal=prompt(`Nhập tỉ số chia đoạn t trên [${s.refs.join(', ')}] (mặc định 0.5):`,'0.5');
+        const t=(tVal!==null&&!isNaN(Number(tVal)))?Number(tVal):0.5;
+        const next=createRatio3D(doc,s.refs[0],s.refs[1],t);
+        commit(next);
+        notify(`Đã tạo điểm chia tỉ lệ trên [${s.refs.join(', ')}] với t = ${t}.`);
+        return;
+      }
+      selected=hitSegment;
+      sidebarView='properties';
+      syncSidebarTabs();
+      render();
+      notify(`Đang chọn đoạn 3D: ${s?s.refs.join(' – '):hitSegment}`);
+      drag={before:structuredClone(doc),px:e.clientX,py:e.clientY,solid:true,moved:false};
+      $('canvas').setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if(hitCrossSection){
+      selected=hitCrossSection;
+      sidebarView='properties';
+      syncSidebarTabs();
+      render();
+      notify(`Đang chọn thiết diện: ${hitCrossSection}`);
+      drag={before:structuredClone(doc),px:e.clientX,py:e.clientY,solid:true,moved:false};
+      $('canvas').setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if(tool==='select3d'){
+      selected='';
+      render();
+    }
+    drag={before:structuredClone(doc),px:e.clientX,py:e.clientY,solid:true,moved:false};
+    $('canvas').setPointerCapture(e.pointerId);
+    return;
+  }
   if(mode!=='geometry')return;if(tool==='pan'||e.shiftKey){const svg=$('canvas').querySelector('svg');drag={pan:true,before:structuredClone(doc),base:{...pan},sx:e.clientX,sy:e.clientY,factor:svg.getScreenCTM().a};$('canvas').setPointerCapture(e.pointerId);return;}
   if(tool==='region'){drag={region:true,start:svgCoords(e),current:svgCoords(e),px:e.clientX,py:e.clientY,clickId:point||shape,previous:[...selectedIds]};selected='';selectedIds.clear();$('canvas').setPointerCapture(e.pointerId);renderCanvas();drawMarquee();return;}selectedIds.clear();
   if(point){if(tool!=='select')return usePoint(point);selected=point;const p=doc.points.find(p=>p.id===point);if(!p.kind||['onLine','onCircle'].includes(p.kind)){drag={id:point,before:structuredClone(doc),start:coords(e),pointer:e.pointerId};$('canvas').setPointerCapture(e.pointerId);}render();}
@@ -358,14 +1369,55 @@ $('canvas').addEventListener('pointermove',e=>{
     }
     return;
   }
-  if(drag.pan){pan.x=drag.base.x-(e.clientX-drag.sx)/drag.factor;pan.y=drag.base.y-(e.clientY-drag.sy)/drag.factor;renderCanvas();return;}if(drag.solid){doc.solid.rotation=((drag.before.solid.rotation+(e.clientX-drag.px)*.6+540)%360)-180;doc.solid.tilt=Math.max(-80,Math.min(80,drag.before.solid.tilt-(e.clientY-drag.py)*.4));}else{const q=coords(e);doc=movePoint(doc,drag.id,q.x,q.y);}renderCanvas();
+  if(drag.pan){pan.x=drag.base.x-(e.clientX-drag.sx)/drag.factor;pan.y=drag.base.y-(e.clientY-drag.sy)/drag.factor;renderCanvas();return;}
+  if(drag.solid){
+    if(Math.hypot(e.clientX-drag.px,e.clientY-drag.py)>3)drag.moved=true;
+    doc.solid.rotation=((drag.before.solid.rotation+(e.clientX-drag.px)*.6+540)%360)-180;
+    doc.solid.tilt=Math.max(-80,Math.min(80,drag.before.solid.tilt-(e.clientY-drag.py)*.4));
+  }else{const q=coords(e);doc=movePoint(doc,drag.id,q.x,q.y);}
+  renderCanvas();
 });
 $('canvas').addEventListener('mouseleave', () => { if (pending.length > 0) renderCanvas(doc); });
+}
 
-function endDrag(cancel=false){if(!drag)return;if(drag.region){const region=drag;drag=null;selectedIds.clear();for(const id of cancel?region.previous:region.moved?objectsInRect(region.start,region.current):region.clickId?[region.clickId]:[])selectedIds.add(id);selected='';if(selectedIds.size){sidebarView='properties';syncSidebarTabs();}render();notify(selectedIds.size?'Đã chọn '+selectedIds.size+' đối tượng. Mở Đối tượng để chỉnh chung hoặc nhấn Delete để xóa.':'Vùng không có đối tượng phù hợp. Kéo khung lớn hơn hoặc bấm một đối tượng.');return;}if(drag.pan){if(cancel)pan=drag.base;drag=null;render();return;}const next=structuredClone(doc),before=drag.before;doc=before;drag=null;if(cancel){render();return;}if(JSON.stringify(next)!==JSON.stringify(before))commit(next);else render();}
+function endDrag(cancel=false){
+  if(!drag)return;
+  if(drag.region){
+    const region=drag;drag=null;selectedIds.clear();
+    for(const id of cancel?region.previous:region.moved?objectsInRect(region.start,region.current):region.clickId?[region.clickId]:[])selectedIds.add(id);
+    selected='';
+    if(selectedIds.size){sidebarView='properties';syncSidebarTabs();}
+    render();
+    notify(selectedIds.size?'Đã chọn '+selectedIds.size+' đối tượng. Mở Đối tượng để chỉnh chung hoặc nhấn Delete để xóa.':'Vùng không có đối tượng phù hợp. Kéo khung lớn hơn hoặc bấm một đối tượng.');
+    return;
+  }
+  if(drag.pan){if(cancel)pan=drag.base;drag=null;render();return;}
+  if(drag.solid){
+    const moved=drag.moved;
+    const next=structuredClone(doc),before=drag.before;
+    doc=before;drag=null;
+    if(cancel){render();return;}
+    if(moved&&(next.solid.rotation!==before.solid.rotation||next.solid.tilt!==before.solid.tilt)){
+      commit(next);
+    }else render();
+    return;
+  }
+  const next=structuredClone(doc),before=drag.before;doc=before;drag=null;
+  if(cancel){render();return;}
+  if(JSON.stringify(next)!==JSON.stringify(before))commit(next);else render();
+}
+if (typeof document !== 'undefined') {
 $('canvas').addEventListener('pointerup',()=>endDrag());$('canvas').addEventListener('pointercancel',()=>endDrag(true));
 $('canvas').addEventListener('keydown',e=>{const id=e.target.closest('[data-point]')?.dataset.point;if(!id)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();usePoint(id);}if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const p=resolve(doc).points[id];selected=id;commit(movePoint(doc,id,p.x+(e.key==='ArrowRight'?.1:e.key==='ArrowLeft'?-.1:0),p.y+(e.key==='ArrowUp'?.1:e.key==='ArrowDown'?-.1:0)));$('canvas').querySelector(`[data-point="${id}"]`)?.focus();}});
-document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{endDrag();cancelConstruction();selectedIds.clear();selected='';mode=b.dataset.mode;sidebarView=mode==='geometry'?'tools':'properties';syncSidebarTabs();render();});
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{
+  endDrag();cancelConstruction();selectedIds.clear();selected='';
+  mode=b.dataset.mode;
+  sidebarView=(mode==='geometry'||mode==='solid')?'tools':'properties';
+  if(mode==='solid'&&!tool.endsWith('3d'))tool='orbit3d';
+  if(mode==='geometry'&&tool.endsWith('3d'))tool='select';
+  syncSidebarTabs();
+  render();
+});
 $('undo').onclick=()=>{cancelConstruction();selectedIds.clear();if(history.length){future.push(doc);doc=history.pop();revision++;selected='';pending=[];persist();render();}};$('redo').onclick=()=>{cancelConstruction();selectedIds.clear();if(future.length){history.push(doc);doc=future.pop();revision++;selected='';pending=[];persist();render();}};
 document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||e.target.isContentEditable||document.querySelector('dialog[open]'))return;if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelection();return;}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$(e.shiftKey?'redo':'undo').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();$('redo').click();}if(e.key==='Escape'){endDrag(true);cancelConstruction();selectedIds.clear();selected='';notify('');tool='select';render();}});
 for(const[id,factor]of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{scale=Math.max(15,Math.min(160,scale*factor));render();};$('reset-view').onclick=()=>{scale=55;pan={x:0,y:0};render();};$('grid').onchange=render;
@@ -557,21 +1609,23 @@ render();
       localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
     };
   }
+}
 
-
-window.renderLatexPreview = function(source, container) {
-  if (!container) return;
-  if (typeof window.katex === 'undefined') {
-    container.textContent = source || '';
-    return;
-  }
-  try {
-    window.katex.render(exprToLatex(source), container, {
-      throwOnError: false,
-      displayMode: false,
-      errorColor: '#cc0000'
-    });
-  } catch {
-    container.textContent = source || '';
-  }
-};
+if (typeof window !== 'undefined') {
+  window.renderLatexPreview = function(source, container) {
+    if (!container) return;
+    if (typeof window.katex === 'undefined') {
+      container.textContent = source || '';
+      return;
+    }
+    try {
+      window.katex.render(exprToLatex(source), container, {
+        throwOnError: false,
+        displayMode: false,
+        errorColor: '#cc0000'
+      });
+    } catch {
+      container.textContent = source || '';
+    }
+  };
+}
