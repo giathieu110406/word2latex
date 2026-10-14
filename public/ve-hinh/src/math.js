@@ -450,4 +450,18 @@ export function findAlignmentGuides(dragId, x, y, doc, options = {}) {
   return { x: snappedX, y: snappedY, guides };
 }
 
+export function findGeometricAngle(pA, pB, pC) {
+  if (!pA || !pB || !pC) return 0;
+  const dxA = pA.x - pB.x;
+  const dyA = pA.y - pB.y;
+  const dxC = pC.x - pB.x;
+  const dyC = pC.y - pB.y;
+  const lenA = Math.hypot(dxA, dyA);
+  const lenC = Math.hypot(dxC, dyC);
+  if (lenA < 1e-6 || lenC < 1e-6) return 0;
+  const dot = dxA * dxC + dyA * dyC;
+  const cosVal = Math.max(-1, Math.min(1, dot / (lenA * lenC)));
+  return Math.acos(cosVal) * 180 / Math.PI;
+}
+
 

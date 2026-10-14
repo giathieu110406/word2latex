@@ -547,12 +547,14 @@ export function renderSnapOverlay(snapInfo, scale = 55, pan = { x: 0, y: 0 }) {
     const { angleDeg, length, isRightAngle, snapped } = snapInfo.angularSnap;
     const angleText = isRightAngle ? '90° ⊥' : `${angleDeg.toFixed(1)}°`;
     const label = `∠ ${angleText} · L: ${length.toFixed(2)}`;
-    const badgeColor = snapped ? '#176b52' : '#334155';
-    const boxWidth = Math.max(100, label.length * 7.5 + 16);
+    const strokeColor = snapped ? '#059669' : '#cbd5e1';
+    const strokeWidth = snapped ? 2 : 1.2;
+    const boxWidth = Math.max(110, label.length * 8 + 22);
 
-    out += `<g transform="translate(${cx + 14}, ${cy - 14})">
-      <rect x="0" y="-18" width="${boxWidth}" height="24" rx="4" fill="${badgeColor}" fill-opacity="0.9"/>
-      <text x="8" y="-2" fill="#ffffff" font-size="11" font-family="sans-serif" font-weight="600">${label}</text>
+    out += `<g transform="translate(${cx + 14}, ${cy - 14})" filter="drop-shadow(0px 2px 6px rgba(0,0,0,0.12))">
+      <rect x="0" y="-20" width="${boxWidth}" height="26" rx="6" fill="#ffffff" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>
+      <circle cx="10" cy="-7" r="3" fill="${snapped ? '#059669' : '#94a3b8'}"/>
+      <text x="18" y="-3" fill="#0f172a" font-size="11.5" font-family="sans-serif" font-weight="700">${label}</text>
     </g>`;
   }
 

@@ -1,4 +1,4 @@
-import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection,findSnapTarget,findAngularSnap,findAlignmentGuides} from './math.js';
+import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection,findSnapTarget,findAngularSnap,findAlignmentGuides,findGeometricAngle} from './math.js';
 import {generateTable,tableExpressions} from './table.js';
 import {exprToLatex,compileExpressionP,detectExpressionType,normalizeToLHS} from './expression.js';
 import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG,screen3D,distToSegment,renderSnapOverlay} from './render.js';
@@ -1732,17 +1732,35 @@ $('canvas').addEventListener('pointermove',e=>{
         }
 
         let angularSnap = null;
-        const originPoint = pending[0] ? resolve(doc).points[pending[0]] : null;
-        if (originPoint) {
-          if (!snapTarget.type) {
-            const ang = findAngularSnap(originPoint.x, originPoint.y, x, y, { thresholdDeg: 4.5 });
-            if (ang.snapped) {
-              x = ang.x;
-              y = ang.y;
+        if (pending.length >= 2) {
+          const resolved = resolve(doc).points;
+          const pA = resolved[pending[pending.length - 2]];
+          const pB = resolved[pending[pending.length - 1]];
+          if (pA && pB) {
+            const geomAngle = findGeometricAngle(pA, pB, { x, y });
+            const isRightAngle = Math.abs(geomAngle - 90) < 3.5;
+            const dist = Math.hypot(x - pB.x, y - pB.y);
+            const snapped = isRightAngle || [30, 45, 60, 120, 135, 150].some(a => Math.abs(geomAngle - a) < 3.0);
+            angularSnap = {
+              angleDeg: geomAngle,
+              length: dist,
+              isRightAngle,
+              snapped
+            };
+          }
+        } else if (pending.length === 1) {
+          const originPoint = resolve(doc).points[pending[0]];
+          if (originPoint) {
+            if (!snapTarget.type) {
+              const ang = findAngularSnap(originPoint.x, originPoint.y, x, y, { thresholdDeg: 4.5 });
+              if (ang.snapped) {
+                x = ang.x;
+                y = ang.y;
+              }
+              angularSnap = ang;
+            } else {
+              angularSnap = findAngularSnap(originPoint.x, originPoint.y, x, y, { thresholdDeg: 4.5 });
             }
-            angularSnap = ang;
-          } else {
-            angularSnap = findAngularSnap(originPoint.x, originPoint.y, x, y, { thresholdDeg: 4.5 });
           }
         }
 
