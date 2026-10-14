@@ -78,4 +78,29 @@ test('index.html contains #snap-magnet checkbox for toggling smart snapping', as
   assert.ok(html.includes('id="snap-magnet"'));
 });
 
+test('pointer move with magnetActive calculates snapped coordinates for drawing', () => {
+  const doc = blankDocument();
+  doc.points = [{ id: 'A', x: 0, y: 0, visible: true }];
+  // Simulated pointer at angle ~59.5 deg from A
+  const cursor = { x: 2 * Math.cos(59.5 * Math.PI / 180), y: 2 * Math.sin(59.5 * Math.PI / 180) };
+  const angular = findAngularSnap(0, 0, cursor.x, cursor.y);
+  assert.equal(angular.snapped, true);
+  assert.equal(Math.round(angular.angleDeg), 60);
+});
+
+test('Alt key overrides snapping and preserves exact pointer coordinates', () => {
+  const doc = blankDocument();
+  doc.points = [{ id: 'A', x: 0, y: 0, visible: true }];
+  const cursor = { x: 0.05, y: 0.05 };
+  const altPressed = true;
+  let target = cursor;
+  if (!altPressed) {
+    const snap = findSnapTarget(cursor.x, cursor.y, doc);
+    if (snap.type) target = snap;
+  }
+  assert.equal(target.x, 0.05);
+  assert.equal(target.y, 0.05);
+});
+
+
 

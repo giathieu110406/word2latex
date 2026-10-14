@@ -1,7 +1,7 @@
-import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection} from './math.js';
+import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection,findSnapTarget,findAngularSnap} from './math.js';
 import {generateTable,tableExpressions} from './table.js';
 import {exprToLatex,compileExpressionP,detectExpressionType,normalizeToLHS} from './expression.js';
-import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG,screen3D,distToSegment} from './render.js';
+import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG,screen3D,distToSegment,renderSnapOverlay} from './render.js';
 import {templateLibrary,applyLibraryTemplate} from './library.js';
 import {requestProposal} from './ai.js';
 import {buildCodexPrompt,parseCodexDraft} from './codex-bridge.js';
@@ -584,7 +584,7 @@ const selectedIds=new Set();
 let keyboardOpen=false,keyboardInput=null,keyboardRange={id:'',start:0,end:0};
 let selectedFace=null,solidFaceMode=false;
 let draftBefore=null,sidebarView='tools';
-function cancelConstruction(){if(draftBefore){doc=draftBefore;draftBefore=null;}pending=[];snappedPointId=null;}
+function cancelConstruction(){if(draftBefore){doc=draftBefore;draftBefore=null;}pending=[];snappedPointId=null;currentSnapInfo=null;}
 function finishConstruction(next){const oldErrors=new Set(resolve(draftBefore||doc).errors),errors=resolve(next).errors.filter(e=>!oldErrors.has(e));if(errors.length){cancelConstruction();selected='';render();notify('Không dựng được '+names[tool]+': '+errors[0]+'. Chọn lại các điểm đúng điều kiện; Esc để hủy.');return;}if(draftBefore)doc=draftBefore;draftBefore=null;pending=[];if(commit(next))notify('Đã dựng '+names[tool]+'. Kéo điểm nguồn để kiểm tra; có thể hoàn tác.');else render();}
 const mobile=()=>typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width:700px)').matches : false;
 function setSidebar(open){if(typeof document === 'undefined') return; document.body.classList.toggle('sidebar-closed',!open);$('toggle-sidebar')?.setAttribute('aria-expanded',String(open));$('sidebar-backdrop').hidden=!open||!mobile();}
@@ -600,7 +600,7 @@ if (typeof document !== 'undefined') {
 }
 function notify(message){if($('notice'))$('notice').textContent=message;}
 function persist(){if($('save-state'))$('save-state').textContent=testing?'Kiểm thử · không ghi bản người dùng':'Trong phiên · Lưu JSON để giữ';}
-function commit(next,{keepSelection=false}={}){try{next=validateDocument(next);}catch(e){notify(e.message);return false;}if(draftBefore)doc=draftBefore;draftBefore=null;pending=[];snappedPointId=null;if(!keepSelection)selectedIds.clear();if(JSON.stringify(next)===JSON.stringify(doc)){render();return true;}history.push(structuredClone(doc));if(history.length>80)history.shift();future=[];doc=next;revision++;persist();render();if(!testing&&typeof window !== 'undefined')window.parent?.word2latexDrawingLog?.('Vẽ hình: chỉnh sửa');return true;}
+function commit(next,{keepSelection=false}={}){try{next=validateDocument(next);}catch(e){notify(e.message);return false;}if(draftBefore)doc=draftBefore;draftBefore=null;pending=[];snappedPointId=null;currentSnapInfo=null;if(!keepSelection)selectedIds.clear();if(JSON.stringify(next)===JSON.stringify(doc)){render();return true;}history.push(structuredClone(doc));if(history.length>80)history.shift();future=[];doc=next;revision++;persist();render();if(!testing&&typeof window !== 'undefined')window.parent?.word2latexDrawingLog?.('Vẽ hình: chỉnh sửa');return true;}
 function freshId(source=doc){for(let i=0;i<26;i++){const id=String.fromCharCode(65+i);if(![...source.points,...source.shapes].some(p=>p.id===id))return id;}let i=1;while([...source.points,...source.shapes].some(p=>p.id==='P'+i))i++;return'P'+i;}
 function addShape(next,type,refs,extra={}){let i=1;while(next.shapes.some(s=>s.id==='s'+i)||next.points.some(p=>p.id==='s'+i))i++;next.shapes.push({id:'s'+i,type,refs:[...refs],color:'#176b52',...extra});selected='s'+i;}
 function pickTool(value){cancelConstruction();selectedIds.clear();selected='';notify('');tool=value;closeMobileSidebar();render();}
@@ -670,15 +670,22 @@ function graphFeedback(graph){const params=Object.fromEntries(graph.params.map(p
  }catch(err){messages.push(prefix+err.message+'. Sửa biểu thức rồi cập nhật.');}}
  return messages;
 }
-function renderCanvas(d = doc, snapId = null){
+function renderCanvas(d = doc, snapData = null){
   try{
     let svgStr=currentSVG(d);
-    if(snapId&&mode==='geometry'){
-      const snapPoint=resolve(d).points[snapId];
-      if(snapPoint){
-        const cx=500+snapPoint.x*scale;
-        const cy=330-snapPoint.y*scale;
-        svgStr=svgStr.replace('</svg>',`<circle cx="${cx}" cy="${cy}" r="15" fill="rgba(255, 204, 0, 0.4)" stroke="#ffcc00" stroke-width="2" pointer-events="none"/></svg>`);
+    if(snapData&&mode==='geometry'){
+      if(typeof snapData==='string'){
+        const snapPoint=resolve(d).points[snapData];
+        if(snapPoint){
+          const cx=500+snapPoint.x*scale-pan.x;
+          const cy=330-snapPoint.y*scale-pan.y;
+          svgStr=svgStr.replace('</svg>',`<circle cx="${cx}" cy="${cy}" r="15" fill="rgba(255, 204, 0, 0.4)" stroke="#ffcc00" stroke-width="2" pointer-events="none"/></svg>`);
+        }
+      }else if(typeof snapData==='object'){
+        const overlay=renderSnapOverlay(snapData,scale,pan);
+        if(overlay){
+          svgStr=svgStr.replace('</svg>',overlay+'</svg>');
+        }
       }
     }
     $('canvas').innerHTML=svgStr;
@@ -1628,13 +1635,39 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
   if(mode!=='geometry')return;if(tool==='pan'||e.shiftKey){const svg=$('canvas').querySelector('svg');drag={pan:true,before:structuredClone(doc),base:{...pan},sx:e.clientX,sy:e.clientY,factor:svg.getScreenCTM().a};$('canvas').setPointerCapture(e.pointerId);return;}
   if(tool==='region'){drag={region:true,start:svgCoords(e),current:svgCoords(e),px:e.clientX,py:e.clientY,clickId:point||shape,previous:[...selectedIds]};selected='';selectedIds.clear();$('canvas').setPointerCapture(e.pointerId);renderCanvas();drawMarquee();return;}selectedIds.clear();
   if(point){if(tool!=='select')return usePoint(point);selected=point;const p=doc.points.find(p=>p.id===point);if(!p.kind||['onLine','onCircle'].includes(p.kind)){drag={id:point,before:structuredClone(doc),start:coords(e),pointer:e.pointerId};$('canvas').setPointerCapture(e.pointerId);}render();}
-  else if(shape&&tool!=='select'&&tool!=='point'){useShape(shape);return;}else if(tool==='point'){const q=coords(e);addPoint(Math.round(q.x*10)/10,Math.round(q.y*10)/10);} else if(tool!=='select'){
+  else if(shape&&tool!=='select'&&tool!=='point'){useShape(shape);return;}else if(tool==='point'){
+    let q=coords(e);
+    if(magnetActive && !e.altKey){
+      const snapTarget = findSnapTarget(q.x, q.y, doc, { radius: 0.28, snapPoints: true, snapMidpoints: true, snapGrid: $('grid')?.checked, gridStep: 1 });
+      if(snapTarget.type){ q.x = snapTarget.x; q.y = snapTarget.y; }
+    }
+    addPoint(Math.round(q.x*10)/10,Math.round(q.y*10)/10);
+  } else if(tool!=='select'){
   // Clicked on empty space while drawing
   draftBefore??=structuredClone(doc);
-  const clickPoint=coords(e),resolvedPoints=resolve(doc).points;
-  let selectedPoint=Object.values(resolvedPoints).find(p=>p.visible!==false&&Math.hypot(p.x-clickPoint.x,p.y-clickPoint.y)<.2)?.id;
+  let clickPoint=coords(e);
+  let selectedPoint=null;
+  if(magnetActive && !e.altKey){
+    const snapTarget = findSnapTarget(clickPoint.x, clickPoint.y, doc, { radius: 0.28, snapPoints: true, snapMidpoints: true, snapGrid: $('grid')?.checked, gridStep: 1 });
+    if(snapTarget.type){
+      clickPoint.x = snapTarget.x;
+      clickPoint.y = snapTarget.y;
+      if(snapTarget.type === 'point') selectedPoint = snapTarget.refId;
+    }
+    if(!selectedPoint && pending.length > 0){
+      const originPoint = resolve(doc).points[pending[0]];
+      if(originPoint){
+        const ang = findAngularSnap(originPoint.x, originPoint.y, clickPoint.x, clickPoint.y, { thresholdDeg: 4.5 });
+        if(ang.snapped){ clickPoint.x = ang.x; clickPoint.y = ang.y; }
+      }
+    }
+  }
+  const resolvedPoints=resolve(doc).points;
+  if(!selectedPoint){
+    selectedPoint=Object.values(resolvedPoints).find(p=>p.visible!==false&&Math.hypot(p.x-clickPoint.x,p.y-clickPoint.y)<.2)?.id;
+  }
   if (!selectedPoint) {
-    const {x, y} = coords(e);
+    const x = clickPoint.x, y = clickPoint.y;
     selectedPoint = freshId();
     doc.points.push({id: selectedPoint, x, y});
   }
@@ -1647,15 +1680,45 @@ $('canvas').addEventListener('pointermove',e=>{
   if(!drag){
     if (mode === 'geometry' && pending.length > 0) {
       let {x, y} = coords(e);
-      snappedPointId = null;
-      let minDist = 0.27;
-      const resolved = resolve(doc).points;
-      for (const p of doc.points) {
-        const rp = resolved[p.id];
-        if (!rp||p.visible===false) continue;
-        const dist = Math.hypot(rp.x - x, rp.y - y);
-        if (dist < minDist) { minDist = dist; x = rp.x; y = rp.y; snappedPointId = p.id; }
+      let snapInfo = null;
+      const snapEnabled = magnetActive && !e.altKey;
+
+      if (snapEnabled) {
+        const snapTarget = findSnapTarget(x, y, doc, {
+          radius: 0.28,
+          snapPoints: true,
+          snapMidpoints: true,
+          snapGrid: $('grid')?.checked,
+          gridStep: 1
+        });
+        if (snapTarget.type) {
+          x = snapTarget.x;
+          y = snapTarget.y;
+          snappedPointId = snapTarget.type === 'point' ? snapTarget.refId : null;
+        } else {
+          snappedPointId = null;
+        }
+
+        let angularSnap = null;
+        const originPoint = pending[0] ? resolve(doc).points[pending[0]] : null;
+        if (originPoint) {
+          if (!snapTarget.type) {
+            const ang = findAngularSnap(originPoint.x, originPoint.y, x, y, { thresholdDeg: 4.5 });
+            if (ang.snapped) {
+              x = ang.x;
+              y = ang.y;
+            }
+          }
+          angularSnap = findAngularSnap(originPoint.x, originPoint.y, x, y, { thresholdDeg: 1.0 });
+        }
+
+        snapInfo = { snapTarget, angularSnap, cursor: { x, y } };
+        currentSnapInfo = snapInfo;
+      } else {
+        snappedPointId = null;
+        currentSnapInfo = null;
       }
+
       const vDoc = structuredClone(doc);
       const ghostId = 'GHOST_POINT';
       vDoc.points.push({id: ghostId, x, y, visible:false});
@@ -1665,7 +1728,7 @@ $('canvas').addEventListener('pointermove',e=>{
       
       const lastShape = vDoc.shapes[vDoc.shapes.length - 1];
       if (lastShape && lastShape.refs.includes(ghostId)) lastShape.color = '#888888';
-      renderCanvas(vDoc, snappedPointId);
+      renderCanvas(vDoc, snapInfo || snappedPointId);
     }
     return;
   }
@@ -1674,10 +1737,17 @@ $('canvas').addEventListener('pointermove',e=>{
     if(Math.hypot(e.clientX-drag.px,e.clientY-drag.py)>3)drag.moved=true;
     doc.solid.rotation=((drag.before.solid.rotation+(e.clientX-drag.px)*.6+540)%360)-180;
     doc.solid.tilt=Math.max(-80,Math.min(80,drag.before.solid.tilt-(e.clientY-drag.py)*.4));
-  }else{const q=coords(e);doc=movePoint(doc,drag.id,q.x,q.y);}
+  }else{
+    let q=coords(e);
+    if(magnetActive && !e.altKey && $('grid')?.checked){
+      const snapTarget = findSnapTarget(q.x, q.y, doc, { radius: 0.28, snapPoints: false, snapMidpoints: false, snapGrid: true, gridStep: 1 });
+      if(snapTarget.type === 'grid'){ q.x = snapTarget.x; q.y = snapTarget.y; }
+    }
+    doc=movePoint(doc,drag.id,q.x,q.y);
+  }
   renderCanvas();
 });
-$('canvas').addEventListener('mouseleave', () => { if (pending.length > 0) renderCanvas(doc); });
+$('canvas').addEventListener('mouseleave', () => { if (pending.length > 0) renderCanvas(doc); currentSnapInfo = null; });
 }
 
 function endDrag(cancel=false){
