@@ -421,9 +421,9 @@ $('analyze').onclick=async()=>{
     selected='';
     pending=[];
     if(commit(result.document)){
-      if(result.document.graph && result.document.graph.expression && mode!=='graph') mode='graph';
-      else if(result.document.solid && result.document.solid.type && mode!=='solid') mode='solid';
-      else if(result.document.chart && result.document.chart.values && result.document.chart.values.length && mode!=='chart') mode='chart';
+      if(result.document.graph && result.document.graph.enabled && mode!=='graph') mode='graph';
+      else if(result.document.solid && result.document.solid.enabled && mode!=='solid') mode='solid';
+      else if(result.document.chart && result.document.chart.enabled && mode!=='chart') mode='chart';
       else mode='geometry';
       sidebarView=mode==='geometry'?'tools':'properties';
       syncSidebarTabs();
