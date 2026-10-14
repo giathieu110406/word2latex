@@ -29,8 +29,76 @@ main{height:var(--app-height,100dvh)!important}
 .zoom-controls{position:static;display:flex;flex-direction:row;margin-left:auto;gap:4px}
 .zoom-controls button{width:36px;height:34px;min-height:34px;box-shadow:none;font-size:16px}
 .zoom-controls #reset-view{font-size:10px}
-:root.dark .canvas{background-color:#1a1a1a}
-@media(max-width:700px){.canvas-bar{gap:5px;padding:5px 8px}.zoom-controls{gap:2px}.zoom-controls button{width:30px;height:32px;min-height:32px}.canvas-bar>button{padding:5px 7px;min-height:32px;font-size:10px}}
+@media(max-width:700px){
+  .canvas-bar{
+    height: 44px;
+    gap: 6px;
+    padding: 4px 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .canvas-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .canvas-bar > * {
+    flex-shrink: 0;
+  }
+  .history {
+    flex: none;
+  }
+  .history button {
+    font-size: 20px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 2px;
+  }
+  .check {
+    font-size: 10px;
+    gap: 4px;
+  }
+  .check input {
+    width: 14px;
+    height: 14px;
+  }
+  .zoom-controls {
+    gap: 2px;
+  }
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+    font-size: 13px;
+  }
+  .canvas-bar > button {
+    padding: 4px 8px;
+    min-height: 28px;
+    font-size: 10px;
+  }
+  .help-btn {
+    padding: 4px 8px;
+    min-height: 28px;
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .tabs button {
+    flex: 0 0 auto;
+    min-width: 54px;
+    min-height: 44px;
+  }
+}
 
 .canvas-footer .file-actions{order:-1;margin-left:0}
 @media(max-width:700px){.canvas-footer .file-actions{order:0}body.embedded .canvas-footer .file-actions{padding-right:90px}}

@@ -9,6 +9,7 @@ import {
   Lightbulb, 
   FileText,
   Layout,
+  Pencil,
   MousePointerClick
 } from "lucide-react";
 
@@ -22,7 +23,7 @@ export interface TourStep {
 }
 
 export interface PageTourConfig {
-  pageId: "latex" | "qbuilder" | "markitdown";
+  pageId: "latex" | "qbuilder" | "markitdown" | "drawing";
   pageTitle: string;
   pageIcon: React.ReactNode;
   steps: TourStep[];
@@ -198,12 +199,75 @@ export const TOUR_CONFIGS: Record<string, PageTourConfig> = {
       },
     ],
   },
+  drawing: {
+    pageId: "drawing",
+    pageTitle: "Bảng Vẽ Hình Học Toán & Không Gian 3D",
+    pageIcon: <Pencil className="w-4 h-4 text-emerald-600" />,
+    steps: [
+      {
+        targetId: "tour-drawing-workspace",
+        title: "1. Bảng Vẽ Tương Tác & Thao Tác Chạm",
+        description:
+          "Không gian vẽ hình học phẳng (2D) và không gian (3D) trực quan, mượt mà trên cả máy tính lẫn điện thoại.",
+        bullets: [
+          "Chạm hoặc click chuột để đặt điểm tự do, nối đoạn thẳng, dựng đa giác khép kín hoặc vẽ đường tròn.",
+          "Chế độ chọn & kéo: Chạm giữ đỉnh để di chuyển hình học, tất cả đối tượng liên quan sẽ tự động cập nhật.",
+          "Thu phóng & Di chuyển: Dùng 2 ngón tay (Pinch to zoom) hoặc giữ Shift + kéo chuột để xoay chuyển không gian làm việc.",
+          "Hỗ trợ Undo (Ctrl+Z) và Redo (Ctrl+Y) ngay trên thanh công cụ trên cùng."
+        ],
+        tip: "Trên điện thoại, bạn có thể bấm nút 'Hộp công cụ' để mở nhanh bảng chọn công cụ vẽ ở cạnh trái.",
+        position: "center",
+      },
+      {
+        targetId: "tour-drawing-workspace",
+        title: "2. Nam Châm Thông Minh (🧲) & Căn Gióng Đa Chiều",
+        description:
+          "Hệ thống Smart Snapping và Alignment Guides giúp bạn căn chuẩn từng milimet mà không cần thao tác phức tạp.",
+        bullets: [
+          "Bắt dính tự động: Đầu bút vẽ tự hút vào các đỉnh có sẵn, trung điểm đoạn thẳng và giao điểm các đường.",
+          "Khóa góc chuẩn: Tự động bắt góc đẹp (0°, 30°, 45°, 60°, 90°, 120°...) và hiển thị huy hiệu số đo góc trực quan.",
+          "Đường gióng hàng (Guides): Khi kéo di chuyển một điểm, hệ thống tự hiện đường gióng màu xanh ngọc khi thẳng hàng ngang/dọc với các đỉnh khác.",
+          "Vẽ tự do (Thả nam châm): Giữ phím Alt (hoặc tắt ô 🧲 Nam châm) để thả tự do tọa độ điểm."
+        ],
+        tip: "Khi dựng hình vuông hoặc tam giác đều từ 2 điểm, bạn chỉ cần di chuột sang nửa mặt phẳng mong muốn rồi click để chốt hình.",
+        position: "center",
+      },
+      {
+        targetId: "tour-drawing-workspace",
+        title: "3. Dựng Hình Không Gian 3D & Xoay 360°",
+        description:
+          "Chuyển đổi tức thời sang môi trường hình học không gian 3 chiều chuẩn chương trình GDPT mới.",
+        bullets: [
+          "Chuyển tab 3D (🧊): Chọn sẵn các khối cơ bản (Hình chóp S.ABCD, Tứ diện S.ABC, Lăng trụ, Hình hộp, Hình lập phương).",
+          "Xoay không gian 360°: Kéo chuột hoặc trượt tay trên màn hình để quan sát mọi góc nhìn không gian thực.",
+          "Nét đứt tự động (Occlusion): Các cạnh bị khuất sau mặt phẳng tự động biến thành nét đứt theo đúng quy chuẩn sách giáo khoa.",
+          "Dựng thiết diện & Điểm trên cạnh: Dễ dàng chấm trung điểm, chia tỉ lệ cạnh và dựng mặt phẳng cắt xuyên khối."
+        ],
+        tip: "Nhập mô tả đề bài (ví dụ: 'Cho hình chóp S.ABCD có SA vuông góc đáy') để AI tự động dựng trọn bộ hình 3D trong 1 giây.",
+        position: "center",
+      },
+      {
+        targetId: "tour-drawing-workspace",
+        title: "4. Xuất File TikZ, SVG, PNG & Tải Về",
+        description:
+          "Đa dạng phương thức xuất bản hình vẽ chất lượng cao, sắc nét cho đề thi và giáo án.",
+        bullets: [
+          "Mã nguồn TikZ (LaTeX): Tự động sinh mã TikZ chuẩn tương thích 100% với Overleaf, TeXmaker và gói tikz-3dplot.",
+          "Ảnh vector SVG / PNG: Xuất ảnh trong suốt độ phân giải cao, dán thẳng vào Microsoft Word hoặc PowerPoint.",
+          "Lưu & Mở tệp JSON: Lưu trữ file dự án để chỉnh sửa tiếp bất kỳ lúc nào trên máy tính hoặc điện thoại.",
+          "Nút '📖 Hướng dẫn' trên thanh canvas: Tra cứu nhanh bảng phím tắt và thao tác dựng nâng cao mọi lúc."
+        ],
+        tip: "Bấm 'Xuất' ở góc dưới màn hình để chọn định dạng TikZ hoặc hình ảnh phù hợp với nhu cầu của bạn.",
+        position: "center",
+      },
+    ],
+  },
 };
 
 interface GuideTourProps {
   isOpen: boolean;
   onClose: () => void;
-  pageId: "latex" | "qbuilder" | "markitdown";
+  pageId: "latex" | "qbuilder" | "markitdown" | "drawing";
 }
 
 export const GuideTour: React.FC<GuideTourProps> = ({

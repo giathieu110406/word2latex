@@ -17,7 +17,7 @@ export function DrawingWorkspace({ active }: { active: boolean }) {
   }, []);
 
   return (
-    <section aria-label="Vẽ hình" hidden={!active} className="w-full flex-1 min-h-0" style={{ display: active ? 'flex' : 'none' }}>
+    <section id="tour-drawing-workspace" aria-label="Vẽ hình" hidden={!active} className="w-full flex-1 min-h-0" style={{ display: active ? 'flex' : 'none' }}>
       <iframe
         title="Vẽ Hình — bảng vẽ tương tác"
         src="/ve-hinh/index.html"

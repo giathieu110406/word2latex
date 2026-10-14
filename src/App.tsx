@@ -4422,8 +4422,8 @@ ${bodyHtml}
                     <Menu className="w-5 h-5" />
                   </button>
 
-                  {/* Nút Hướng dẫn sử dụng cho 3 trang chức năng chính */}
-                  {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown') && (
+                  {/* Nút Hướng dẫn sử dụng cho các trang chức năng chính */}
+                  {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (
                     <button
                       id="guide-tour-topbar-btn"
                       onClick={() => setIsGuideTourOpen(true)}
@@ -8045,7 +8045,7 @@ ${bodyHtml}
       <ZaloContactWidget />
 
       {/* Interactive Spotlight Guided Tour Component */}
-      {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown') && (
+      {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (
         <GuideTour
           isOpen={isGuideTourOpen}
           onClose={() => setIsGuideTourOpen(false)}
