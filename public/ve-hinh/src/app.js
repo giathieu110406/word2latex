@@ -26,6 +26,13 @@ export const primitiveNames = {
   cube: 'Hình lập phương'
 };
 
+export const modeNames = {
+  geometry: 'Hình học',
+  graph: 'Đồ thị',
+  chart: 'Thống kê',
+  solid: 'Không gian'
+};
+
 export function freshSolidPointId(doc, prefix = 'P') {
   const existing = new Set([
     ...(doc.points || []).map(p => p.id),
@@ -1424,7 +1431,6 @@ for(const[id,factor]of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{s
 $('title').onchange=e=>{const title=e.target.value;cancelConstruction();commit({...doc,title});};
 
 
-const modeNames={geometry:'Hình học',graph:'Đồ thị',chart:'Thống kê',solid:'Không gian'};
 const templateCategories={};
 function renderGallery(){
  const entries=templateLibrary[mode],categories=[...new Set(entries.map(t=>t.category))];
@@ -1456,15 +1462,35 @@ $('help').onclick=()=>$('help-dialog').showModal();document.querySelectorAll('[d
 async function loadImage(file){if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type))return notify('Chọn ảnh PNG, JPEG hoặc WebP');if(file.size>4*1024*1024)return notify('Ảnh tối đa 4 MB. Cắt rõ cả đề bài và hình.');try{const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(Error('Không đọc được ảnh'));r.readAsDataURL(file);});const test=new Image();test.src=data;await test.decode();image=data;$('source-image').src=data;$('source-image').hidden=false;$('remove-image').hidden=false;notify('Ảnh đang ở thiết bị; chỉ gửi khi bạn bấm tạo bản đề xuất.');}catch(e){notify(e.message);}}
 for(const id of ['book-image','camera-image'])$(id).onchange=e=>loadImage(e.target.files[0]);$('remove-image').onclick=()=>{image=null;$('source-image').hidden=true;$('source-image').removeAttribute('src');$('remove-image').hidden=true;$('book-image').value='';$('camera-image').value='';};
 for(const evt of ['dragover','dragenter'])$('dropzone').addEventListener(evt,e=>{e.preventDefault();$('dropzone').classList.add('over');});$('dropzone').addEventListener('dragleave',()=>$('dropzone').classList.remove('over'));$('dropzone').addEventListener('drop',e=>{e.preventDefault();$('dropzone').classList.remove('over');loadImage(e.dataTransfer.files[0]);});
+if($('prompt')){
+  $('prompt').addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){
+      e.preventDefault();
+      $('analyze')?.click();
+    }
+  });
+}
 $('analyze').onclick=async()=>{
   if(busy)return;
   cancelConstruction();
   render();
   const prompt=$('prompt').value.trim();
-  if(!prompt&&!image)return notify('Vui lòng nhập ý tưởng đề bài hoặc tải ảnh để AI vẽ');
+  if(!prompt&&!image){
+    if($('ai-status')){
+      $('ai-status').hidden=false;
+      $('ai-status').style.color='#a84831';
+      $('ai-status').textContent='Vui lòng nhập ý tưởng đề bài hoặc tải ảnh để AI vẽ.';
+    }
+    return notify('Vui lòng nhập ý tưởng đề bài hoặc tải ảnh để AI vẽ');
+  }
   busy=true;
   $('analyze').disabled=true;
   $('analyze').textContent='Đang phân tích và dựng hình với Gemini…';
+  if($('ai-status')){
+    $('ai-status').hidden=false;
+    $('ai-status').style.color='#176b52';
+    $('ai-status').textContent='Đang gửi yêu cầu đến Gemini AI để phân tích và dựng hình...';
+  }
   notify('Đang gửi yêu cầu đến Gemini AI để phân tích và dựng hình...');
   const before=revision,originalImage=image;
   try{
@@ -1480,12 +1506,18 @@ $('analyze').onclick=async()=>{
       sidebarView=mode==='geometry'?'tools':'properties';
       syncSidebarTabs();
       render();
+      if($('ai-status'))$('ai-status').hidden=true;
       notify('✨ Đã vẽ hình tự động thành công! Nhấn ↶ (hoàn tác) để xem lại bản trước nếu cần.');
       if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: tự động vẽ AI');
     } else {
-      notify('Không thể áp dụng bản vẽ.');
+      throw Error('Không thể áp dụng bản vẽ');
     }
   }catch(e){
+    if($('ai-status')){
+      $('ai-status').hidden=false;
+      $('ai-status').style.color='#a84831';
+      $('ai-status').textContent='Lỗi: '+e.message;
+    }
     notify('Lỗi tạo hình AI: '+e.message);
   }finally{
     busy=false;
