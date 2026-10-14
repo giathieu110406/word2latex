@@ -4,13 +4,13 @@
   <script defer crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"></script>
 </head>
 <body>
-<header><a class="brand" href="./index.html" aria-label="Vẽ Hình trang chủ"><span class="logo">△</span><span>Vẽ Hình<small>Vẽ để hiểu. Kéo để khám phá.</small></span></a><label class="title-label"><span class="sr-only">Tên tài liệu</span><input id="title" maxlength="160" value="Khám phá tam giác"></label></header>
+<header hidden><a class="brand" href="./index.html" aria-label="Vẽ Hình trang chủ"><span class="logo">△</span><span>Vẽ Hình<small>Vẽ để hiểu. Kéo để khám phá.</small></span></a><label class="title-label"><span class="sr-only">Tên tài liệu</span><input id="title" maxlength="160" value="Khám phá tam giác"></label></header>
 <main><button id="sidebar-backdrop" class="sidebar-backdrop" aria-label="Đóng sidebar" hidden></button>
 <nav class="tabs" aria-label="Không gian toán học"><button data-mode="geometry" class="active">△ <span>Hình học</span></button><button data-mode="graph">∿ <span>Đồ thị</span></button><button data-mode="chart">▥ <span>Thống kê</span></button><button data-mode="solid">⬡ <span>Không gian</span></button><button id="toggle-sidebar" aria-label="Mở / thu gọn sidebar" aria-expanded="true" title="Mở / thu gọn sidebar">☰</button></nav>
 <div class="workspace"><aside id="sidebar" class="sidebar" aria-label="Bảng công cụ"><button id="open-templates" class="template-launch"><span class="template-icon" aria-hidden="true">▱</span><span><strong>Hình mẫu</strong><small>Chọn hình để bắt đầu khám phá</small></span><span aria-hidden="true">›</span></button><div class="sidebar-tabs"><button id="show-tools" class="active" aria-pressed="true">Công cụ</button><button id="show-properties" aria-pressed="false">Đối tượng</button></div><div class="sidebar-content">
 <section class="tools panel"><div class="panel-heading"><h2 id="tools-heading">Công cụ dựng</h2><span class="badge" id="tools-badge">2D</span></div><label class="tool-search"><span class="sr-only">Tìm công cụ</span><input id="tool-search" type="search" placeholder="Tìm công cụ…" autocomplete="off"></label><p id="no-tools" class="muted" hidden>Không tìm thấy công cụ phù hợp.</p><div id="toolbar" aria-label="Công cụ 2D"></div><div id="toolbar-3d" class="toolbar-3d" aria-label="Công cụ 3D" hidden><details class="tool-section" open><summary>Khối cơ sở</summary><div class="tool-grid"><button type="button" data-primitive-3d="pyramid4" title="Chóp tứ giác S.ABCD"><span class="icon" aria-hidden="true">⏶</span>Chóp S.ABCD</button><button type="button" data-primitive-3d="pyramid3" title="Chóp tam giác S.ABC"><span class="icon" aria-hidden="true">△</span>Chóp S.ABC</button><button type="button" data-primitive-3d="regular-pyramid" title="Chóp đều đáy tứ giác"><span class="icon" aria-hidden="true">⬡</span>Chóp đều</button><button type="button" data-primitive-3d="prism" title="Lăng trụ tam giác"><span class="icon" aria-hidden="true">⬚</span>Lăng trụ</button><button type="button" data-primitive-3d="box" title="Hình hộp chữ nhật"><span class="icon" aria-hidden="true">⧄</span>Hộp</button><button type="button" data-primitive-3d="cube" title="Hình lập phương"><span class="icon" aria-hidden="true">□</span>Lập phương</button><button type="button" data-primitive-3d="sa-perp-pyramid" title="Chóp S.ABCD có cạnh bên SA vuông góc đáy"><span class="icon" aria-hidden="true">⊥</span>Chóp SA ⊥ đáy</button><button type="button" data-primitive-3d="trapezoid-pyramid" title="Chóp S.ABCD có đáy là hình thang"><span class="icon" aria-hidden="true">⏢</span>Chóp hình thang</button><button type="button" data-primitive-3d="prism4" title="Lăng trụ tứ giác ABCD.A'B'C'D'"><span class="icon" aria-hidden="true">⬡</span>Lăng trụ tứ giác</button><button type="button" data-primitive-3d="blank-3d" title="Bắt đầu từ không gian 3D trống"><span class="icon" aria-hidden="true">∅</span>Bảng vẽ trống</button></div></details><details class="tool-section" open><summary>Dựng hình 3D</summary><div class="tool-grid"><button type="button" data-tool="orbit3d" title="Kéo chuột trên bảng vẽ để xoay tự do góc nhìn 3D" class="active" aria-pressed="true"><span class="icon" aria-hidden="true">🔄</span>Xoay góc nhìn</button><button type="button" data-tool="select3d" title="Chọn điểm, đoạn hoặc thiết diện 3D để xem và chỉnh thuộc tính" aria-pressed="false"><span class="icon" aria-hidden="true">↖</span>Chọn 3D</button><button type="button" data-tool="point3d" title="Thêm đỉnh 3D tự do với tọa độ tùy chọn" aria-pressed="false"><span class="icon" aria-hidden="true">•</span>Thêm đỉnh</button><button type="button" data-tool="segment3d" title="Chọn 2 đỉnh bất kỳ trong không gian để nối đoạn thẳng mới" aria-pressed="false"><span class="icon" aria-hidden="true">╱</span>Nối 2 đỉnh</button><button type="button" data-tool="midpoint3d" title="Chọn 1 đoạn thẳng 3D hoặc 2 đỉnh để lấy trung điểm" aria-pressed="false"><span class="icon" aria-hidden="true">⊙</span>Trung điểm 3D</button><button type="button" data-tool="centroid3d" title="Chọn 3 đỉnh để dựng trọng tâm tam giác trong không gian" aria-pressed="false"><span class="icon" aria-hidden="true">◬</span>Trọng tâm 3D</button><button type="button" data-tool="ratio3d" title="Chọn 1 đoạn thẳng 3D hoặc 2 đỉnh và nhập tỉ số t để lấy điểm chia tỉ lệ" aria-pressed="false"><span class="icon" aria-hidden="true">⊸</span>Chia tỉ lệ</button><button type="button" data-tool="altitude3d" title="Chọn đỉnh và mặt phẳng đáy (3 đỉnh) để hạ đường cao" aria-pressed="false"><span class="icon" aria-hidden="true">⊥</span>Hạ đường cao</button><button type="button" data-tool="footLine3d" title="Chọn đỉnh và đoạn thẳng để kẻ đường vuông góc lên cạnh" aria-pressed="false"><span class="icon" aria-hidden="true">⏋</span>Kẻ vg lên cạnh</button><button type="button" data-tool="planeLine3d" title="Chọn 3 điểm mặt phẳng (ABC), rồi chọn 2 điểm trên đường thẳng (PQ)" aria-pressed="false"><span class="icon" aria-hidden="true">✕</span>Giao đường-mặt</button><button type="button" data-tool="crosssection3d" title="Chọn 3 điểm trong không gian để dựng mặt phẳng thiết diện" aria-pressed="false"><span class="icon" aria-hidden="true">▱</span>Dựng thiết diện</button></div></details></div></section><aside class="details"><details class="panel" open><summary class="panel-heading"><h2 id="properties-title">Thuộc tính</h2><span class="status-dot"></span></summary><div id="properties"></div></details>
 
-</aside></div><details class="panel ai-panel"><summary class="panel-heading"><h2>✨ Vẽ hình tự động với AI</h2><span aria-hidden="true">⌃</span></summary><div class="ai-content"><p class="muted" id="ai-status" hidden></p><label class="field">Mô tả hoặc toàn bộ đề bài<textarea id="prompt" rows="4" placeholder="Nhập ý tưởng đề bài, ví dụ: Cho tam giác ABC vuông tại A, đường cao AH, M là trung điểm BC…"></textarea></label><div id="dropzone" class="dropzone"><label for="book-image">＋ Tải / chụp ảnh sách (tùy chọn)<small>Kèm cả đề bài hoặc hình vẽ nếu có</small></label><input id="book-image" type="file" accept="image/png,image/jpeg,image/webp"><label class="camera-label" for="camera-image">Chụp bằng camera</label><input id="camera-image" type="file" accept="image/*" capture="environment" hidden></div><img id="source-image" hidden alt="Ảnh sách gốc để đối chiếu"><button id="remove-image" class="text-button" hidden>Bỏ ảnh</button><button id="analyze" class="primary full" style="font-weight:700; font-size:14px; padding:10px 14px;">✨ Vẽ hình với AI</button><p class="tiny">AI tự động phân tích và vẽ trực tiếp lên bảng vẽ. Bạn có thể nhấn ↶ (hoàn tác) bất cứ lúc nào.</p></div></details></aside><section class="drawing-area"><div class="canvas-bar"><div class="history"><button id="undo" aria-label="Hoàn tác" title="Ctrl+Z">↶</button><button id="redo" aria-label="Làm lại" title="Ctrl+Y">↷</button><span class="divider"></span><button id="zoom-out" aria-label="Thu nhỏ">−</button><button id="reset-view" title="Đặt lại khung">100%</button><button id="zoom-in" aria-label="Phóng to">+</button></div><label class="check"><input type="checkbox" id="grid" checked>Lưới</label><label class="check" title="Nam châm thông minh (hút đỉnh, trung điểm, lưới và khấc góc; giữ Alt để tạm tắt)"><input type="checkbox" id="snap-magnet" checked>Nam châm 🧲</label><div class="zoom-controls" aria-label="Thu phóng"></div><button id="help" class="text-button" aria-label="Hướng dẫn sử dụng Vẽ hình">Hướng dẫn</button></div>
+</aside></div><details class="panel ai-panel"><summary class="panel-heading"><h2>✨ Vẽ hình tự động với AI</h2><span aria-hidden="true">⌃</span></summary><div class="ai-content"><p class="muted" id="ai-status" hidden></p><label class="field">Mô tả hoặc toàn bộ đề bài<textarea id="prompt" rows="4" placeholder="Nhập ý tưởng đề bài, ví dụ: Cho tam giác ABC vuông tại A, đường cao AH, M là trung điểm BC…"></textarea></label><div id="dropzone" class="dropzone"><label for="book-image">＋ Tải / chụp ảnh sách (tùy chọn)<small>Kèm cả đề bài hoặc hình vẽ nếu có</small></label><input id="book-image" type="file" accept="image/png,image/jpeg,image/webp"><label class="camera-label" for="camera-image">Chụp bằng camera</label><input id="camera-image" type="file" accept="image/*" capture="environment" hidden></div><img id="source-image" hidden alt="Ảnh sách gốc để đối chiếu"><button id="remove-image" class="text-button" hidden>Bỏ ảnh</button><button id="analyze" class="primary full" style="font-weight:700; font-size:14px; padding:10px 14px;">✨ Vẽ hình với AI</button><p class="tiny">AI tự động phân tích và vẽ trực tiếp lên bảng vẽ. Bạn có thể nhấn ↶ (hoàn tác) bất cứ lúc nào.</p></div></details></aside><section class="drawing-area"><div class="canvas-bar"><div class="history"><button id="undo" aria-label="Hoàn tác" title="Ctrl+Z">↶</button><button id="redo" aria-label="Làm lại" title="Ctrl+Y">↷</button><span class="divider"></span><button id="zoom-out" aria-label="Thu nhỏ">−</button><button id="reset-view" title="Đặt lại khung">100%</button><button id="zoom-in" aria-label="Phóng to">+</button></div><label class="check"><input type="checkbox" id="grid" checked>Lưới</label><label class="check" title="Nam châm thông minh (hút đỉnh, trung điểm, lưới và khấc góc; giữ Alt để tạm tắt)"><input type="checkbox" id="snap-magnet" checked>Nam châm 🧲</label><div class="zoom-controls" aria-label="Thu phóng"></div><button id="help" class="help-btn" aria-label="Hướng dẫn sử dụng Vẽ hình" title="Xem hướng dẫn sử dụng">📖 Hướng dẫn</button></div>
 <div id="canvas" class="canvas" aria-label="Bảng vẽ tương tác"></div><div class="canvas-footer"><div class="canvas-status"><span id="hint">Kéo điểm xanh để khám phá</span></div><div class="file-actions"><button id="load" class="header-button">Mở</button><button id="export" class="gold">Xuất hình ↗</button></div></div><div id="errors" class="math-errors" role="status"></div>
 </section>
 </div>
@@ -36,6 +36,146 @@
 <dialog id="review"><div class="dialog-heading"><h2>Đối chiếu trước khi áp dụng</h2><button id="close-review" aria-label="Đóng">×</button></div><p>Chỉ áp dụng khi nhãn, đường và điều kiện đúng với đề. Không suy ràng buộc từ hình nhìn có vẻ vuông hoặc bằng nhau.</p><div class="compare"><figure><figcaption>Ảnh gốc</figcaption><img id="review-source" alt="Ảnh sách gốc"><p id="no-source">Đầu vào bằng mô tả</p></figure><figure><figcaption>Bản dựng đề xuất</figcaption><div id="proposal-canvas"></div></figure></div><h3>Đề bài AI đọc được</h3><p id="extracted"></p><h3>Những điểm cần kiểm tra</h3><ul id="uncertainties"></ul><p id="proposal-errors"></p><div class="dialog-actions"><button id="cancel-review" class="secondary">Hủy, giữ bản hiện tại</button><button id="confirm-review" class="primary">Xác nhận & áp dụng</button></div></dialog>
 <template id="workspace-review-template"><section id="proposal-workspaces"></section></template>
 <dialog id="export-dialog"><div class="dialog-heading"><h2>Xuất bảng vẽ</h2><button data-close="export-dialog" aria-label="Đóng">×</button></div><p>SVG/PNG có nền trong suốt, không có lưới hay khung chọn; giữ trục, nhãn và màu hình. JSON giữ tài liệu tương tác. TikZ xuất mã LaTeX chèn trực tiếp vào đề thi.</p><button id="export-svg" class="primary">SVG · vectơ</button><button id="export-png" class="secondary">PNG · ảnh 2000 px</button><button id="export-json" class="secondary">JSON · giữ tương tác</button><button id="export-tikz" class="secondary">TikZ · Mã LaTeX đề thi</button></dialog>
-<dialog id="help-dialog"><div class="dialog-heading"><h2>Hướng dẫn Vẽ hình</h2><button data-close="help-dialog" aria-label="Đóng">×</button></div><p><a href="./huong-dan.html" target="_blank" rel="noopener noreferrer">Mở hướng dẫn đầy đủ từng bước ↗</a></p><p>Vẽ thủ công không giới hạn. Mỗi bản đề xuất AI hợp lệ dùng một lượt tinh chỉnh AI của chính tài khoản bạn, chung với các tính năng AI khác. Lỗi provider hoặc bản dựng sai định dạng được hoàn lượt; hủy bản đề xuất hợp lệ không hoàn lượt.</p><p>Chọn công cụ rồi chọn các điểm theo hướng dẫn dưới bảng vẽ. Với đa giác, chọn lại điểm đầu để đóng. Nhấp đối tượng hoặc chọn trong danh sách để sửa thuộc tính.</p><p>Điểm phụ thuộc không kéo tự do; thay đổi điểm nguồn. Điểm trên đường/tròn có thể kéo theo quỹ tích. Mọi điều kiện được dựng rõ ràng, không tự đoán từ hình.</p><p>Đồ thị: x, a, pi, e, + − * / ^, sin, cos, tan, sqrt, abs, ln, log, exp. Dùng * để nhân. Nét đồ thị lấy mẫu, không thay khảo sát hàm.</p><p>Có thể dùng chat Codex thủ công: sao chép yêu cầu, đính kèm ảnh trong chat và dán JSON trả lại để xem trước. API/ảnh tự động cần provider cấu hình server; ảnh chỉ được gửi khi bấm Tạo bản đề xuất. Không gian hỗ trợ tám loại khối có góc nhìn xoay, chưa có thiết diện hay dựng quan hệ 3D. Histogram dùng khoảng có độ rộng bằng nhau.</p></dialog>
+<dialog id="help-dialog" aria-labelledby="help-title">
+  <div class="dialog-heading">
+    <h2 id="help-title">📖 Hướng dẫn sử dụng Vẽ hình</h2>
+    <button data-close="help-dialog" aria-label="Đóng">×</button>
+  </div>
+  
+  <div class="help-tabs-nav" role="tablist">
+    <button type="button" class="help-tab-btn active" data-help-tab="basic" role="tab">✏️ Vẽ cơ bản</button>
+    <button type="button" class="help-tab-btn" data-help-tab="advanced" role="tab">🧲 Nam châm & Dựng nâng cao</button>
+    <button type="button" class="help-tab-btn" data-help-tab="shortcuts" role="tab">⌨️ Phím tắt & Thao tác</button>
+    <button type="button" class="help-tab-btn" data-help-tab="3d-ai" role="tab">🧊 Không gian 3D & AI</button>
+  </div>
+
+  <!-- Tab 1: Vẽ cơ bản -->
+  <div class="help-pane" data-help-pane="basic">
+    <div class="help-grid-2">
+      <div class="help-card">
+        <h4><span class="help-badge">Điểm & Đoạn</span> Dựng hình cơ bản</h4>
+        <ul>
+          <li><strong>Điểm (•):</strong> Chọn công cụ Điểm, nhấp vào bất kỳ đâu trên bảng vẽ để tạo điểm tự do.</li>
+          <li><strong>Đoạn thẳng (╱), Đường (⟋), Tia (↗):</strong> Nhấp chọn lần lượt 2 điểm (hoặc nhấp tạo điểm mới).</li>
+          <li><strong>Đường tròn (○):</strong> Nhấp điểm 1 làm tâm, nhấp điểm 2 xác định bán kính.</li>
+          <li><strong>Vectơ (→):</strong> Nhấp điểm đầu rồi nhấp điểm cuối để vẽ vectơ có mũi tên.</li>
+        </ul>
+      </div>
+      <div class="help-card">
+        <h4><span class="help-badge">Đa giác & Đồ thị</span> Khép kín & Hàm số</h4>
+        <ul>
+          <li><strong>Đa giác (⬠):</strong> Nhấp chọn liên tiếp các đỉnh theo thứ tự (A &rarr; B &rarr; C...). Nhấp lại đúng điểm xuất phát (A) để khép kín đa giác.</li>
+          <li><strong>Đồ thị hàm số (∿):</strong> Chuyển sang tab Đồ thị ở cột ngoài cùng bên trái. Nhập hàm số y = f(x) vào bảng thuộc tính (hỗ trợ sin, cos, tan, sqrt, abs, ln...).</li>
+          <li><strong>Chỉnh sửa thuộc tính:</strong> Dùng công cụ <strong>Chọn / kéo (↖)</strong> nhấp vào đối tượng để đổi màu sắc, nét đứt, độ đậm nhạt.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 2: Nam châm & Dựng nâng cao -->
+  <div class="help-pane" data-help-pane="advanced" hidden>
+    <div class="help-grid-2">
+      <div class="help-card">
+        <h4><span class="help-badge help-badge-success">Nam châm 🧲</span> Bắt dính & Gióng hàng thông minh</h4>
+        <ul>
+          <li><strong>Nam châm thông minh:</strong> Tự động hút dính vào các đỉnh có sẵn, trung điểm cạnh và khấc góc đặc biệt (30°, 45°, 60°, 90° ⊥).</li>
+          <li><strong>Phím <kbd>Alt</kbd> vẽ tự do:</strong> Giữ phím <kbd>Alt</kbd> khi vẽ hoặc kéo điểm để tạm thời tắt nam châm.</li>
+          <li><strong>Gióng hàng thẳng (Smart Guides):</strong> Khi dùng công cụ <strong>Chọn / kéo</strong> để di chuyển đỉnh, đường đứt nét xanh ngọc sẽ tự động gióng thẳng hàng ngang hoặc dọc với các đỉnh khác trong hình.</li>
+        </ul>
+      </div>
+      <div class="help-card">
+        <h4><span class="help-badge help-badge-success">3 Bước</span> Tam giác đều & Hình vuông</h4>
+        <ol>
+          <li>Chọn công cụ <strong>Tam giác đều</strong> hoặc <strong>Hình vuông</strong>.</li>
+          <li>Nhấp chọn điểm A, rồi nhấp chọn điểm B làm cạnh đáy.</li>
+          <li><strong>Rê chuột</strong> lên trên/xuống dưới/sang trái/phải: hình mờ xem trước sẽ lật theo hướng chuột. Nhấp chuột bất kỳ để chốt hình!</li>
+        </ol>
+      </div>
+    </div>
+    <div class="help-card">
+      <h4><span class="help-badge help-badge-success">Tự động hoàn thiện</span> Dựng hình liên kết</h4>
+      <p>Khi chọn các đỉnh để dựng yếu tố hình học phụ trợ, hệ thống tự động hoàn thiện đầy đủ hình gốc:</p>
+      <ul>
+        <li><strong>Tâm nội tiếp (◉) / Tâm ngoại tiếp (⊙):</strong> Chọn 3 đỉnh A, B, C &rarr; Tự động nối tam giác ABC và vẽ đường tròn tương ứng.</li>
+        <li><strong>Đường cao (⊥):</strong> Chọn đỉnh C và 2 điểm đáy A, B &rarr; Tự động nối cạnh đáy AB và ký hiệu góc vuông.</li>
+        <li><strong>Trung trực (⟂):</strong> Chọn 2 đầu đoạn A, B &rarr; Tự động nối đoạn thẳng gốc AB (nét đứt).</li>
+        <li><strong>Phân giác (∠):</strong> Chọn 3 điểm &rarr; Tự động nối 2 cạnh của góc.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Tab 3: Phím tắt & Thao tác -->
+  <div class="help-pane" data-help-pane="shortcuts" hidden>
+    <table class="help-kbd-table">
+      <thead>
+        <tr>
+          <th>Phím tắt</th>
+          <th>Thao tác</th>
+          <th>Mô tả chi tiết</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td>
+          <td>Hoàn tác (Undo)</td>
+          <td>Quay lại trạng thái bảng vẽ trước đó (hỗ trợ đến 80 bước).</td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl</kbd> + <kbd>Y</kbd> hoặc <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></td>
+          <td>Làm lại (Redo)</td>
+          <td>Phục hồi lại thao tác vừa hoàn tác.</td>
+        </tr>
+        <tr>
+          <td><kbd>Esc</kbd></td>
+          <td>Hủy / Trở về</td>
+          <td>Hủy bước dựng đang dở dang hoặc bỏ chọn các đối tượng đang chọn.</td>
+        </tr>
+        <tr>
+          <td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td>
+          <td>Xóa đối tượng</td>
+          <td>Xóa điểm hoặc hình đang chọn cùng các đối tượng phụ thuộc.</td>
+        </tr>
+        <tr>
+          <td><kbd>Alt</kbd> (Giữ khi rê/kéo)</td>
+          <td>Tắt nam châm</td>
+          <td>Tạm thời vô hiệu hóa lực hút nam châm để căn chỉnh toạ độ tự do.</td>
+        </tr>
+        <tr>
+          <td><kbd>Shift</kbd> + Kéo chuột trái</td>
+          <td>Di chuyển khung (Pan)</td>
+          <td>Kéo di chuyển toàn bộ vùng nhìn bảng vẽ mà không cần đổi công cụ.</td>
+        </tr>
+        <tr>
+          <td>Phím mũi tên <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></td>
+          <td>Dịch chuyển vi mô</td>
+          <td>Dịch chuyển điểm đang chọn từng bước nhỏ 0.1 đơn vị.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Tab 4: Không gian 3D & AI -->
+  <div class="help-pane" data-help-pane="3d-ai" hidden>
+    <div class="help-grid-2">
+      <div class="help-card">
+        <h4><span class="help-badge">Không gian 3D</span> Hình học không gian</h4>
+        <ul>
+          <li><strong>Chuyển chế độ:</strong> Bấm tab <strong>⬡ Không gian</strong> ở thanh dọc ngoài cùng bên trái.</li>
+          <li><strong>Khởi tạo khối:</strong> Chọn nhanh các khối cơ bản như Chóp tam giác, Chóp tứ giác, Chóp đều, Lăng trụ, Hộp chữ nhật, Lập phương...</li>
+          <li><strong>Xoay phối cảnh 360°:</strong> Chọn công cụ <strong>Xoay góc nhìn (🔄)</strong> hoặc kéo chuột trên bảng vẽ để xoay góc nhìn không gian tự do.</li>
+          <li><strong>Dựng hình 3D:</strong> Thêm đỉnh 3D, nối đoạn thẳng, lấy trung điểm, trọng tâm, hạ đường cao lên đáy hoặc dựng mặt phẳng thiết diện.</li>
+        </ul>
+      </div>
+      <div class="help-card">
+        <h4><span class="help-badge">Trí tuệ nhân tạo</span> Vẽ tự động với AI</h4>
+        <ul>
+          <li>Mở mục <strong>✨ Vẽ hình tự động với AI</strong> ở cuối thanh công cụ bên trái.</li>
+          <li>Nhập đề bài hình học (ví dụ: <em>"Cho hình chóp S.ABC có đáy là tam giác vuông tại B, SA vuông góc đáy..."</em>) hoặc chụp/tải ảnh đề bài từ sách.</li>
+          <li>Bấm <strong>✨ Vẽ hình với AI</strong>: AI sẽ tự động phân tích và tạo bản dựng trực tiếp lên bảng vẽ.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</dialog>
 <script type="module" src="./src/app.js"></script></body></html>
 
