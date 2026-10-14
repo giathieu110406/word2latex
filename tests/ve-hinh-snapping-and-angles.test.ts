@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { findSnapTarget, findAngularSnap, blankDocument } from '../public/ve-hinh/src/math.js';
+import { renderSnapOverlay } from '../public/ve-hinh/src/render.js';
 
 test('findSnapTarget: snaps to existing vertex within radius', () => {
   const doc = blankDocument();
@@ -58,3 +59,16 @@ test('findAngularSnap: detects right angle 90 degrees and sets isRightAngle', ()
   assert.equal(snap.angleDeg, 90);
   assert.equal(snap.isRightAngle, true);
 });
+
+test('renderSnapOverlay: generates SVG elements for point snap halo and angle HUD', () => {
+  const snapInfo = {
+    snapTarget: { x: 1, y: 2, type: 'point' },
+    cursor: { x: 1, y: 2 },
+    angularSnap: { angleDeg: 60, length: 3.5, isRightAngle: false, snapped: true }
+  };
+  const svg = renderSnapOverlay(snapInfo, 55, { x: 0, y: 0 });
+  assert.ok(svg.includes('data-snap-overlay="true"'));
+  assert.ok(svg.includes('60.0°') || svg.includes('60°'));
+  assert.ok(svg.includes('L: 3.50') || svg.includes('L: 3.5'));
+});
+

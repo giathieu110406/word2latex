@@ -505,3 +505,45 @@ export function exportSVG(doc,mode,{scale=55,pan={x:0,y:0},viewport=null}={}){
  else if(mode==='graph')svg=graphSVG(doc.graph,options);else if(mode==='chart')svg=chartSVG(doc.chart,options);else if(mode==='solid')svg=solidSVG(doc.solid);else throw Error('Chế độ xuất không hợp lệ');
  return svg.replace(/<rect width="1000" height="660" fill="(?:#ffffff|url\(#dots\))"\/>/g,'').replace(/<pattern id="dots"[\s\S]*?<\/pattern>/g,'');
 }
+
+export function renderSnapOverlay(snapInfo, scale = 55, pan = { x: 0, y: 0 }) {
+  if (!snapInfo) return '';
+  const toScreen = (x, y) => ({
+    cx: 500 + x * scale - pan.x,
+    cy: 330 - y * scale - pan.y
+  });
+
+  let out = '<g data-snap-overlay="true" pointer-events="none">';
+
+  // 1. Target Indicator
+  if (snapInfo.snapTarget?.type) {
+    const { cx, cy } = toScreen(snapInfo.snapTarget.x, snapInfo.snapTarget.y);
+    if (snapInfo.snapTarget.type === 'point') {
+      out += `<circle cx="${cx}" cy="${cy}" r="14" fill="rgba(255, 204, 0, 0.25)" stroke="#ffcc00" stroke-width="2" stroke-dasharray="3 3"/>`;
+      out += `<circle cx="${cx}" cy="${cy}" r="4" fill="#ffcc00"/>`;
+    } else if (snapInfo.snapTarget.type === 'midpoint') {
+      out += `<rect x="${cx - 6}" y="${cy - 6}" width="12" height="12" fill="rgba(42, 157, 143, 0.3)" stroke="#2a9d8f" stroke-width="2" transform="rotate(45 ${cx} ${cy})"/>`;
+    } else if (snapInfo.snapTarget.type === 'grid') {
+      out += `<path d="M ${cx - 7} ${cy} L ${cx + 7} ${cy} M ${cx} ${cy - 7} L ${cx} ${cy + 7}" stroke="#176b52" stroke-width="1.8"/>`;
+    }
+  }
+
+  // 2. Angular Snap & Length HUD
+  if (snapInfo.angularSnap && snapInfo.cursor) {
+    const { cx, cy } = toScreen(snapInfo.cursor.x, snapInfo.cursor.y);
+    const { angleDeg, length, isRightAngle, snapped } = snapInfo.angularSnap;
+    const angleText = isRightAngle ? '90° ⊥' : `${angleDeg.toFixed(1)}°`;
+    const label = `∠ ${angleText} · L: ${length.toFixed(2)}`;
+    const badgeColor = snapped ? '#176b52' : '#334155';
+    const boxWidth = Math.max(100, label.length * 7.5 + 16);
+
+    out += `<g transform="translate(${cx + 14}, ${cy - 14})">
+      <rect x="0" y="-18" width="${boxWidth}" height="24" rx="4" fill="${badgeColor}" fill-opacity="0.9"/>
+      <text x="8" y="-2" fill="#ffffff" font-size="11" font-family="sans-serif" font-weight="600">${label}</text>
+    </g>`;
+  }
+
+  out += '</g>';
+  return out;
+}
+
