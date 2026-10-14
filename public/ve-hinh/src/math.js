@@ -400,4 +400,54 @@ export function findAngularSnap(originX, originY, targetX, targetY, options = {}
   };
 }
 
+export function findAlignmentGuides(dragId, x, y, doc, options = {}) {
+  const threshold = options.threshold ?? 0.15;
+  if (!doc?.points) {
+    return { x, y, guides: [] };
+  }
+  const resolved = resolve(doc).points;
+  let snappedX = x;
+  let snappedY = y;
+  const guides = [];
+
+  let bestDiffX = threshold;
+  let bestX = null;
+  let guideX = null;
+
+  let bestDiffY = threshold;
+  let bestY = null;
+  let guideY = null;
+
+  for (const p of doc.points) {
+    if (p.id === dragId || p.visible === false) continue;
+    const rp = resolved[p.id];
+    if (!rp) continue;
+
+    const diffX = Math.abs(rp.x - x);
+    if (diffX < bestDiffX) {
+      bestDiffX = diffX;
+      bestX = rp.x;
+      guideX = { axis: 'x', val: rp.x, targetId: p.id, targetY: rp.y };
+    }
+
+    const diffY = Math.abs(rp.y - y);
+    if (diffY < bestDiffY) {
+      bestDiffY = diffY;
+      bestY = rp.y;
+      guideY = { axis: 'y', val: rp.y, targetId: p.id, targetX: rp.x };
+    }
+  }
+
+  if (bestX !== null) {
+    snappedX = bestX;
+    guides.push(guideX);
+  }
+  if (bestY !== null) {
+    snappedY = bestY;
+    guides.push(guideY);
+  }
+
+  return { x: snappedX, y: snappedY, guides };
+}
+
 

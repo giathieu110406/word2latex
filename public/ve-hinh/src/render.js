@@ -515,6 +515,19 @@ export function renderSnapOverlay(snapInfo, scale = 55, pan = { x: 0, y: 0 }) {
 
   let out = '<g data-snap-overlay="true" pointer-events="none">';
 
+  // 0. Alignment Guides (Smart Guides)
+  if (Array.isArray(snapInfo.alignmentGuides) && snapInfo.alignmentGuides.length > 0) {
+    for (const g of snapInfo.alignmentGuides) {
+      if (g.axis === 'x') {
+        const { cx } = toScreen(g.val, 0);
+        out += `<line data-alignment-guide="true" x1="${cx}" y1="0" x2="${cx}" y2="660" stroke="#0ea5e9" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+      } else if (g.axis === 'y') {
+        const { cy } = toScreen(0, g.val);
+        out += `<line data-alignment-guide="true" x1="0" y1="${cy}" x2="1000" y2="${cy}" stroke="#0ea5e9" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+      }
+    }
+  }
+
   // 1. Target Indicator
   if (snapInfo.snapTarget?.type) {
     const { cx, cy } = toScreen(snapInfo.snapTarget.x, snapInfo.snapTarget.y);

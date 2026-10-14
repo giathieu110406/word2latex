@@ -1,4 +1,4 @@
-import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection,findSnapTarget,findAngularSnap} from './math.js';
+import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection,findSnapTarget,findAngularSnap,findAlignmentGuides} from './math.js';
 import {generateTable,tableExpressions} from './table.js';
 import {exprToLatex,compileExpressionP,detectExpressionType,normalizeToLHS} from './expression.js';
 import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG,screen3D,distToSegment,renderSnapOverlay} from './render.js';
@@ -1741,11 +1741,24 @@ $('canvas').addEventListener('pointermove',e=>{
     doc.solid.tilt=Math.max(-80,Math.min(80,drag.before.solid.tilt-(e.clientY-drag.py)*.4));
   }else{
     let q=coords(e);
-    if(magnetActive && !e.altKey && $('grid')?.checked){
-      const snapTarget = findSnapTarget(q.x, q.y, doc, { radius: 0.28, snapPoints: false, snapMidpoints: false, snapGrid: true, gridStep: 1 });
-      if(snapTarget.type === 'grid'){ q.x = snapTarget.x; q.y = snapTarget.y; }
+    let alignmentGuides = [];
+    if(magnetActive && !e.altKey){
+      const align = findAlignmentGuides(drag.id, q.x, q.y, doc, { threshold: 0.18 });
+      q.x = align.x;
+      q.y = align.y;
+      alignmentGuides = align.guides;
+
+      if($('grid')?.checked){
+        const snapTarget = findSnapTarget(q.x, q.y, doc, { radius: 0.28, snapPoints: false, snapMidpoints: false, snapGrid: true, gridStep: 1 });
+        if(snapTarget.type === 'grid'){
+          if (!alignmentGuides.some(g => g.axis === 'x')) q.x = snapTarget.x;
+          if (!alignmentGuides.some(g => g.axis === 'y')) q.y = snapTarget.y;
+        }
+      }
     }
     doc=movePoint(doc,drag.id,q.x,q.y);
+    renderCanvas(doc, alignmentGuides.length > 0 ? { alignmentGuides } : null);
+    return;
   }
   renderCanvas();
 });
