@@ -2491,7 +2491,7 @@ export default function App() {
         rating: feedbackRating,
         feedbackImage: feedbackImage || "",
         createdAt: new Date().toISOString(),
-        version: "v3.8",
+        version: "v4.3",
       });
       triggerToast("Cám ơn bạn đã gửi ý kiến đóng góp!", true);
       setFeedbackText("");
@@ -8032,7 +8032,7 @@ ${bodyHtml}
               Trần Gia Thiều - Giathieu110406@gmail.com
             </strong>
             <span className="hidden sm:inline"> · </span>
-            <span className="block sm:inline mt-1 sm:mt-0">Phiên bản v4.1</span>
+            <span className="block sm:inline mt-1 sm:mt-0">Phiên bản v4.3</span>
           </p>
           <p className="text-[11px] text-slate-400 font-medium px-2">
             © Q-Builder · Số hóa công thức LaTeX · Tự động hóa xây dựng đề thi ·
