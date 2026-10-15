@@ -270,18 +270,18 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   </span>
                 </div>
                 {/* Style toggle */}
-                <div className="flex bg-slate-200/60 p-1 rounded-xl text-xs font-bold gap-1 w-full sm:w-auto overflow-x-auto hide-scrollbar">
+                <div className="flex bg-slate-200/60 p-1 rounded-xl text-xs font-bold gap-1 w-full sm:w-auto">
                   <button
-                    
+                    type="button"
                     onClick={() => setDocHeaderStyle("centered")}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${docHeaderStyle === "centered" ? "bg-white text-slate-900 shadow-3xs font-extrabold" : "text-slate-600 hover:text-slate-805"}`}
+                    className={`flex-1 sm:flex-none text-center justify-center px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${docHeaderStyle === "centered" ? "bg-white text-slate-900 shadow-3xs font-extrabold" : "text-slate-600 hover:text-slate-805"}`}
                   >
                     Căn giữa (Đơn)
                   </button>
                   <button
-                    
+                    type="button"
                     onClick={() => setDocHeaderStyle("split")}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${docHeaderStyle === "split" ? "bg-white text-slate-900 shadow-3xs font-extrabold" : "text-slate-600 hover:text-slate-805"}`}
+                    className={`flex-1 sm:flex-none text-center justify-center px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${docHeaderStyle === "split" ? "bg-white text-slate-900 shadow-3xs font-extrabold" : "text-slate-600 hover:text-slate-805"}`}
                   >
                     Khung đôi Bộ GD
                   </button>
@@ -310,7 +310,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left animate-fade-in">
                       {/* Cột trái */}
-                      <div className="space-y-3.5 pr-0 sm:pr-4 sm:border-r border-slate-200/80">
+                      <div className="space-y-3.5 pr-0 sm:pr-4 sm:border-r border-slate-200/80 pb-3.5 sm:pb-0 border-b sm:border-b-0 border-slate-200/60">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-1">
                           BÊN TRÁI (THÔNG TIN HỌC SINH)
                         </span>
@@ -711,11 +711,11 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 </div>
 
                 {docQuestions.length > 0 && (
-                  <div className="flex overflow-x-auto no-scrollbar sm:flex-wrap gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold select-none -mx-1 px-1">
+                  <div className="flex overflow-x-auto no-scrollbar sm:flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-xl text-[10px] font-bold select-none -mx-1 px-1">
                     <button
-                      
+                      type="button"
                       onClick={() => setSavedQuestionTab("all")}
-                      className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
                         savedQuestionTab === "all"
                           ? "bg-white text-slate-900 shadow-3xs border border-slate-200/50"
                           : "text-slate-550 hover:text-slate-900"
@@ -724,54 +724,54 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       Tất cả ({docQuestions.length})
                     </button>
                     <button
-                      
+                      type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem")}
-                      className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1 ${
+                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
                         savedQuestionTab === "trac_nghiem"
                           ? "bg-white text-blue-700 shadow-3xs border border-blue-100"
                           : "text-slate-550 hover:text-blue-600"
                       }`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
                       <span className="hidden xs:inline">TN 4 Lựa chọn</span>
                       <span className="xs:hidden">4 LC</span> ({tracNghiemList.length})
                     </button>
                     <button
-                      
+                      type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem_dung_sai")}
-                      className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1 ${
+                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
                         savedQuestionTab === "trac_nghiem_dung_sai"
                           ? "bg-white text-purple-700 shadow-3xs border border-purple-100"
                           : "text-slate-550 hover:text-purple-600"
                       }`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
                       <span className="hidden xs:inline">TN Đúng/Sai</span>
                       <span className="xs:hidden">Đ/S</span> ({dungSaiList.length})
                     </button>
                     <button
-                      
+                      type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem_tra_loi_ngan")}
-                      className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1 ${
+                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
                         savedQuestionTab === "trac_nghiem_tra_loi_ngan"
                           ? "bg-white text-teal-700 shadow-3xs border border-teal-100"
                           : "text-slate-550 hover:text-teal-600"
                       }`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
                       <span className="hidden xs:inline">TN Trả lời ngắn</span>
                       <span className="xs:hidden">Ngắn</span> ({traLoiNganList.length})
                     </button>
                     <button
-                      
+                      type="button"
                       onClick={() => setSavedQuestionTab("tu_luan")}
-                      className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1 ${
+                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
                         savedQuestionTab === "tu_luan"
                           ? "bg-white text-rose-700 shadow-3xs border border-rose-100"
                           : "text-slate-550 hover:text-rose-600"
                       }`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
                       Tự luận ({tuLuanList.length})
                     </button>
                   </div>
@@ -804,189 +804,338 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                     };
 
                     return (
-                      <div className="max-h-[225px] overflow-y-auto overflow-x-auto border border-slate-200 rounded-xl shadow-3xs select-none">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead>
-                            <tr className="bg-white/40 text-slate-500 border-b border-slate-200 sticky top-0 z-10 shadow-3xs">
-                              <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Thứ tự</th>
-                              <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Phân loại</th>
-                              <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Cột đáp án</th>
-                              <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Nội dung tóm tắt</th>
-                              <th className="p-3 font-bold uppercase tracking-wider text-[10px] text-center">
-                                Thao tác
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredQuestions.map((q) => {
-                              const isEditing = editingQuestionId === q.id;
-                              const origIdx = docQuestions.findIndex((item) => item.id === q.id);
-                              return (
-                                <tr
-                                  key={q.id}
-                                  className={`border-b border-slate-100 last:border-0 transition-colors ${
-                                    isEditing
-                                      ? "bg-amber-50 hover:bg-amber-100/70 border-l-[4px] border-l-amber-500"
-                                      : `hover:bg-slate-50 ${borderColors[q.type] || ""}`
-                                  }`}
-                                >
-                                  <td
-                                    
-                                    onClick={() =>
-                                      handleStartEditQuestion(q)
-                                    }
-                                    className={`p-3 font-bold cursor-pointer hover:text-indigo-650 transition-colors ${
-                                      isEditing
-                                        ? "text-amber-700"
-                                        : "text-slate-700"
-                                    }`}
-                                    title="Bấm để chỉnh sửa câu hỏi này"
+                      <>
+                        {/* Mobile Card List (< sm) */}
+                        <div className="sm:hidden space-y-2.5 max-h-[320px] overflow-y-auto pr-0.5 select-none">
+                          {filteredQuestions.map((q) => {
+                            const isEditing = editingQuestionId === q.id;
+                            const origIdx = docQuestions.findIndex((item) => item.id === q.id);
+                            const sameTypeQuestions = docQuestions.filter(
+                              (item) => item.type === q.type,
+                            );
+                            const displayNum =
+                              sameTypeQuestions.findIndex(
+                                (item) => item.id === q.id,
+                              ) + 1;
+                            const typeSuffix =
+                              q.type === "trac_nghiem"
+                                ? "TN"
+                                : q.type === "trac_nghiem_dung_sai"
+                                ? "Đ/S"
+                                : q.type === "trac_nghiem_tra_loi_ngan"
+                                ? "TLN"
+                                : "TL";
+                            const typeLabel =
+                              q.type === "trac_nghiem"
+                                ? "TN 4 LC"
+                                : q.type === "trac_nghiem_dung_sai"
+                                ? "TN Đúng/Sai"
+                                : q.type === "trac_nghiem_tra_loi_ngan"
+                                ? "TN Trả lời ngắn"
+                                : "Tự luận";
+
+                            return (
+                              <div
+                                key={q.id}
+                                className={`p-3 rounded-xl border transition-all ${
+                                  isEditing
+                                    ? "bg-amber-50/90 border-amber-300 ring-2 ring-amber-200/60 shadow-xs"
+                                    : `bg-white/80 border-slate-200/90 shadow-3xs ${borderColors[q.type] || ""}`
+                                }`}
+                              >
+                                {/* Card Header */}
+                                <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-150/70">
+                                  <div
+                                    onClick={() => handleStartEditQuestion(q)}
+                                    className="flex items-center gap-1.5 cursor-pointer font-extrabold text-xs text-slate-800 hover:text-indigo-600 transition-colors"
                                   >
-                                    {(() => {
-                                      const sameTypeQuestions =
-                                        docQuestions.filter(
-                                          (item) => item.type === q.type,
-                                        );
-                                      const displayNum =
-                                        sameTypeQuestions.findIndex(
-                                          (item) => item.id === q.id,
-                                        ) + 1;
-                                      const typeSuffix =
-                                        q.type === "trac_nghiem"
-                                          ? "TN"
-                                          : q.type === "trac_nghiem_dung_sai"
-                                          ? "Đ/S"
-                                          : q.type === "trac_nghiem_tra_loi_ngan"
-                                          ? "TLN"
-                                          : "TL";
-                                      return `Câu ${displayNum} (${typeSuffix})`;
-                                    })()}
-                                  </td>
-                                  <td
-                                    
-                                    onClick={() =>
-                                      handleStartEditQuestion(q)
-                                    }
-                                    className="p-3 cursor-pointer"
-                                    title="Bấm để chỉnh sửa câu hỏi này"
-                                  >
-                                    <span
-                                      className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-3xs ${
-                                        q.type === "trac_nghiem"
-                                          ? "bg-blue-100/80 text-blue-800 border-blue-200"
-                                          : q.type === "trac_nghiem_dung_sai"
-                                          ? "bg-purple-100/80 text-purple-800 border-purple-200"
-                                          : q.type === "trac_nghiem_tra_loi_ngan"
-                                          ? "bg-teal-100/80 text-teal-800 border-teal-200"
-                                          : "bg-rose-100/80 text-rose-800 border-rose-200"
-                                      }`}
-                                    >
-                                      {q.type === "trac_nghiem"
-                                        ? "TN 4 LC"
-                                        : q.type === "trac_nghiem_dung_sai"
-                                        ? "TN Đúng/Sai"
-                                        : q.type === "trac_nghiem_tra_loi_ngan"
-                                        ? "TN Trả lời ngắn"
-                                        : "Tự luận"}
-                                    </span>
-                                  </td>
-                                  <td className="p-3">
-                                    {q.type === "trac_nghiem" ? (
-                                      <div className="inline-flex gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                                        {[1, 2, 4].map((c) => (
-                                          <button
-                                            key={c}
-                                            
-                                            onClick={() =>
-                                              handleUpdateQuestionColumns(
-                                                q.id,
-                                                c,
-                                              )
-                                            }
-                                            className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold cursor-pointer transition-all ${
-                                              (q.columns || 4) === c
-                                                ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500 scale-[1.03]"
-                                                : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 hover:border-slate-300 shadow-2xs"
-                                            }`}
-                                          >
-                                            {c}C
-                                          </button>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <span className="text-slate-400 font-medium italic">
-                                        -
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                                    <span>Câu {displayNum} ({typeSuffix})</span>
+                                    {isEditing && (
+                                      <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                                        Đang sửa
                                       </span>
                                     )}
-                                  </td>
-                                  <td
-                                    
-                                    onClick={() =>
-                                      handleStartEditQuestion(q)
-                                    }
-                                    className="p-3 text-slate-500 truncate max-w-[130px] cursor-pointer hover:text-slate-805 transition-colors font-medium"
-                                    title="Bấm để chỉnh sửa câu hỏi này"
+                                  </div>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-3xs shrink-0 ${
+                                      q.type === "trac_nghiem"
+                                        ? "bg-blue-100/80 text-blue-800 border-blue-200"
+                                        : q.type === "trac_nghiem_dung_sai"
+                                        ? "bg-purple-100/80 text-purple-800 border-purple-200"
+                                        : q.type === "trac_nghiem_tra_loi_ngan"
+                                        ? "bg-teal-100/80 text-teal-800 border-teal-200"
+                                        : "bg-rose-100/80 text-rose-800 border-rose-200"
+                                    }`}
                                   >
-                                    {getCleanQuestionBody(q.questionText)}
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <div className="inline-flex items-center gap-1.5">
-                                      <button
-                                        
-                                        onClick={() =>
-                                          handleMoveQuestion(origIdx, "up")
-                                        }
-                                        disabled={savedQuestionTab !== "all" || origIdx === 0}
-                                        className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
-                                        title={savedQuestionTab !== "all" ? "Chỉ di chuyển được ở tab Tất cả" : "Di chuyển lên"}
-                                      >
-                                        ▲
-                                      </button>
-                                      <button
-                                        
-                                        onClick={() =>
-                                          handleMoveQuestion(origIdx, "down")
-                                        }
-                                        disabled={
-                                          savedQuestionTab !== "all" || origIdx === docQuestions.length - 1
-                                        }
-                                        className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
-                                        title={savedQuestionTab !== "all" ? "Chỉ di chuyển được ở tab Tất cả" : "Di chuyển xuống"}
-                                      >
-                                        ▼
-                                      </button>
-                                      <button
-                                        
-                                        onClick={() =>
-                                          handleStartEditQuestion(q)
-                                        }
-                                        className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
-                                          isEditing
-                                            ? "text-amber-700 bg-amber-100 hover:bg-amber-200"
-                                            : "text-indigo-650 hover:text-indigo-800 hover:bg-indigo-50"
-                                        }`}
-                                        title="Chỉnh sửa câu hỏi này"
-                                      >
-                                        Sửa
-                                      </button>
-                                      <button
-                                        
-                                        onClick={() =>
-                                          handleDeleteQuestion(q.id)
-                                        }
-                                        className="px-2 py-0.5 text-rose-600 hover:text-rose-800 rounded hover:bg-rose-50 cursor-pointer text-[10px] font-bold"
-                                        title="Xóa"
-                                      >
-                                        Xóa
-                                      </button>
+                                    {typeLabel}
+                                  </span>
+                                </div>
+
+                                {/* Card Body: Content Summary */}
+                                <div
+                                  onClick={() => handleStartEditQuestion(q)}
+                                  className="text-xs text-slate-650 leading-relaxed font-medium line-clamp-3 mb-2.5 cursor-pointer hover:text-slate-900 transition-colors"
+                                  title="Bấm để chỉnh sửa câu hỏi này"
+                                >
+                                  {getCleanQuestionBody(q.questionText)}
+                                </div>
+
+                                {/* Column selector for multiple choice on mobile */}
+                                {q.type === "trac_nghiem" && (
+                                  <div className="flex items-center justify-between gap-2 mb-2.5 bg-slate-50/80 p-2 rounded-lg border border-slate-200/60">
+                                    <span className="text-[11px] font-bold text-slate-500">Cột đáp án:</span>
+                                    <div className="inline-flex gap-1 bg-white p-0.5 rounded-md border border-slate-200 shadow-3xs">
+                                      {[1, 2, 4].map((c) => (
+                                        <button
+                                          key={c}
+                                          type="button"
+                                          onClick={() => handleUpdateQuestionColumns(q.id, c)}
+                                          className={`px-2 py-0.5 rounded text-[10px] font-extrabold cursor-pointer transition-all ${
+                                            (q.columns || 4) === c
+                                              ? "bg-indigo-600 text-white shadow-xs scale-105"
+                                              : "bg-transparent hover:bg-slate-100 text-slate-600"
+                                          }`}
+                                        >
+                                          {c} cột
+                                        </button>
+                                      ))}
                                     </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                                  </div>
+                                )}
+
+                                {/* Card Footer: Action Buttons */}
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveQuestion(origIdx, "up")}
+                                      disabled={savedQuestionTab !== "all" || origIdx === 0}
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs"
+                                      title={savedQuestionTab !== "all" ? "Chỉ di chuyển được ở tab Tất cả" : "Di chuyển lên"}
+                                    >
+                                      ▲
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveQuestion(origIdx, "down")}
+                                      disabled={
+                                        savedQuestionTab !== "all" || origIdx === docQuestions.length - 1
+                                      }
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs"
+                                      title={savedQuestionTab !== "all" ? "Chỉ di chuyển được ở tab Tất cả" : "Di chuyển xuống"}
+                                    >
+                                      ▼
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartEditQuestion(q)}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all border ${
+                                        isEditing
+                                          ? "bg-amber-100 text-amber-800 border-amber-300"
+                                          : "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200/60"
+                                      }`}
+                                    >
+                                      Sửa
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteQuestion(q.id)}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 cursor-pointer transition-all"
+                                    >
+                                      Xóa
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Desktop Table View (>= sm) */}
+                        <div className="hidden sm:block max-h-[225px] overflow-y-auto overflow-x-auto border border-slate-200 rounded-xl shadow-3xs select-none">
+                          <table className="w-full text-left text-xs border-collapse min-w-[540px]">
+                            <thead>
+                              <tr className="bg-white/40 text-slate-500 border-b border-slate-200 sticky top-0 z-10 shadow-3xs">
+                                <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Thứ tự</th>
+                                <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Phân loại</th>
+                                <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Cột đáp án</th>
+                                <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Nội dung tóm tắt</th>
+                                <th className="p-3 font-bold uppercase tracking-wider text-[10px] text-center">
+                                  Thao tác
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredQuestions.map((q) => {
+                                const isEditing = editingQuestionId === q.id;
+                                const origIdx = docQuestions.findIndex((item) => item.id === q.id);
+                                return (
+                                  <tr
+                                    key={q.id}
+                                    className={`border-b border-slate-100 last:border-0 transition-colors ${
+                                      isEditing
+                                        ? "bg-amber-50 hover:bg-amber-100/70 border-l-[4px] border-l-amber-500"
+                                        : `hover:bg-slate-50 ${borderColors[q.type] || ""}`
+                                    }`}
+                                  >
+                                    <td
+                                      onClick={() =>
+                                        handleStartEditQuestion(q)
+                                      }
+                                      className={`p-3 font-bold cursor-pointer hover:text-indigo-650 transition-colors ${
+                                        isEditing
+                                          ? "text-amber-700"
+                                          : "text-slate-700"
+                                      }`}
+                                      title="Bấm để chỉnh sửa câu hỏi này"
+                                    >
+                                      {(() => {
+                                        const sameTypeQuestions =
+                                          docQuestions.filter(
+                                            (item) => item.type === q.type,
+                                          );
+                                        const displayNum =
+                                          sameTypeQuestions.findIndex(
+                                            (item) => item.id === q.id,
+                                          ) + 1;
+                                        const typeSuffix =
+                                          q.type === "trac_nghiem"
+                                            ? "TN"
+                                            : q.type === "trac_nghiem_dung_sai"
+                                            ? "Đ/S"
+                                            : q.type === "trac_nghiem_tra_loi_ngan"
+                                            ? "TLN"
+                                            : "TL";
+                                        return `Câu ${displayNum} (${typeSuffix})`;
+                                      })()}
+                                    </td>
+                                    <td
+                                      onClick={() =>
+                                        handleStartEditQuestion(q)
+                                      }
+                                      className="p-3 cursor-pointer"
+                                      title="Bấm để chỉnh sửa câu hỏi này"
+                                    >
+                                      <span
+                                        className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-3xs ${
+                                          q.type === "trac_nghiem"
+                                            ? "bg-blue-100/80 text-blue-800 border-blue-200"
+                                            : q.type === "trac_nghiem_dung_sai"
+                                            ? "bg-purple-100/80 text-purple-800 border-purple-200"
+                                            : q.type === "trac_nghiem_tra_loi_ngan"
+                                            ? "bg-teal-100/80 text-teal-800 border-teal-200"
+                                            : "bg-rose-100/80 text-rose-800 border-rose-200"
+                                        }`}
+                                      >
+                                        {q.type === "trac_nghiem"
+                                          ? "TN 4 LC"
+                                          : q.type === "trac_nghiem_dung_sai"
+                                          ? "TN Đúng/Sai"
+                                          : q.type === "trac_nghiem_tra_loi_ngan"
+                                          ? "TN Trả lời ngắn"
+                                          : "Tự luận"}
+                                      </span>
+                                    </td>
+                                    <td className="p-3">
+                                      {q.type === "trac_nghiem" ? (
+                                        <div className="inline-flex gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                                          {[1, 2, 4].map((c) => (
+                                            <button
+                                              key={c}
+                                              type="button"
+                                              onClick={() =>
+                                                handleUpdateQuestionColumns(
+                                                  q.id,
+                                                  c,
+                                                )
+                                              }
+                                              className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold cursor-pointer transition-all ${
+                                                (q.columns || 4) === c
+                                                  ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500 scale-[1.03]"
+                                                  : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 hover:border-slate-300 shadow-2xs"
+                                              }`}
+                                            >
+                                              {c}C
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-400 font-medium italic">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td
+                                      onClick={() =>
+                                        handleStartEditQuestion(q)
+                                      }
+                                      className="p-3 text-slate-500 truncate max-w-[130px] cursor-pointer hover:text-slate-805 transition-colors font-medium"
+                                      title="Bấm để chỉnh sửa câu hỏi này"
+                                    >
+                                      {getCleanQuestionBody(q.questionText)}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <div className="inline-flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleMoveQuestion(origIdx, "up")
+                                          }
+                                          disabled={savedQuestionTab !== "all" || origIdx === 0}
+                                          className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
+                                          title={savedQuestionTab !== "all" ? "Chỉ di chuyển được ở tab Tất cả" : "Di chuyển lên"}
+                                        >
+                                          ▲
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleMoveQuestion(origIdx, "down")
+                                          }
+                                          disabled={
+                                            savedQuestionTab !== "all" || origIdx === docQuestions.length - 1
+                                          }
+                                          className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer text-xs"
+                                          title={savedQuestionTab !== "all" ? "Chỉ di chuyển được ở tab Tất cả" : "Di chuyển xuống"}
+                                        >
+                                          ▼
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleStartEditQuestion(q)
+                                          }
+                                          className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                                            isEditing
+                                              ? "text-amber-700 bg-amber-100 hover:bg-amber-200"
+                                              : "text-indigo-650 hover:text-indigo-800 hover:bg-indigo-50"
+                                          }`}
+                                          title="Chỉnh sửa câu hỏi này"
+                                        >
+                                          Sửa
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleDeleteQuestion(q.id)
+                                          }
+                                          className="px-2 py-0.5 text-rose-600 hover:text-rose-800 rounded hover:bg-rose-50 cursor-pointer text-[10px] font-bold"
+                                          title="Xóa"
+                                        >
+                                          Xóa
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
                     );
                   })()
                 )}

@@ -15,5 +15,6 @@ mobile-view*.png
 api_usage_local.json
 scratch/
 *.png
+!public/*.png
 .worktrees/
 .agents/
