@@ -15,6 +15,7 @@ import {
   edgeKey
 } from './occlusion.js';
 import { computeLabelPlacement3D } from './label3d.js';
+import { formatTikZColor } from '../tikz.js';
 
 /**
  * Standard base mesh vertices and faces for predefined solids.
@@ -78,7 +79,7 @@ export function getStandardSolidGeometry(type = 'pyramid', sides = 4) {
     return { verts, faces, edges };
   }
 
-  if (type === 'tetrahedron') {
+  if (type === 'regular-tetrahedron' || type === 'tetrahedron') {
     const r = 2;
     const A = { id: 'A', x: r * Math.cos(0), y: -1.2, z: r * Math.sin(0) };
     const B = { id: 'B', x: r * Math.cos(2 * Math.PI / 3), y: -1.2, z: r * Math.sin(2 * Math.PI / 3) };
@@ -94,6 +95,57 @@ export function getStandardSolidGeometry(type = 'pyramid', sides = 4) {
     const edges = [
       ['A', 'B'], ['B', 'C'], ['C', 'A'],
       ['S', 'A'], ['S', 'B'], ['S', 'C']
+    ];
+    return { verts, faces, edges };
+  }
+
+  if (type === 'frustum') {
+    const A = { id: 'A', x: -1.8, y: -1.3, z: -1.2 };
+    const B = { id: 'B', x: 1.8, y: -1.3, z: -1.2 };
+    const C = { id: 'C', x: 1.8, y: -1.3, z: 1.2 };
+    const D = { id: 'D', x: -1.8, y: -1.3, z: 1.2 };
+    const A1 = { id: 'A1', x: -0.9, y: 1.2, z: -0.6 };
+    const B1 = { id: 'B1', x: 0.9, y: 1.2, z: -0.6 };
+    const C1 = { id: 'C1', x: 0.9, y: 1.2, z: 0.6 };
+    const D1 = { id: 'D1', x: -0.9, y: 1.2, z: 0.6 };
+    const verts = { A, B, C, D, A1, B1, C1, D1 };
+    const faces = [
+      { name: 'bottom', verts: ['A', 'B', 'C', 'D'] },
+      { name: 'top', verts: ['A1', 'D1', 'C1', 'B1'] },
+      { name: 'front', verts: ['D', 'C', 'C1', 'D1'] },
+      { name: 'back', verts: ['B', 'A', 'A1', 'B1'] },
+      { name: 'left', verts: ['A', 'D', 'D1', 'A1'] },
+      { name: 'right', verts: ['C', 'B', 'B1', 'C1'] }
+    ];
+    const edges = [
+      ['A', 'B'], ['B', 'C'], ['C', 'D'], ['D', 'A'],
+      ['A1', 'B1'], ['B1', 'C1'], ['C1', 'D1'], ['D1', 'A1'],
+      ['A', 'A1'], ['B', 'B1'], ['C', 'C1'], ['D', 'D1']
+    ];
+    return { verts, faces, edges };
+  }
+
+  if (type === 'prism') {
+    const r = 1.8;
+    const y = 1.3;
+    const A = { id: 'A', x: r * Math.cos(0), y: -y, z: r * Math.sin(0) };
+    const B = { id: 'B', x: r * Math.cos(2 * Math.PI / 3), y: -y, z: r * Math.sin(2 * Math.PI / 3) };
+    const C = { id: 'C', x: r * Math.cos(4 * Math.PI / 3), y: -y, z: r * Math.sin(4 * Math.PI / 3) };
+    const A1 = { id: 'A1', x: A.x, y: y, z: A.z };
+    const B1 = { id: 'B1', x: B.x, y: y, z: B.z };
+    const C1 = { id: 'C1', x: C.x, y: y, z: C.z };
+    const verts = { A, B, C, A1, B1, C1 };
+    const faces = [
+      { name: 'bottom', verts: ['A', 'B', 'C'] },
+      { name: 'top', verts: ['A1', 'C1', 'B1'] },
+      { name: 'ABB1A1', verts: ['A', 'B', 'B1', 'A1'] },
+      { name: 'BCC1B1', verts: ['B', 'C', 'C1', 'B1'] },
+      { name: 'CAA1C1', verts: ['C', 'A', 'A1', 'C1'] }
+    ];
+    const edges = [
+      ['A', 'B'], ['B', 'C'], ['C', 'A'],
+      ['A1', 'B1'], ['B1', 'C1'], ['C1', 'A1'],
+      ['A', 'A1'], ['B', 'B1'], ['C', 'C1']
     ];
     return { verts, faces, edges };
   }
@@ -133,6 +185,7 @@ export function exportTikZ3D(doc, cameraOptions = {}) {
       const resP = docPoints[p.id] || p;
       if (resP.visible !== false) {
         points3D[p.id] = {
+          id: p.id,
           x: resP.x ?? 0,
           y: resP.y ?? 0,
           z: resP.z ?? 0
@@ -146,6 +199,7 @@ export function exportTikZ3D(doc, cameraOptions = {}) {
   for (const [id, p] of Object.entries(docPoints)) {
     if (p.visible !== false && p.z !== undefined) {
       points3D[id] = {
+        id,
         x: p.x ?? 0,
         y: p.y ?? 0,
         z: p.z ?? 0
@@ -331,7 +385,7 @@ export function exportTikZ3D(doc, cameraOptions = {}) {
       if (cs.visible !== false) {
         const refs = cs.planeRefs || cs.refs;
         if (refs && refs.length >= 3 && refs.every(r => projected2D[r])) {
-          const color = (!cs.color || cs.color.toLowerCase() === '#808080' || cs.color === 'gray') ? 'gray' : (cs.color.startsWith('#') ? `gray` : cs.color);
+          const color = (!cs.color || cs.color.toLowerCase() === '#808080' || cs.color === 'gray') ? 'gray' : (formatTikZColor(cs.color) || cs.color);
           const opacity = cs.opacity ?? 0.2;
           tikz += `  \\fill[fill=${color}, fill opacity=${opacity}] (${refs.join(') -- (')}) -- cycle;\n`;
         }
@@ -339,11 +393,110 @@ export function exportTikZ3D(doc, cameraOptions = {}) {
     }
   }
 
+  // 2b. 3D Transparent Planes (Mặt phẳng bán trong suốt)
+  if (doc.solid?.planes?.length > 0) {
+    tikz += '\n  %% Mặt phẳng không gian bán trong suốt (3D Planes)\n';
+    const isCurved = ['cone', 'cylinder', 'sphere'].includes(doc.solid?.type);
+    for (const pl of doc.solid.planes) {
+      if (pl.visible !== false) {
+        const refs = pl.refs;
+        if (refs && refs.length >= 3 && refs.every(r => projected2D[r])) {
+          // Bỏ qua các plane ảo tam giác mặc định của nón/trụ
+          if (isCurved && (pl.id === 'base' || pl.id === 'bottom' || pl.id === 'top' || (refs.includes('O') && refs.includes('A') && refs.includes('B')) || (refs.includes('O2') && refs.includes('A') && refs.includes('B')))) {
+            continue;
+          }
+          const rawColor = pl.color || '#176b52';
+          const tikzColor = formatTikZColor(rawColor) || rawColor;
+          const opacity = pl.opacity ?? 0.25;
+          tikz += `  \\fill[fill=${tikzColor}, fill opacity=${opacity}] (${refs.join(') -- (')}) -- cycle;\n`;
+          tikz += `  \\draw[dashed, opacity=0.6] (${refs.join(') -- (')}) -- cycle;\n`;
+        }
+      }
+    }
+  }
+
+  // 2c. Curved solids silhouette & base ellipses (Nón, Trụ, Cầu)
+  if (doc.solid?.type === 'cone' && projected2D['O']) {
+    tikz += '\n  %% Khối nón tròn xoay (Cone silhouette & base ellipse)\n';
+    const oPt = projected2D['O'];
+    const sPt = projected2D['S'] || (() => {
+      const p = project3D({ x: 0, y: 2, z: 0 }, camera);
+      return { x: p.u * tikzScale, y: p.v * tikzScale };
+    })();
+    const tiltRad = (tilt * Math.PI) / 180;
+    const rx = 1.8 * tikzScale;
+    const ry = Math.max(0.2, rx * Math.abs(Math.sin(tiltRad)));
+    const isTiltPositive = tilt >= 0;
+
+    // 2 đường sinh biên ngoài tiếp xúc với elip đáy
+    tikz += `  \\draw (${sPt.x.toFixed(2)}, ${sPt.y.toFixed(2)}) -- (${(oPt.x - rx).toFixed(2)}, ${oPt.y.toFixed(2)});\n`;
+    tikz += `  \\draw (${sPt.x.toFixed(2)}, ${sPt.y.toFixed(2)}) -- (${(oPt.x + rx).toFixed(2)}, ${oPt.y.toFixed(2)});\n`;
+
+    // Elip đáy: chuẩn cú pháp arc xuất phát từ chu vi
+    if (isTiltPositive) {
+      tikz += `  \\draw[dashed] (${(oPt.x + rx).toFixed(2)}, ${oPt.y.toFixed(2)}) arc (0:180:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+      tikz += `  \\draw (${(oPt.x - rx).toFixed(2)}, ${oPt.y.toFixed(2)}) arc (180:360:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+    } else {
+      tikz += `  \\draw (${(oPt.x + rx).toFixed(2)}, ${oPt.y.toFixed(2)}) arc (0:180:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+      tikz += `  \\draw[dashed] (${(oPt.x - rx).toFixed(2)}, ${oPt.y.toFixed(2)}) arc (180:360:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+    }
+  } else if (doc.solid?.type === 'cylinder' && projected2D['O1'] && projected2D['O2']) {
+    tikz += '\n  %% Khối trụ tròn xoay (Cylinder generators & bases)\n';
+    const o1Pt = projected2D['O1'];
+    const o2Pt = projected2D['O2'];
+    const tiltRad = (tilt * Math.PI) / 180;
+    const rx = 1.5 * tikzScale;
+    const ry = Math.max(0.2, rx * Math.abs(Math.sin(tiltRad)));
+    const isTiltPositive = tilt >= 0;
+
+    // 2 đường sinh biên ngoài
+    tikz += `  \\draw (${(o1Pt.x - rx).toFixed(2)}, ${(o1Pt.y).toFixed(2)}) -- (${(o2Pt.x - rx).toFixed(2)}, ${(o2Pt.y).toFixed(2)});\n`;
+    tikz += `  \\draw (${(o1Pt.x + rx).toFixed(2)}, ${(o1Pt.y).toFixed(2)}) -- (${(o2Pt.x + rx).toFixed(2)}, ${(o2Pt.y).toFixed(2)});\n`;
+
+    // 2 đáy
+    if (isTiltPositive) {
+      tikz += `  \\draw (${o1Pt.x.toFixed(2)}, ${o1Pt.y.toFixed(2)}) ellipse (${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+      tikz += `  \\draw[dashed] (${(o2Pt.x + rx).toFixed(2)}, ${o2Pt.y.toFixed(2)}) arc (0:180:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+      tikz += `  \\draw (${(o2Pt.x - rx).toFixed(2)}, ${o2Pt.y.toFixed(2)}) arc (180:360:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+    } else {
+      tikz += `  \\draw (${o2Pt.x.toFixed(2)}, ${o2Pt.y.toFixed(2)}) ellipse (${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+      tikz += `  \\draw[dashed] (${(o1Pt.x - rx).toFixed(2)}, ${o1Pt.y.toFixed(2)}) arc (180:360:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+      tikz += `  \\draw (${(o1Pt.x + rx).toFixed(2)}, ${o1Pt.y.toFixed(2)}) arc (0:180:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+    }
+  } else if (doc.solid?.type === 'sphere' && projected2D['O']) {
+    tikz += '\n  %% Khối cầu (Sphere silhouette & equator)\n';
+    const oPt = projected2D['O'];
+    const tiltRad = (tilt * Math.PI) / 180;
+    const rx = (projected2D['M'] ? Math.hypot(projected2D['M'].x - oPt.x, projected2D['M'].y - oPt.y) : 1.8) * tikzScale;
+    const ry = Math.max(0.2, rx * Math.abs(Math.sin(tiltRad)));
+    const isTiltPositive = tilt >= 0;
+
+    tikz += `  \\draw (${oPt.x.toFixed(2)}, ${oPt.y.toFixed(2)}) circle (${rx.toFixed(2)});\n`;
+    if (isTiltPositive) {
+      tikz += `  \\draw[dashed] (${(oPt.x + rx).toFixed(2)}, ${oPt.y.toFixed(2)}) arc (0:180:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+      tikz += `  \\draw (${(oPt.x - rx).toFixed(2)}, ${oPt.y.toFixed(2)}) arc (180:360:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+    } else {
+      tikz += `  \\draw (${(oPt.x + rx).toFixed(2)}, ${oPt.y.toFixed(2)}) arc (0:180:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+      tikz += `  \\draw[dashed] (${(oPt.x - rx).toFixed(2)}, ${oPt.y.toFixed(2)}) arc (180:360:${rx.toFixed(2)} and ${ry.toFixed(2)});\n`;
+    }
+  }
+
   // 3. Dashed segments
   if (dashedSegments.length > 0) {
     tikz += '\n  %% Các đoạn nét đứt (bị khuất theo góc nhìn hoặc người dùng gán)\n';
     for (const s of dashedSegments) {
-      tikz += `  \\draw[dashed] (${s.a}) -- (${s.b});\n`;
+      const opts = ['dashed'];
+      if (s.color && s.color !== '#176b52' && s.color !== '#000000' && s.color !== 'black') {
+        const c = formatTikZColor(s.color);
+        if (c) opts.push(`draw=${c}`);
+      }
+      if (s.strokeWidth && Number.isFinite(s.strokeWidth)) {
+        if (Math.abs(s.strokeWidth - 1.5) < 0.2) opts.push('thin');
+        else if (Math.abs(s.strokeWidth - 2.5) < 0.3) { /* default */ }
+        else if (s.strokeWidth >= 3.5) opts.push('ultra thick');
+        else opts.push(`line width=${s.strokeWidth.toFixed(1)}pt`);
+      }
+      tikz += `  \\draw[${opts.join(', ')}] (${s.a}) -- (${s.b});\n`;
     }
   }
 
@@ -351,7 +504,19 @@ export function exportTikZ3D(doc, cameraOptions = {}) {
   if (solidSegments.length > 0) {
     tikz += '\n  %% Các đoạn nét liền (nhìn thấy)\n';
     for (const s of solidSegments) {
-      tikz += `  \\draw (${s.a}) -- (${s.b});\n`;
+      const opts = [];
+      if (s.color && s.color !== '#176b52' && s.color !== '#000000' && s.color !== 'black') {
+        const c = formatTikZColor(s.color);
+        if (c) opts.push(`draw=${c}`);
+      }
+      if (s.strokeWidth && Number.isFinite(s.strokeWidth)) {
+        if (Math.abs(s.strokeWidth - 1.5) < 0.2) opts.push('thin');
+        else if (Math.abs(s.strokeWidth - 2.5) < 0.3) { /* default */ }
+        else if (s.strokeWidth >= 3.5) opts.push('ultra thick');
+        else opts.push(`line width=${s.strokeWidth.toFixed(1)}pt`);
+      }
+      const optStr = opts.length > 0 ? `[${opts.join(', ')}] ` : ' ';
+      tikz += `  \\draw${optStr}(${s.a}) -- (${s.b});\n`;
     }
   }
 

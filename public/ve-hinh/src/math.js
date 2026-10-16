@@ -1,7 +1,7 @@
 import {compileExpression,compileExpressionP,evaluateExpression,normalizeToLHS} from './expression.js';
 const EPS=1e-9;
-export const counts={midpoint:2,foot:[3,4],ratio:2,centroid:3,planeLineIntersection:5,parallel:3,perpendicular:3,equal:3,onLine:2,onCircle:2,intersection:4,lineCircle:4,circleCircle:4,bisector:3,vectorSum:4,vectorDifference:4,vectorScale:3,affine:2,rotate:2,circumcenter:3,incenter:3,tangent:3,reflectAxis:3,reflectCenter:2,translate:1,rotateAround:2,scaleFrom:2};
-export const shapes={segment:[2,2],line:[2,2],ray:[2,2],vector:[2,2],circle:[2,2],polygon:[3,30],angle:[3,3],length:[2,2],dot:[4,4],vectorAngle:[4,4],vectorCoords:[2,2]};
+export const counts={midpoint:2,foot:[3,4],ratio:2,centroid:3,orthocenter:3,planeLineIntersection:5,parallel:3,perpendicular:3,equal:3,onLine:2,onCircle:2,intersection:4,lineCircle:4,circleCircle:4,bisector:3,vectorSum:4,vectorDifference:4,vectorScale:3,affine:2,rotate:2,circumcenter:3,incenter:3,tangent:3,reflectAxis:3,reflectCenter:2,translate:1,rotateAround:2,scaleFrom:2};
+export const shapes={segment:[2,2],line:[2,2],ray:[2,2],vector:[2,2],circle:[2,2],polygon:[3,30],angle:[3,3],length:[2,2],dot:[4,4],vectorAngle:[4,4],vectorCoords:[2,2],arc:[3,3],sector:[3,3],ellipse:[2,3]};
 export const emptyDocument=()=>({version:1,title:'Khám phá tam giác',points:[],shapes:[],graph:{expressions:[{id:'g1',expr:'a*x^2',color:'#e63946',visible:true}],params:[{name:'a',value:1,min:-5,max:5}]},chart:{type:'bar',labels:['A','B','C','D'],values:[4,7,5,9],second:[6,3,8,5]},solid:{type:'pyramid',rotation:30,tilt:20}});
 export function blankDocument(){const d=emptyDocument();d.title='Bảng trắng';for(const key of ['graph','chart','solid'])d[key].enabled=false;return d;}
 export function removeSelection(doc,ids){const chosen=new Set(ids);let next=structuredClone(doc);for(const p of doc.points)if(chosen.has(p.id))next=removePoint(next,p.id);if(doc.solid?.points)for(const p of doc.solid.points)if(chosen.has(p.id))next=removePoint(next,p.id);next.shapes=next.shapes.filter(s=>!chosen.has(s.id));if(next.solid?.segments)next.solid.segments=next.solid.segments.filter(s=>!chosen.has(s.id));return next;}
@@ -36,7 +36,20 @@ export function validateDocument(value){
   const byId=new Map(allPoints.map(p=>[p.id,p]));const active=new Set();
   function visit(id){if(seen.has(id))return;if(active.has(id))throw Error('Có chu trình phụ thuộc');const p=byId.get(id);if(!p)throw Error('Tham chiếu điểm không tồn tại: '+id);active.add(id);for(const r of p.refs||[])visit(r);active.delete(id);seen.add(id);}
   for(const p of allPoints)visit(p.id);
-  for(const s of d.shapes){if(!s||!Object.hasOwn(shapes,s.type)||typeof s.id!=='string'||!/^[A-Za-z][\w-]{0,39}$/.test(s.id)||ids.has(s.id))throw Error('Đối tượng trùng hoặc không hợp lệ');const range=shapes[s.type];ids.add(s.id);if(!Array.isArray(s.refs)||s.refs.length<range[0]||s.refs.length>range[1]||s.refs.some(r=>!byId.has(r)))throw Error('Tham chiếu đối tượng không hợp lệ');if(s.color!==undefined&&!/^#[0-9a-f]{6}$/i.test(s.color))throw Error('Màu không hợp lệ');if(s.dashed!==undefined&&typeof s.dashed!=='boolean')throw Error('Kiểu nét không hợp lệ');if(s.mark!==undefined&&!['none','tick','double','parallel','right'].includes(s.mark))throw Error('Ký hiệu không hợp lệ');}
+  for(const s of d.shapes){
+    if(!s||!Object.hasOwn(shapes,s.type)||typeof s.id!=='string'||!/^[A-Za-z][\w-]{0,39}$/.test(s.id)||ids.has(s.id))throw Error('Đối tượng trùng hoặc không hợp lệ');
+    const range=shapes[s.type];ids.add(s.id);
+    if(!Array.isArray(s.refs)||s.refs.length<range[0]||s.refs.length>range[1]||s.refs.some(r=>!byId.has(r)))throw Error('Tham chiếu đối tượng không hợp lệ');
+    if(s.color!==undefined&&!/^#[0-9a-f]{6}$/i.test(s.color))throw Error('Màu không hợp lệ');
+    if(s.dashed!==undefined&&typeof s.dashed!=='boolean')throw Error('Kiểu nét không hợp lệ');
+    if(s.mark!==undefined&&!['none','tick','double','triple','parallel','right','single'].includes(s.mark))throw Error('Ký hiệu không hợp lệ');
+    if(s.strokeWidth!==undefined&&(!finite(s.strokeWidth)||s.strokeWidth<=0))throw Error('Độ dày nét không hợp lệ');
+    if(s.fill!==undefined&&!/^#[0-9a-f]{6}$/i.test(s.fill))throw Error('Màu tô không hợp lệ');
+    if(s.fillOpacity!==undefined&&(!finite(s.fillOpacity)||s.fillOpacity<0||s.fillOpacity>1))throw Error('Độ mờ không hợp lệ');
+    if(s.rx!==undefined&&(!finite(s.rx)||s.rx<=0))throw Error('Bán trục rx không hợp lệ');
+    if(s.ry!==undefined&&(!finite(s.ry)||s.ry<=0))throw Error('Bán trục ry không hợp lệ');
+    if(s.visible!==undefined&&typeof s.visible!=='boolean')throw Error('Trạng thái hiển thị phải là boolean');
+  }
   d.graph??=emptyDocument().graph;
   if(typeof d.graph.expression==='string'&&!Array.isArray(d.graph.expressions)){const colors=['#e63946','#2a9d8f','#e9c46a','#f4a261','#264653','#6d6875'];d.graph.expressions=[{id:'g1',expr:d.graph.expression,color:colors[0],visible:true}];d.graph.params=typeof d.graph.a==='number'&&Number.isFinite(d.graph.a)?[{name:'a',value:d.graph.a,min:-5,max:5}]:[];delete d.graph.expression;delete d.graph.a;}
   if(!Array.isArray(d.graph.expressions)||!Array.isArray(d.graph.params))throw Error('Sơ đồ đồ thị không hợp lệ');
@@ -47,9 +60,9 @@ export function validateDocument(value){
   if(c.type==='pie'&&c.values.every(v=>v===0))throw Error('Biểu đồ quạt cần tổng > 0');
   if(c.type==='double'&&(!Array.isArray(c.second)||c.second.length!==c.values.length||c.second.some(v=>!finite(v)||v<0)))throw Error('Cột kép cần dãy thứ hai cùng số lượng');
   if(c.type==='histogram'&&(!finite(c.start)||!finite(c.width)||c.width<=0))throw Error('Histogram cần đầu khoảng và độ rộng > 0');
-  d.solid??=emptyDocument().solid;if(!['box','cube','pyramid','prism','tetrahedron','cylinder','cone','sphere','custom'].includes(d.solid.type)||!finite(d.solid.rotation)||!finite(d.solid.tilt)||(d.solid.sides!==undefined&&(!Number.isInteger(d.solid.sides)||d.solid.sides<3||d.solid.sides>12)))throw Error('Mô hình không gian không hợp lệ');
+  d.solid??=emptyDocument().solid;if(!['box','cube','pyramid','prism','tetrahedron','regular-tetrahedron','frustum','cylinder','cone','sphere','custom'].includes(d.solid.type)||!finite(d.solid.rotation)||!finite(d.solid.tilt)||(d.solid.sides!==undefined&&(!Number.isInteger(d.solid.sides)||d.solid.sides<3||d.solid.sides>12)))throw Error('Mô hình không gian không hợp lệ');
   const solid=d.solid;
-  const faceCount=solid.type==='sphere'?0:solid.type==='cone'?1:solid.type==='cylinder'?2:['box','cube'].includes(solid.type)?6:solid.type==='tetrahedron'?4:solid.type==='custom'?0:(solid.sides??(solid.type==='prism'?3:4))+(solid.type==='prism'?2:1);
+  const faceCount=solid.type==='sphere'?0:solid.type==='cone'?1:solid.type==='cylinder'?2:['box','cube','frustum'].includes(solid.type)?6:['tetrahedron','regular-tetrahedron'].includes(solid.type)?4:solid.type==='custom'?0:(solid.sides??(solid.type==='prism'?3:4))+(solid.type==='prism'?2:1);
   if(solid.faceStyles!==undefined){
     if(!solid.faceStyles||typeof solid.faceStyles!=='object'||Array.isArray(solid.faceStyles))throw Error('Màu mặt không hợp lệ');
     for(const [index,style] of Object.entries(solid.faceStyles))if(!/^(0|[1-9]\d*)$/.test(index)||(faceCount>0&&Number(index)>=faceCount)||!style||!/^#[0-9a-f]{6}$/i.test(style.color)||!Number.isFinite(style.opacity)||style.opacity<0||style.opacity>1)throw Error('Mặt cần tồn tại, màu #rrggbb và độ đậm từ 0 đến 1');
@@ -75,6 +88,7 @@ export function validateDocument(value){
       if(!Array.isArray(pl.refs)||pl.refs.length!==3||pl.refs.some(r=>!byId.has(r)))throw Error('Tham chiếu mặt phẳng 3D không hợp lệ');
       if(pl.color!==undefined&&!/^#[0-9a-f]{6}$/i.test(pl.color))throw Error('Màu không hợp lệ');
       if(pl.opacity!==undefined&&(!finite(pl.opacity)||pl.opacity<0||pl.opacity>1))throw Error('Độ mờ mặt phẳng không hợp lệ');
+      if(pl.transparent!==undefined&&typeof pl.transparent!=='boolean')throw Error('Trạng thái trong suốt phải là boolean');
       if(pl.visible!==undefined&&typeof pl.visible!=='boolean')throw Error('Trạng thái hiển thị phải là boolean');
     }
   }
@@ -131,6 +145,23 @@ export function construct(p,q){const[a,b,c,d,e]=q;const branch=p.branch??1;
     }
     case 'centroid':
       return mul(add(add(a, b), c), 1 / 3);
+    case 'orthocenter': {
+      if (a.z !== undefined || b.z !== undefined || c.z !== undefined) {
+        const u = sub(b, a), v = sub(c, a);
+        const n = cross3D(u, v);
+        const nLenSq = dot(n, n);
+        if (nLenSq < EPS) throw Error('Ba đỉnh thẳng hàng / trùng nhau');
+        const vec = sub(mul(v, dot(u, u)), mul(u, dot(v, v)));
+        const circum = add(a, mul(cross3D(vec, n), 0.5 / nLenSq));
+        return sub(add(add(a, b), c), mul(circum, 2));
+      } else {
+        const u = sub(b, a), v = sub(c, a), den = 2 * (u.x * v.y - u.y * v.x);
+        if (Math.abs(den) < EPS) throw Error('Ba đỉnh thẳng hàng / trùng nhau');
+        const U = dot(u, u), V = dot(v, v);
+        const circum = add(a, { x: (v.y * U - u.y * V) / den, y: (u.x * V - v.x * U) / den });
+        return sub(add(add(a, b), c), mul(circum, 2));
+      }
+    }
     case 'foot': {
       if (q.length === 4) {
         const u = sub(c, b);
@@ -225,6 +256,14 @@ export function resolve(doc){
     if(['line','ray','circle','vector','segment'].includes(s.type)&&dist<EPS)errors.push(s.id+': Hai điểm trùng nhau, đối tượng suy biến');
     if(s.type==='angle'&&(norm(sub(p[0],p[1]))<EPS||norm(sub(p[2],p[1]))<EPS))errors.push(s.id+': Góc không xác định');
     if(s.type==='vectorAngle'&&(norm(sub(p[1],p[0]))<EPS||norm(sub(p[3],p[2]))<EPS))errors.push(s.id+': Góc vectơ không xác định vì vectơ nguồn bằng 0');
+    if(['arc','sector'].includes(s.type)){
+      if(norm(sub(p[1],p[0]))<EPS)errors.push(s.id+': Bán kính cung/quạt tròn bằng 0');
+      if(norm(sub(p[2],p[0]))<EPS)errors.push(s.id+': Điểm định hướng cung/quạt tròn trùng tâm');
+    }
+    if(s.type==='ellipse'){
+      if(norm(sub(p[1],p[0]))<EPS)errors.push(s.id+': Bán trục chính elip bằng 0');
+      if(p.length>=3&&norm(sub(p[2],p[0]))<EPS)errors.push(s.id+': Bán trục phụ elip bằng 0');
+    }
     if(s.type==='polygon'){
       if(p.some(pt=>pt.z!==undefined)){
         let ax=0,ay=0,az=0;
@@ -314,20 +353,84 @@ export function findSnapTarget(x, y, doc, options = {}) {
   if (snapMidpoints && doc?.shapes) {
     const resolved = resolve(doc).points;
     for (const s of doc.shapes) {
-      if (s.visible === false || !['segment', 'polygon'].includes(s.type)) continue;
+      if (s.visible === false) continue;
       const refs = s.refs || [];
-      const edgeCount = s.type === 'polygon' ? refs.length : refs.length - 1;
-      for (let i = 0; i < edgeCount; i++) {
-        const id1 = refs[i];
-        const id2 = refs[(i + 1) % refs.length];
-        const p1 = resolved[id1];
-        const p2 = resolved[id2];
-        if (!p1 || !p2) continue;
-        const mx = (p1.x + p2.x) / 2;
-        const my = (p1.y + p2.y) / 2;
-        const d = Math.hypot(mx - x, my - y);
-        if (d < radius && d < best.dist) {
-          best = { x: mx, y: my, type: 'midpoint', refId: s.id, edgeRefs: [id1, id2], dist: d };
+
+      // 2a. Segment & Polygon Midpoints
+      if (['segment', 'polygon'].includes(s.type)) {
+        const edgeCount = s.type === 'polygon' ? refs.length : refs.length - 1;
+        for (let i = 0; i < edgeCount; i++) {
+          const id1 = refs[i];
+          const id2 = refs[(i + 1) % refs.length];
+          const p1 = resolved[id1];
+          const p2 = resolved[id2];
+          if (!p1 || !p2) continue;
+          const mx = (p1.x + p2.x) / 2;
+          const my = (p1.y + p2.y) / 2;
+          const d = Math.hypot(mx - x, my - y);
+          if (d < radius && d < best.dist) {
+            best = { x: mx, y: my, type: 'midpoint', refId: s.id, edgeRefs: [id1, id2], dist: d };
+          }
+        }
+      }
+
+      // 2b. Arc & Sector Midpoint Snap
+      if (['arc', 'sector'].includes(s.type) && refs.length >= 3) {
+        const O = resolved[refs[0]];
+        const A = resolved[refs[1]];
+        const B = resolved[refs[2]];
+        if (O && A && B) {
+          const R = Math.hypot(A.x - O.x, A.y - O.y);
+          if (R >= EPS) {
+            const alpha = Math.atan2(A.y - O.y, A.x - O.x);
+            const beta = Math.atan2(B.y - O.y, B.x - O.x);
+            let sweep = beta - alpha;
+            if (sweep < 0) sweep += 2 * Math.PI;
+            if (sweep < 1e-4) sweep = 2 * Math.PI;
+            const midAngle = alpha + sweep / 2;
+            const mx = O.x + R * Math.cos(midAngle);
+            const my = O.y + R * Math.sin(midAngle);
+            const d = Math.hypot(mx - x, my - y);
+            if (d < radius && d < best.dist) {
+              best = { x: mx, y: my, type: 'midpoint', refId: s.id, subType: 'arcMidpoint', dist: d };
+            }
+          }
+        }
+      }
+
+      // 2c. Ellipse Vertices Snap
+      if (s.type === 'ellipse' && refs.length >= 2) {
+        const C = resolved[refs[0]];
+        const A = resolved[refs[1]];
+        if (C && A) {
+          const u = sub(A, C);
+          const rx = s.rx && s.rx > 0 ? s.rx : Math.hypot(u.x, u.y);
+          if (rx >= EPS) {
+            const distAC = Math.hypot(u.x, u.y) || 1;
+            const ux = u.x / distAC, uy = u.y / distAC;
+            const vx = -uy, vy = ux;
+            let ry = s.ry && s.ry > 0 ? s.ry : null;
+            if (!ry && refs.length >= 3 && resolved[refs[2]]) {
+              const B = resolved[refs[2]];
+              const w = sub(B, C);
+              const proj = Math.abs(w.x * vx + w.y * vy);
+              ry = proj > 1e-6 ? proj : Math.hypot(w.x, w.y);
+            }
+            if (!ry || ry <= 0) ry = 0.6 * rx;
+
+            const vertices = [
+              { x: C.x + rx * ux, y: C.y + rx * uy },
+              { x: C.x - rx * ux, y: C.y - rx * uy },
+              { x: C.x + ry * vx, y: C.y + ry * vy },
+              { x: C.x - ry * vx, y: C.y - ry * vy }
+            ];
+            for (const v of vertices) {
+              const d = Math.hypot(v.x - x, v.y - y);
+              if (d < radius && d < best.dist) {
+                best = { x: v.x, y: v.y, type: 'midpoint', refId: s.id, subType: 'ellipseVertex', dist: d };
+              }
+            }
+          }
         }
       }
     }
@@ -463,5 +566,122 @@ export function findGeometricAngle(pA, pB, pC) {
   const cosVal = Math.max(-1, Math.min(1, dot / (lenA * lenC)));
   return Math.acos(cosVal) * 180 / Math.PI;
 }
+
+/**
+ * Đo góc giữa 2 đường thẳng trong không gian 3D (rad in [0, pi/2]).
+ * cos(theta) = |u . v| / (|u| * |v|)
+ * Hỗ trợ (p1, p2, p3, p4) hoặc ([p1, p2], [p3, p4]).
+ */
+export function angleBetweenLines3D(p1, p2, p3, p4) {
+  let a = p1, b = p2, c = p3, d = p4;
+  if (Array.isArray(p1) && Array.isArray(p2)) {
+    [a, b] = p1;
+    [c, d] = p2;
+  }
+  if (!a || !b || !c || !d) throw Error('Thiếu điểm xác định đường thẳng');
+  const u = sub(b, a);
+  const v = sub(d, c);
+  const lenU = norm3D(u);
+  const lenV = norm3D(v);
+  if (lenU < EPS || lenV < EPS) throw Error('Đường thẳng có hai điểm trùng nhau');
+  const cosVal = Math.abs(dot(u, v)) / (lenU * lenV);
+  return Math.acos(Math.max(0, Math.min(1, cosVal)));
+}
+
+/**
+ * Đo góc giữa đường thẳng và mặt phẳng trong không gian 3D (rad in [0, pi/2]).
+ * sin(phi) = |u . n| / (|u| * |n|)
+ * Hỗ trợ (l1, l2, p1, p2, p3) hoặc ([l1, l2], [p1, p2, p3]).
+ */
+export function angleLinePlane3D(l1, l2, p1, p2, p3) {
+  let la = l1, lb = l2, pa = p1, pb = p2, pc = p3;
+  if (Array.isArray(l1) && Array.isArray(l2)) {
+    [la, lb] = l1;
+    [pa, pb, pc] = l2;
+  }
+  if (!la || !lb || !pa || !pb || !pc) throw Error('Thiếu điểm xác định đường thẳng hoặc mặt phẳng');
+  const u = sub(lb, la);
+  const lenU = norm3D(u);
+  if (lenU < EPS) throw Error('Đường thẳng có hai điểm trùng nhau');
+  const v1 = sub(pb, pa);
+  const v2 = sub(pc, pa);
+  const n = cross3D(v1, v2);
+  const lenN = norm3D(n);
+  if (lenN < EPS) throw Error('Ba điểm mặt phẳng thẳng hàng / trùng nhau');
+  const sinVal = Math.abs(dot(u, n)) / (lenU * lenN);
+  return Math.asin(Math.max(0, Math.min(1, sinVal)));
+}
+
+/**
+ * Đo góc nhị diện (góc giữa 2 mặt phẳng) trong không gian 3D (rad in [0, pi/2]).
+ * cos(alpha) = |n1 . n2| / (|n1| * |n2|)
+ * Hỗ trợ ([p1, p2, p3], [q1, q2, q3], pointsMap?) hoặc (p1, p2, p3, q1, q2, q3).
+ */
+export function dihedralAngle3D(plane1, plane2, ...rest) {
+  let pts1, pts2;
+  const pointsMap = rest.find(arg => arg && typeof arg === 'object' && arg.x === undefined && arg.y === undefined);
+  if (Array.isArray(plane1) && Array.isArray(plane2)) {
+    pts1 = plane1;
+    pts2 = plane2;
+  } else {
+    pts1 = [plane1, plane2, rest[0]];
+    pts2 = [rest[1], rest[2], rest[3]];
+  }
+  const resolvePt = p => {
+    if (typeof p !== 'string') return p;
+    if (!pointsMap) return p;
+    if (Array.isArray(pointsMap)) return pointsMap.find(pt => pt.id === p);
+    return pointsMap[p];
+  };
+  const [p1, p2, p3] = pts1.map(resolvePt);
+  const [q1, q2, q3] = pts2.map(resolvePt);
+  if (!p1 || !p2 || !p3 || !q1 || !q2 || !q3) throw Error('Thiếu điểm xác định hai mặt phẳng');
+  const n1 = cross3D(sub(p2, p1), sub(p3, p1));
+  const n2 = cross3D(sub(q2, q1), sub(q3, q1));
+  const len1 = norm3D(n1);
+  const len2 = norm3D(n2);
+  if (len1 < EPS || len2 < EPS) throw Error('Ba điểm mặt phẳng thẳng hàng / trùng nhau');
+  const cosVal = Math.abs(dot(n1, n2)) / (len1 * len2);
+  return Math.acos(Math.max(0, Math.min(1, cosVal)));
+}
+
+/**
+ * Tính khoảng cách từ 1 điểm đến 1 mặt phẳng trong không gian 3D (d >= 0).
+ * d = |(M - P1) . n| / |n|
+ * Hỗ trợ (pt, p1, p2, p3) hoặc (pt, [p1, p2, p3]) hoặc (ptId, [r1, r2, r3], pointsMap).
+ */
+export function distancePointToPlane3D(point, p1, p2, p3, maybePointsMap) {
+  let pointsMap = maybePointsMap;
+  if (Array.isArray(p1) && typeof p2 === 'object' && p2 !== null && p2.x === undefined && !Array.isArray(p2)) {
+    pointsMap = p2;
+  } else if (Array.isArray(p1) && Array.isArray(p2)) {
+    pointsMap = p2;
+  } else if (typeof p3 === 'object' && p3 !== null && p3.x === undefined && !Array.isArray(p3)) {
+    pointsMap = p3;
+  }
+  const resolvePt = p => {
+    if (typeof p !== 'string') return p;
+    if (!pointsMap) return p;
+    if (Array.isArray(pointsMap)) return pointsMap.find(pt => pt.id === p);
+    return pointsMap[p];
+  };
+  const pt = resolvePt(point);
+  if (!pt) throw Error('Thiếu điểm cần tính khoảng cách');
+  let a, b, c;
+  if (Array.isArray(p1)) {
+    [a, b, c] = p1.map(resolvePt);
+  } else {
+    a = resolvePt(p1);
+    b = resolvePt(p2);
+    c = resolvePt(p3);
+  }
+  if (!a || !b || !c) throw Error('Thiếu điểm xác định mặt phẳng');
+  const n = cross3D(sub(b, a), sub(c, a));
+  const lenN = norm3D(n);
+  if (lenN < EPS) throw Error('Ba điểm mặt phẳng thẳng hàng / trùng nhau');
+  const diff = sub(pt, a);
+  return Math.abs(dot(diff, n)) / lenN;
+}
+
 
 

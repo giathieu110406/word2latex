@@ -1,4 +1,4 @@
-import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection,findSnapTarget,findAngularSnap,findAlignmentGuides,findGeometricAngle} from './math.js';
+import {emptyDocument,blankDocument,validateDocument,resolve,movePoint,removePoint,removeSelection,findSnapTarget,findAngularSnap,findAlignmentGuides,findGeometricAngle,angleBetweenLines3D,angleLinePlane3D,dihedralAngle3D,distancePointToPlane3D,norm3D,sub} from './math.js';
 import {generateTable,tableExpressions} from './table.js';
 import {exprToLatex,compileExpressionP,detectExpressionType,normalizeToLHS} from './expression.js';
 import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG,screen3D,distToSegment,renderSnapOverlay} from './render.js';
@@ -18,7 +18,11 @@ export const tools3D = [
   ['altitude3d', '⊥', 'Hạ đường cao', 4, 'Chọn đỉnh và 3 điểm của mặt phẳng đáy để hạ đường cao'],
   ['footLine3d', '⏋', 'Kẻ vuông góc cạnh', 3, 'Chọn đỉnh và 2 đầu mút đoạn thẳng để kẻ vuông góc'],
   ['planeLine3d', '✕', 'Giao đường & mặt', 5, 'Chọn 3 điểm mặt phẳng (ABC), rồi chọn 2 điểm đường thẳng (PQ)'],
-  ['crosssection3d', '▱', 'Dựng thiết diện', 3, 'Chọn 3 điểm trong không gian để dựng mặt phẳng thiết diện']
+  ['crosssection3d', '▱', 'Dựng thiết diện', 3, 'Chọn 3 điểm trong không gian để dựng mặt phẳng thiết diện'],
+  ['plane3d', '⏢', 'Mặt phẳng 3D', 3, 'Chọn 3 điểm 3D để dựng mặt phẳng bán trong suốt'],
+  ['parallel3d', '∥', 'Đường song song', 3, 'Chọn 1 điểm P và 2 điểm A, B của đường gốc để dựng đường thẳng song song'],
+  ['measureAngle3d', '∠', 'Đo góc 3D', 4, 'Chọn 4 điểm (2 đường thẳng) hoặc 2 đoạn thẳng để đo góc không gian'],
+  ['measureDistance3d', '↔', 'Đo khoảng cách 3D', 4, 'Chọn 2 điểm (đo khoảng cách 2 điểm) hoặc 1 điểm và 3 điểm mặt phẳng']
 ];
 
 export const primitiveNames = {
@@ -31,6 +35,11 @@ export const primitiveNames = {
   prism4: 'Lăng trụ tứ giác',
   box: 'Hình hộp chữ nhật',
   cube: 'Hình lập phương',
+  cone: 'Hình nón tròn xoay',
+  cylinder: 'Hình trụ tròn xoay',
+  sphere: 'Khối cầu / Mặt cầu',
+  'regular-tetrahedron': 'Tứ diện đều',
+  frustum: 'Chóp cụt tứ giác',
   'blank-3d': 'Bảng vẽ trống'
 };
 
@@ -90,6 +99,44 @@ export function createPoint3D(doc, x, y, z, options = {}) {
   });
 
   return next;
+}
+
+export function resolvePointIdCollisions(d, solidPoints) {
+  if (!d.points || !d.points.length || !solidPoints || !solidPoints.length) return;
+  const solidIds = new Set(solidPoints.map(p => p.id));
+  const collidingPoints = d.points.filter(p => solidIds.has(p.id));
+  if (!collidingPoints.length) return;
+
+  const allExistingIds = new Set([
+    ...solidIds,
+    ...d.points.map(p => p.id)
+  ]);
+
+  const idMap = new Map();
+  for (const pt of collidingPoints) {
+    let newId = pt.id + '_2d';
+    let counter = 1;
+    while (allExistingIds.has(newId)) {
+      newId = pt.id + '_2d_' + counter++;
+    }
+    allExistingIds.add(newId);
+    idMap.set(pt.id, newId);
+    pt.id = newId;
+  }
+
+  for (const pt of d.points) {
+    if (Array.isArray(pt.refs)) {
+      pt.refs = pt.refs.map(r => idMap.get(r) || r);
+    }
+  }
+
+  if (d.shapes) {
+    for (const s of d.shapes) {
+      if (Array.isArray(s.refs)) {
+        s.refs = s.refs.map(r => idMap.get(r) || r);
+      }
+    }
+  }
 }
 
 export function create3DPrimitive(type = 'pyramid4', options = {}) {
@@ -302,10 +349,112 @@ export function create3DPrimitive(type = 'pyramid4', options = {}) {
       { id: 'bottom', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1 },
       { id: 'top', refs: ['A1', 'B1', 'C1'], color: '#176b52', opacity: 0.1 }
     ];
+  } else if (type === 'regular-tetrahedron') {
+    solidType = 'regular-tetrahedron';
+    const R0 = 1.8;
+    const hTetra = R0 * Math.sqrt(2);
+    const yBase = -hTetra / 4;
+    const yApex = 3 * hTetra / 4;
+    points = [
+      { id: 'A', label: 'A', x: R0, y: yBase, z: 0 },
+      { id: 'B', label: 'B', x: -R0 / 2, y: yBase, z: R0 * Math.sqrt(3) / 2 },
+      { id: 'C', label: 'C', x: -R0 / 2, y: yBase, z: -R0 * Math.sqrt(3) / 2 },
+      { id: 'S', label: 'S', x: 0, y: yApex, z: 0 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CA', refs: ['C', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SA', refs: ['S', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SB', refs: ['S', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'SC', refs: ['S', 'C'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'base', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1, transparent: true }
+    ];
+  } else if (type === 'frustum') {
+    solidType = 'frustum';
+    points = [
+      { id: 'A', label: 'A', x: -1.8, y: -1.3, z: -1.2 },
+      { id: 'B', label: 'B', x: 1.8, y: -1.3, z: -1.2 },
+      { id: 'C', label: 'C', x: 1.8, y: -1.3, z: 1.2 },
+      { id: 'D', label: 'D', x: -1.8, y: -1.3, z: 1.2 },
+      { id: 'A1', label: "A'", x: -0.9, y: 1.2, z: -0.6 },
+      { id: 'B1', label: "B'", x: 0.9, y: 1.2, z: -0.6 },
+      { id: 'C1', label: "C'", x: 0.9, y: 1.2, z: 0.6 },
+      { id: 'D1', label: "D'", x: -0.9, y: 1.2, z: 0.6 }
+    ];
+    segments = [
+      { id: 'AB', refs: ['A', 'B'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BC', refs: ['B', 'C'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CD', refs: ['C', 'D'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DA', refs: ['D', 'A'], styleMode: 'auto', color: '#176b52' },
+      { id: 'A1B1', refs: ['A1', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'B1C1', refs: ['B1', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'C1D1', refs: ['C1', 'D1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'D1A1', refs: ['D1', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'AA1', refs: ['A', 'A1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'BB1', refs: ['B', 'B1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'CC1', refs: ['C', 'C1'], styleMode: 'auto', color: '#176b52' },
+      { id: 'DD1', refs: ['D', 'D1'], styleMode: 'auto', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'bottom', refs: ['A', 'B', 'C'], color: '#176b52', opacity: 0.1, transparent: true },
+      { id: 'top', refs: ['A1', 'B1', 'C1'], color: '#176b52', opacity: 0.1, transparent: true }
+    ];
+  } else if (type === 'cone') {
+    solidType = 'cone';
+    points = [
+      { id: 'S', label: 'S', x: 0, y: 2, z: 0 },
+      { id: 'O', label: 'O', x: 0, y: -1.2, z: 0 },
+      { id: 'A', label: 'A', x: -1.8, y: -1.2, z: 0 },
+      { id: 'B', label: 'B', x: 1.8, y: -1.2, z: 0 }
+    ];
+    segments = [
+      { id: 'SO', refs: ['S', 'O'], styleMode: 'dashed', color: '#176b52' },
+      { id: 'OB', refs: ['O', 'B'], styleMode: 'dashed', color: '#176b52' },
+      { id: 'SA', refs: ['S', 'A'], styleMode: 'solid', color: '#176b52' },
+      { id: 'SB', refs: ['S', 'B'], styleMode: 'solid', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'base', refs: ['A', 'B', 'O'], color: '#176b52', opacity: 0.1, transparent: true }
+    ];
+  } else if (type === 'cylinder') {
+    solidType = 'cylinder';
+    points = [
+      { id: 'O1', label: 'O₁', x: 0, y: 1.3, z: 0 },
+      { id: 'O2', label: 'O₂', x: 0, y: -1.3, z: 0 },
+      { id: 'A', label: 'A', x: -1.5, y: -1.3, z: 0 },
+      { id: 'B', label: 'B', x: 1.5, y: -1.3, z: 0 },
+      { id: 'A1', label: "A'", x: -1.5, y: 1.3, z: 0 },
+      { id: 'B1', label: "B'", x: 1.5, y: 1.3, z: 0 }
+    ];
+    segments = [
+      { id: 'O1O2', refs: ['O1', 'O2'], styleMode: 'dashed', color: '#176b52' },
+      { id: 'O2B', refs: ['O2', 'B'], styleMode: 'dashed', color: '#176b52' },
+      { id: 'O1B1', refs: ['O1', 'B1'], styleMode: 'solid', color: '#176b52' },
+      { id: 'AA1', refs: ['A', 'A1'], styleMode: 'solid', color: '#176b52' },
+      { id: 'BB1', refs: ['B', 'B1'], styleMode: 'solid', color: '#176b52' }
+    ];
+    planes = [
+      { id: 'bottom', refs: ['A', 'B', 'O2'], color: '#176b52', opacity: 0.1, transparent: true },
+      { id: 'top', refs: ['A1', 'B1', 'O1'], color: '#176b52', opacity: 0.1, transparent: true }
+    ];
+  } else if (type === 'sphere') {
+    solidType = 'sphere';
+    points = [
+      { id: 'O', label: 'O', x: 0, y: 0, z: 0 },
+      { id: 'M', label: 'M', x: 1.8, y: 0, z: 0 }
+    ];
+    segments = [
+      { id: 'OM', refs: ['O', 'M'], styleMode: 'dashed', color: '#176b52' }
+    ];
+    planes = [];
   }
 
   const baseDoc = options.baseDoc || blankDocument();
   const next = structuredClone(baseDoc);
+  resolvePointIdCollisions(next, points);
   next.solid = {
     enabled: true,
     type: solidType,
@@ -559,23 +708,131 @@ export function create3DHistorySession(initialDoc = blankDocument()) {
   };
 }
 
+export function createPlane3D(doc, refs, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.planes ??= [];
+  const plId = options.id || ('plane_' + refs.join('_'));
+  let uniqueId = plId;
+  let counter = 1;
+  while (next.solid.planes.some(p => p.id === uniqueId)) {
+    uniqueId = plId + '_' + counter++;
+  }
+  next.solid.planes.push({
+    id: uniqueId,
+    refs: [...refs],
+    color: options.color || '#3b82f6',
+    opacity: options.opacity ?? 0.25,
+    transparent: options.transparent ?? true
+  });
+  return next;
+}
+
+export function createParallel3D(doc, pointId, baseRefs, options = {}) {
+  const next = structuredClone(doc);
+  next.solid ??= { enabled: true, type: 'custom', rotation: 30, tilt: 20 };
+  next.solid.points ??= [];
+  next.solid.segments ??= [];
+
+  const [aId, bId] = baseRefs;
+  const qId = options.id || freshSolidPointId(next, 'Q');
+  const label = options.label || qId;
+
+  next.solid.points.push({
+    id: qId,
+    kind: 'parallel',
+    refs: [pointId, aId, bId],
+    label
+  });
+
+  const segId = options.segmentId || ('par_' + pointId + '_' + qId);
+  next.solid.segments.push({
+    id: segId,
+    refs: [pointId, qId],
+    styleMode: options.styleMode || 'auto',
+    color: options.color || '#176b52'
+  });
+  return next;
+}
+
+export function showMeasureHUD(title, value, detail = '') {
+  notify(`[${title}] ${value} ${detail ? '· ' + detail : ''}`);
+  if (typeof document !== 'undefined') {
+    let hud = document.getElementById('measure-hud-3d');
+    if (!hud) {
+      hud = document.createElement('div');
+      hud.id = 'measure-hud-3d';
+      hud.className = 'measure-hud-3d';
+      const container = document.querySelector('.drawing-area') || document.body;
+      container.appendChild(hud);
+    }
+    hud.innerHTML = `
+      <div class="hud-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span class="hud-badge" id="hud-badge" style="font-weight:700; color:#176b52; font-size:12px;">📐 ${escape(title)}</span>
+        <button type="button" class="hud-close" id="hud-close" style="background:none; border:none; cursor:pointer; font-size:14px;" aria-label="Đóng">×</button>
+      </div>
+      <div class="hud-value" id="hud-value" style="font-size:18px; font-weight:700; color:#176b52; margin:4px 0;">${escape(value)}</div>
+      ${detail ? `<div class="hud-detail" id="hud-detail" style="font-size:12px; color:#555;">${escape(detail)}</div>` : ''}
+    `;
+    hud.style.cssText = 'position:absolute; top:54px; right:16px; background:rgba(255,255,255,0.92); backdrop-filter:blur(8px); border:1px solid #cddcd5; border-radius:8px; padding:10px 14px; box-shadow:0 4px 16px rgba(0,0,0,0.12); z-index:100; min-width:180px;';
+    hud.hidden = false;
+    hud.querySelector('.hud-close')?.addEventListener('click', () => { hud.hidden = true; });
+  }
+}
+
+export function measureAngle3D(doc, p1, p2, p3, p4) {
+  const resolved = resolve(doc).solidPoints;
+  const resolveCoord = p => (typeof p === 'string' ? (resolved[p] || doc.solid?.points?.find(pt => pt.id === p)) : p);
+  const pt1 = resolveCoord(p1);
+  const pt2 = resolveCoord(p2);
+  const pt3 = resolveCoord(p3);
+  const pt4 = resolveCoord(p4);
+  if (!pt1 || !pt2 || !pt3 || !pt4) throw Error('Không tìm thấy tọa độ điểm đo');
+  const rad = angleBetweenLines3D(pt1, pt2, pt3, pt4);
+  const deg = rad * 180 / Math.PI;
+  return { rad, deg };
+}
+
+export function measureDistance3D(doc, point, p1, p2, p3) {
+  const resolved = resolve(doc).solidPoints;
+  const resolveCoord = p => (typeof p === 'string' ? (resolved[p] || doc.solid?.points?.find(pt => pt.id === p)) : p);
+  const pt = resolveCoord(point);
+  if (!pt) throw Error('Không tìm thấy tọa độ điểm cần đo');
+  if (p2 === undefined && p3 === undefined) {
+    const ptTarget = resolveCoord(p1);
+    if (!ptTarget) throw Error('Không tìm thấy tọa độ điểm đích');
+    return norm3D(sub(ptTarget, pt));
+  }
+  const pa = resolveCoord(p1);
+  const pb = resolveCoord(p2);
+  const pc = resolveCoord(p3);
+  return distancePointToPlane3D(pt, pa, pb, pc);
+}
+
+
 const $=id=>typeof document !== 'undefined' ? document.getElementById(id) : null;
 if(typeof window !== 'undefined' && window.parent!==window && typeof document !== 'undefined') document.body?.classList.add('embedded');
 const testing=typeof location !== 'undefined' && new URLSearchParams(location.search).get('testing')==='1';
-function sizeViewport(){if(typeof document !== 'undefined' && typeof window !== 'undefined')document.documentElement.style.setProperty('--app-height',window.innerHeight+'px');}
-if(typeof window !== 'undefined'){window.addEventListener('resize',sizeViewport,{passive:true});sizeViewport();}
+if(typeof window !== 'undefined'){
+  window.addEventListener('resize',()=>{
+    if(selected && !$('quick-context-menu')?.hidden){
+      const targetEl = findSelectedElement(selected);
+      if(targetEl) updateContextMenuPosition(targetEl);
+    }
+  },{passive:true});
+}
 let doc=blankDocument(),mode='geometry',tool='select',selected='',pending=[],snappedPointId=null,scale=55,history=[],future=[],drag=null,image=null,proposal=null,revision=0,busy=false,pan={x:0,y:0};
 export let magnetActive=true;
 let currentSnapInfo=null;
 const tools=[
  ['select','↖','Chọn / kéo',0,'Chọn đối tượng hoặc kéo điểm tự do'],['region','▧','Chọn vùng',0,'Kéo chuột trái tạo khung; hình hữu hạn nằm trọn, đường/tia cắt khung. Esc bỏ chọn'],['point','•','Điểm',0,'Nhấn vào bảng để tạo điểm'],
- ['segment','╱','Đoạn',2,'Chọn hai đầu đoạn'],['line','⟋','Đường',2,'Chọn hai điểm trên đường'],['polygon','⬠','Đa giác',-1,'Chọn ≥3 điểm, chọn lại điểm đầu để đóng'],['circle','○','Đường tròn',2,'Chọn tâm rồi điểm trên đường tròn'],
- ['midpoint','⊙','Trung điểm',2,'Chọn hai đầu đoạn'],['foot','⊥','Đường cao',3,'Chọn đỉnh, rồi hai điểm của đường đáy'],['parallel','∥','Song song',3,'Chọn điểm đi qua, rồi hai điểm của đường gốc'],['perpendicular','∟','Vuông góc',3,'Chọn điểm đi qua, rồi hai điểm của đường gốc'],['bisector','∠','Phân giác',3,'Chọn điểm trên cạnh, đỉnh góc, điểm trên cạnh còn lại'],['intersection','×','Giao 2 đường',4,'Chọn A,B của đường 1 rồi C,D của đường 2'],['lineCircle','⊗','Giao đường/tròn',4,'Chọn hai điểm đường, tâm tròn, điểm bán kính'],['circleCircle','◉','Giao 2 tròn',4,'Chọn tâm và điểm bán kính của từng đường tròn'],['onLine','↔','Thuộc đường',2,'Chọn hai điểm của đường chứa điểm mới'],['onCircle','◌','Thuộc tròn',2,'Chọn tâm và điểm bán kính'],['equal','＝','Bằng độ dài',3,'Chọn điểm gốc, rồi hai điểm đoạn tham chiếu; sửa góc trong thuộc tính'],['tangent','⌁','Tiếp tuyến',3,'Chọn điểm ngoài, tâm tròn, điểm bán kính'],['vector','→','Vectơ',2,'Chọn điểm đầu, điểm cuối'],['vectorSum','⇉','Cộng vectơ',4,'Chọn đầu/cuối vectơ 1 rồi đầu/cuối vectơ 2'],['angle','∠','Đo góc',3,'Chọn cạnh, đỉnh, cạnh'],['length','↦','Độ dài',2,'Chọn hai đầu đoạn']
+ ['segment','╱','Đoạn',2,'Chọn hai đầu đoạn'],['line','⟋','Đường',2,'Chọn hai điểm trên đường'],['polygon','⬠','Đa giác',-1,'Chọn ≥3 điểm, chọn lại điểm đầu để đóng'],['circle','○','Đường tròn',2,'Chọn tâm rồi điểm trên đường tròn'],['arc','⌒','Cung tròn',3,'Chọn tâm, điểm đầu cung, điểm cuối cung'],['sector','⌔','Hình quạt',3,'Chọn tâm rồi hai điểm mút để tạo hình quạt tròn'],['ellipse','⬭','Elip',3,'Chọn tâm, đỉnh trục lớn, rồi đỉnh trục nhỏ'],
+ ['midpoint','⊙','Trung điểm',2,'Chọn hai đầu đoạn'],['foot','⊥','Đường cao',3,'Chọn đỉnh, rồi hai điểm của đường đáy'],['parallel','∥','Song song',3,'Chọn điểm đi qua, rồi hai điểm của đường gốc'],['perpendicular','∟','Vuông góc',3,'Chọn điểm đi qua, rồi hai điểm của đường gốc'],['bisector','∠','Phân giác',3,'Chọn điểm trên cạnh, đỉnh góc, điểm trên cạnh còn lại'],['intersection','×','Giao 2 đường',4,'Chọn A,B của đường 1 rồi C,D của đường 2'],['lineCircle','⊗','Giao đường/tròn',4,'Chọn hai điểm đường, tâm tròn, điểm bán kính'],['circleCircle','◉','Giao 2 tròn',4,'Chọn tâm và điểm bán kính của từng đường tròn'],['onLine','↔','Thuộc đường',2,'Chọn hai điểm của đường chứa điểm mới'],['onCircle','◌','Thuộc tròn',2,'Chọn tâm và điểm bán kính'],['equal','＝','Bằng độ dài',3,'Chọn điểm gốc, rồi hai điểm đoạn tham chiếu; sửa góc trong thuộc tính'],['tangent','⌁','Tiếp tuyến',3,'Chọn điểm ngoài, tâm tròn, điểm bán kính'],['vector','→','Vectơ',2,'Chọn điểm đầu, điểm cuối'],['vectorSum','⇉','Cộng vectơ',4,'Chọn đầu/cuối vectơ 1 rồi đầu/cuối vectơ 2'],['angle','∠','Đo góc',3,'Chọn cạnh, đỉnh, cạnh'],['rightAngle','∟','Góc vuông',3,'Chọn điểm trên cạnh 1, đỉnh vuông, điểm trên cạnh 2 để ký hiệu góc vuông'],['length','↦','Độ dài',2,'Chọn hai đầu đoạn']
 ];
 tools.push(['ray','↗','Tia',2,'Chọn gốc tia, rồi điểm xác định hướng'],['perpendicularBisector','⟂','Trung trực',2,'Chọn hai đầu đoạn; trung trực đi qua trung điểm'],['equilateralTriangle','△=','Tam giác đều',2,'Chọn hai đỉnh cạnh đáy để dựng tam giác đều'],['square','□','Hình vuông',2,'Chọn hai đỉnh cạnh đáy để dựng hình vuông']);
 const names=Object.fromEntries(tools.map(t=>[t[0],t[2]]));
 tools.push(['pan','✥','Di chuyển',0,'Kéo nền để di chuyển khung. Đặt lại bằng nút %']);
-tools.push(['vectorDifference','⇠','Hiệu vectơ',4,'Chọn đầu/cuối vectơ 1 rồi đầu/cuối vectơ 2'],['vectorScale','k→','Nhân vectơ',3,'Chọn gốc đặt kết quả, rồi đầu/cuối vectơ nguồn; sửa hệ số k'],['dot','·','Tích vô hướng',4,'Chọn đầu/cuối từng vectơ'],['vectorAngle','∠→','Góc hai vectơ',4,'Chọn đầu/cuối từng vectơ'],['vectorCoords','(x;y)','Tọa độ vectơ',2,'Chọn điểm đầu và cuối'],['circumcenter','⊙','Tâm ngoại tiếp',3,'Chọn ba đỉnh tam giác'],['incenter','◉','Tâm nội tiếp',3,'Chọn ba đỉnh tam giác'],['reflectAxis','↹','Đối xứng trục',3,'Chọn điểm gốc, rồi hai điểm đường trục'],['reflectCenter','⤡','Đối xứng tâm',2,'Chọn điểm gốc, rồi điểm tâm'],['translate','↦','Tịnh tiến',1,'Chọn điểm gốc; sửa vector dịch chuyển trong thuộc tính'],['rotateAround','⟳','Quay',2,'Chọn điểm gốc, rồi tâm quay; sửa góc trong thuộc tính'],['scaleFrom','⤢','Vị tự',2,'Chọn điểm gốc, rồi tâm vị tự; sửa hệ số k trong thuộc tính']);
+tools.push(['vectorDifference','⇠','Hiệu vectơ',4,'Chọn đầu/cuối vectơ 1 rồi đầu/cuối vectơ 2'],['vectorScale','k→','Nhân vectơ',3,'Chọn gốc đặt kết quả, rồi đầu/cuối vectơ nguồn; sửa hệ số k'],['dot','·','Tích vô hướng',4,'Chọn đầu/cuối từng vectơ'],['vectorAngle','∠→','Góc hai vectơ',4,'Chọn đầu/cuối từng vectơ'],['vectorCoords','(x;y)','Tọa độ vectơ',2,'Chọn điểm đầu và cuối'],['circumcenter','⊙','Tâm ngoại tiếp',3,'Chọn ba đỉnh tam giác'],['incenter','◉','Tâm nội tiếp',3,'Chọn ba đỉnh tam giác'],['centroid','◬','Trọng tâm',3,'Chọn ba đỉnh tam giác để dựng trọng tâm G'],['orthocenter','⟂','Trực tâm',3,'Chọn ba đỉnh tam giác để dựng trực tâm H'],['reflectAxis','↹','Đối xứng trục',3,'Chọn điểm gốc, rồi hai điểm đường trục'],['reflectCenter','⤡','Đối xứng tâm',2,'Chọn điểm gốc, rồi điểm tâm'],['translate','↦','Tịnh tiến',1,'Chọn điểm gốc; sửa vector dịch chuyển trong thuộc tính'],['rotateAround','⟳','Quay',2,'Chọn điểm gốc, rồi tâm quay; sửa góc trong thuộc tính'],['scaleFrom','⤢','Vị tự',2,'Chọn điểm gốc, rồi tâm vị tự; sửa hệ số k trong thuộc tính']);
 Object.assign(names,Object.fromEntries(tools.map(t=>[t[0],t[2]])),Object.fromEntries(tools3D.map(t=>[t[0],t[2]])),{
   affine:'Dựng theo cạnh gốc',rotate:'Quay quanh tâm',reflectAxis:'Đối xứng trục',reflectCenter:'Đối xứng tâm',translate:'Tịnh tiến',rotateAround:'Quay',scaleFrom:'Vị tự',
   orbit3d:'Xoay góc nhìn 3D',select3d:'Chọn đối tượng 3D',segment3d:'Nối 2 đỉnh 3D',midpoint3d:'Trung điểm 3D',ratio3d:'Chia tỉ lệ 3D',altitude3d:'Hạ đường cao 3D',crosssection3d:'Dựng thiết diện 3D'
@@ -605,7 +862,7 @@ function freshId(source=doc){for(let i=0;i<26;i++){const id=String.fromCharCode(
 function addShape(next,type,refs,extra={}){let i=1;while(next.shapes.some(s=>s.id==='s'+i)||next.points.some(p=>p.id==='s'+i))i++;next.shapes.push({id:'s'+i,type,refs:[...refs],color:'#176b52',...extra});selected='s'+i;}
 function ensureSegment(next,p1,p2,options={}){const exists=next.shapes.some(s=>['segment','polygon'].includes(s.type)&&(s.refs.includes(p1)&&s.refs.includes(p2)));if(!exists)addShape(next,'segment',[p1,p2],{color:options.color||'#176b52',...options});}
 function pickTool(value){cancelConstruction();selectedIds.clear();selected='';notify('');tool=value;closeMobileSidebar();render();}
-const toolGroups=[['Cơ bản',['select','region','point','segment','line','ray','polygon','circle','equilateralTriangle','square','pan']],['Dựng quan hệ',['midpoint','perpendicularBisector','foot','parallel','perpendicular','bisector','equal','onLine','onCircle','circumcenter','incenter','tangent']],['Giao điểm',['intersection','lineCircle','circleCircle']],['Đo lường & vectơ',['length','angle','vector','vectorSum','vectorDifference','vectorScale','dot','vectorAngle','vectorCoords']],['Biến hình',['reflectAxis','reflectCenter','translate','rotateAround','scaleFrom']]];
+const toolGroups=[['Cơ bản',['select','region','point','segment','line','ray','polygon','circle','arc','sector','ellipse','equilateralTriangle','square','pan']],['Dựng quan hệ',['midpoint','perpendicularBisector','foot','parallel','perpendicular','bisector','equal','onLine','onCircle','circumcenter','incenter','centroid','orthocenter','tangent']],['Giao điểm',['intersection','lineCircle','circleCircle']],['Đo lường & vectơ',['length','angle','rightAngle','vector','vectorSum','vectorDifference','vectorScale','dot','vectorAngle','vectorCoords']],['Biến hình',['reflectAxis','reflectCenter','translate','rotateAround','scaleFrom']]];
 const normalize=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').toLowerCase();
 function toolMarkup(){const query=normalize($('tool-search')?.value||'');let count=0;const markup=toolGroups.map(([label,ids],index)=>{const items=ids.map(id=>tools.find(t=>t[0]===id)).filter(t=>normalize(t[2]+' '+t[4]).includes(query));count+=items.length;return items.length?'<details class="tool-section" '+(query||index===0?'open':'')+'><summary>'+label+'</summary><div class="tool-grid">'+items.map(t=>`<button data-tool="${t[0]}" title="${t[4]}" class="${tool===t[0]?'active':''}" aria-pressed="${tool===t[0]}"><span class="icon" aria-hidden="true">${t[1]}</span>${t[2]}</button>`).join('')+'</div></details>':'';}).join('');if($('no-tools'))$('no-tools').hidden=count>0;return markup;}
 function filter3DTools(){
@@ -771,7 +1028,7 @@ function renderCanvas(d = doc, snapData = null){
 
       // 3. Tag cross-section polygons
       if(d.solid?.crossSections?.length>0){
-        const polyEls=$('canvas').querySelectorAll('polygon');
+        const polyEls=$('canvas').querySelectorAll('polygon:not([data-plane])');
         d.solid.crossSections.forEach((cs,i)=>{
           if(polyEls[i]){
             polyEls[i].setAttribute('data-crosssection',cs.id);
@@ -786,14 +1043,18 @@ function renderCanvas(d = doc, snapData = null){
     }
   }catch(e){notify(e.message);}
   $('errors').textContent=mode==='geometry'||mode==='solid'?resolve(doc).errors.map(e=>e+' · Kéo điểm nguồn về vị trí hợp lệ hoặc hoàn tác.').join('\n'):mode==='graph'?graphFeedback(doc.graph).join('\n'):'';
+  if(typeof document !== 'undefined' && selected && !$('quick-context-menu')?.hidden){
+    const targetEl = findSelectedElement(selected);
+    if(targetEl) updateContextMenuPosition(targetEl);
+  }
 }
 function render(){
   const is3D=mode==='solid';
   const isDrawing=mode==='geometry'||is3D;
-  const ids=new Set([...doc.points,...doc.shapes,...(doc.solid?.points||[]),...(doc.solid?.segments||[]),...(doc.solid?.crossSections||[])].map(o=>o.id));
+  const ids=new Set([...doc.points,...doc.shapes,...(doc.solid?.points||[]),...(doc.solid?.segments||[]),...(doc.solid?.crossSections||[]),...(doc.solid?.planes||[])].map(o=>o.id));
   for(const id of selectedIds)if(!ids.has(id))selectedIds.delete(id);
   if(mode==='geometry'&&!doc.points.some(p=>p.id===selected)&&!doc.shapes.some(s=>s.id===selected))selected='';
-  if(is3D&&!(doc.solid?.points?.some(p=>p.id===selected))&&!(doc.solid?.segments?.some(s=>s.id===selected))&&!(doc.solid?.crossSections?.some(c=>c.id===selected)))selected='';
+  if(is3D&&!(doc.solid?.points?.some(p=>p.id===selected))&&!(doc.solid?.segments?.some(s=>s.id===selected))&&!(doc.solid?.crossSections?.some(c=>c.id===selected))&&!(doc.solid?.planes?.some(pl=>pl.id===selected)))selected='';
   renderCanvas(doc);
   if($('delete-selected'))$('delete-selected').disabled=(mode==='geometry'&&!selected&&!selectedIds.size)||(is3D&&!selected);
   $('title').value=doc.title;
@@ -825,18 +1086,599 @@ function render(){
   if(tmplSmall)tmplSmall.textContent=templateLibrary[mode].length+' mẫu · '+modeNames[mode];
   renderProperties();
   renderRestoreControl();
+  updateQuickContextMenu();
 }
+
+// ============================================================================
+// QUICK CONTEXT MENU CONTROLLER (Milestone 3 - R3)
+// ============================================================================
+
+export const PEDAGOGICAL_PALETTE = [
+  { hex: '#176b52', name: 'Xanh ngọc Word2LaTeX' },
+  { hex: '#2563eb', name: 'Xanh lam hình học' },
+  { hex: '#dc2626', name: 'Đỏ đường phụ' },
+  { hex: '#d97706', name: 'Vàng nghệ thiết diện' },
+  { hex: '#1f2937', name: 'Đen in ấn' }
+];
+
+export function getSelectedTarget(d = doc, selectedId = selected, currentMode = mode) {
+  if (!selectedId) return null;
+  if (currentMode === 'geometry') {
+    const p = d.points?.find(pt => pt.id === selectedId);
+    if (p) return { type: 'point2d', data: p };
+    const s = d.shapes?.find(sh => sh.id === selectedId);
+    if (s) return { type: 'shape2d', data: s };
+  } else if (currentMode === 'solid') {
+    const v = d.solid?.points?.find(pt => pt.id === selectedId);
+    if (v) return { type: 'vertex3d', data: v };
+    const s = d.solid?.segments?.find(seg => seg.id === selectedId);
+    if (s) return { type: 'segment3d', data: s };
+    const cs = d.solid?.crossSections?.find(c => c.id === selectedId);
+    if (cs) return { type: 'crosssection3d', data: cs };
+    const pl = d.solid?.planes?.find(p => p.id === selectedId);
+    if (pl) return { type: 'plane3d', data: pl };
+  }
+  const p = d.points?.find(pt => pt.id === selectedId);
+  if (p) return { type: 'point2d', data: p };
+  const s = d.shapes?.find(sh => sh.id === selectedId);
+  if (s) return { type: 'shape2d', data: s };
+  const v = d.solid?.points?.find(pt => pt.id === selectedId);
+  if (v) return { type: 'vertex3d', data: v };
+  const seg = d.solid?.segments?.find(seg => seg.id === selectedId);
+  if (seg) return { type: 'segment3d', data: seg };
+  const cs = d.solid?.crossSections?.find(c => c.id === selectedId);
+  if (cs) return { type: 'crosssection3d', data: cs };
+  const pl = d.solid?.planes?.find(p => p.id === selectedId);
+  if (pl) return { type: 'plane3d', data: pl };
+  return null;
+}
+
+export function findSelectedElement(selectedId) {
+  if (!selectedId || typeof document === 'undefined') return null;
+  const canvas = $('canvas');
+  if (!canvas) return null;
+
+  const pointEl = canvas.querySelector(`[data-point="${selectedId}"], [data-vertex="${selectedId}"]`);
+  if (pointEl) {
+    return pointEl.querySelector('circle') || pointEl;
+  }
+
+  const segEl = canvas.querySelector(`[data-segment-3d="${selectedId}"], [data-segment="${selectedId}"]`);
+  if (segEl) return segEl;
+
+  const shapeEl = canvas.querySelector(`[data-shape="${selectedId}"]:not([stroke="transparent"])`) || canvas.querySelector(`[data-shape="${selectedId}"]`);
+  if (shapeEl) return shapeEl;
+
+  const csEl = canvas.querySelector(`[data-crosssection="${selectedId}"]`);
+  if (csEl) return csEl;
+
+  const planeEl = canvas.querySelector(`[data-plane="${selectedId}"]`);
+  if (planeEl) return planeEl;
+
+  return null;
+}
+
+export function calculateContextMenuPosition(
+  targetRect,
+  canvasRect,
+  menuSize = { width: 240, height: 42 },
+  options = {}
+) {
+  const padding = options.padding ?? 12;
+  const offsetY = options.offsetY ?? 10;
+  const menuWidth = menuSize?.width || 240;
+  const menuHeight = menuSize?.height || 42;
+
+  const targetCenterX = (targetRect.left - canvasRect.left) + targetRect.width / 2;
+  const targetTopY = targetRect.top - canvasRect.top;
+  const targetBottomY = targetRect.bottom - canvasRect.top;
+
+  let left = targetCenterX - menuWidth / 2;
+  const minLeft = padding;
+  const maxLeft = Math.max(padding, canvasRect.width - menuWidth - padding);
+  left = Math.max(minLeft, Math.min(maxLeft, left));
+
+  let top = targetTopY - menuHeight - offsetY;
+  let flipped = false;
+
+  const flipThreshold = options.flipThreshold ?? padding;
+  if (top < flipThreshold) {
+    top = targetBottomY + offsetY;
+    flipped = true;
+  }
+
+  const maxTop = Math.max(padding, canvasRect.height - menuHeight - padding);
+  if (top > maxTop) {
+    top = maxTop;
+  }
+  if (top < padding) {
+    top = padding;
+  }
+
+  return { left: Math.round(left), top: Math.round(top), flipped };
+}
+
+export function updateContextMenuPosition(targetEl) {
+  if (typeof document === 'undefined') return;
+  const menu = $('quick-context-menu');
+  const canvas = $('canvas');
+  if (!menu || !canvas || !targetEl) return;
+
+  const targetRect = targetEl.getBoundingClientRect();
+  const canvasRect = canvas.getBoundingClientRect();
+  const drawingArea = canvas.closest('.drawing-area') || canvas.parentElement;
+  if (!drawingArea) return;
+  const drawingAreaRect = drawingArea.getBoundingClientRect();
+
+  if (targetRect.width === 0 && targetRect.height === 0 && targetRect.left === 0 && targetRect.top === 0) return;
+
+  const menuWidth = menu.offsetWidth || 240;
+  const menuHeight = menu.offsetHeight || 42;
+
+  const { left, top } = calculateContextMenuPosition(targetRect, canvasRect, { width: menuWidth, height: menuHeight });
+
+  const canvasOffsetX = canvasRect.left - drawingAreaRect.left;
+  const canvasOffsetY = canvasRect.top - drawingAreaRect.top;
+
+  menu.style.left = `${Math.round(canvasOffsetX + left)}px`;
+  menu.style.top = `${Math.round(canvasOffsetY + top)}px`;
+}
+
+export function shouldShowContextMenu(state) {
+  const { mode: curMode, tool: curTool, selected: sel, selectedIdsCount, doc: d } = state;
+  if (!sel || sel.trim() === '') return false;
+  if ((selectedIdsCount ?? 0) > 1) return false;
+
+  if (curMode === 'geometry') {
+    if (curTool !== 'select') return false;
+    const exists =
+      (d?.points || []).some(p => p.id === sel) ||
+      (d?.shapes || []).some(s => s.id === sel);
+    return Boolean(exists);
+  }
+
+  if (curMode === 'solid') {
+    if (!['select3d', 'orbit3d'].includes(curTool)) return false;
+    const solid = d?.solid || {};
+    const exists =
+      (solid.points || []).some(p => p.id === sel) ||
+      (solid.segments || []).some(s => s.id === sel) ||
+      (solid.crossSections || []).some(c => c.id === sel) ||
+      (solid.planes || []).some(pl => pl.id === sel);
+    return Boolean(exists);
+  }
+
+  return false;
+}
+
+export function renderContextMenuContent(selectedId) {
+  const target = getSelectedTarget(doc, selectedId, mode);
+  if (!target) return '';
+
+  let html = '';
+
+  switch (target.type) {
+    case 'point2d':
+    case 'vertex3d': {
+      const p = target.data;
+      const currentLabel = p.label || p.id;
+      html = `
+        <div class="qcm-group qcm-label-group">
+          <input type="text" class="qcm-input qcm-label-input" id="qcm-label-input" 
+                 value="${escape(currentLabel)}" maxlength="20" placeholder="Nhãn" 
+                 title="Sửa nhãn điểm (Enter hoặc blur để lưu)" 
+                 aria-label="Sửa nhãn điểm">
+        </div>
+        <div class="qcm-divider"></div>
+        <div class="qcm-group">
+          <button type="button" class="qcm-btn qcm-btn-delete" id="qcm-btn-delete" 
+                  title="Xóa điểm (Delete)" aria-label="Xóa điểm">
+            <span class="qcm-icon">🗑️</span>
+          </button>
+        </div>
+      `;
+      break;
+    }
+
+    case 'shape2d': {
+      const s = target.data;
+      const currentColor = (s.color || '#176b52').toLowerCase();
+      const isDashed = s.dashed === true;
+      const currentWidth = s.strokeWidth || 2.5;
+
+      const swatchesHtml = PEDAGOGICAL_PALETTE.map(c => `
+        <button type="button" class="qcm-color-swatch ${c.hex.toLowerCase() === currentColor ? 'active' : ''}" 
+                data-color="${c.hex}" style="background-color: ${c.hex}" 
+                title="${c.name}" aria-label="${c.name}"></button>
+      `).join('');
+
+      html = `
+        <div class="qcm-palette" role="radiogroup" aria-label="Bảng màu sắc">
+          ${swatchesHtml}
+          <label class="qcm-color-custom-label" title="Chọn màu tùy chọn">
+            <input type="color" class="qcm-color-custom" id="qcm-color-custom" value="${s.color || '#176b52'}">
+          </label>
+        </div>
+        <div class="qcm-divider"></div>
+        <div class="qcm-group">
+          <button type="button" class="qcm-btn qcm-btn-dash ${isDashed ? 'active' : ''}" id="qcm-btn-dash" 
+                  title="${isDashed ? 'Đang nét đứt (Bấm để đổi nét liền)' : 'Đang nét liền (Bấm để đổi nét đứt)'}" 
+                  aria-label="Kiểu nét">
+            ${isDashed ? '┈ Đứt' : '── Liền'}
+          </button>
+        </div>
+        <div class="qcm-divider"></div>
+        <div class="qcm-group qcm-width-group" role="group" aria-label="Độ dày nét">
+          <button type="button" class="qcm-btn qcm-btn-width ${Math.abs(currentWidth - 1.5) < 0.2 ? 'active' : ''}" 
+                  data-width="1.5" title="Nét mảnh (1.5px)">1.5</button>
+          <button type="button" class="qcm-btn qcm-btn-width ${Math.abs(currentWidth - 2.5) < 0.2 ? 'active' : ''}" 
+                  data-width="2.5" title="Nét chuẩn (2.5px)">2.5</button>
+          <button type="button" class="qcm-btn qcm-btn-width ${Math.abs(currentWidth - 4.0) < 0.2 ? 'active' : ''}" 
+                  data-width="4.0" title="Nét đậm (4.0px)">4.0</button>
+        </div>
+        <div class="qcm-divider"></div>
+        <div class="qcm-group">
+          <button type="button" class="qcm-btn qcm-btn-delete" id="qcm-btn-delete" title="Xóa hình" aria-label="Xóa hình">
+            <span class="qcm-icon">🗑️</span>
+          </button>
+        </div>
+      `;
+      break;
+    }
+
+    case 'segment3d': {
+      const seg = target.data;
+      const curStyle = seg.styleMode || 'auto';
+      const currentColor = (seg.color || '#176b52').toLowerCase();
+
+      const swatchesHtml = PEDAGOGICAL_PALETTE.map(c => `
+        <button type="button" class="qcm-color-swatch ${c.hex.toLowerCase() === currentColor ? 'active' : ''}" 
+                data-color="${c.hex}" style="background-color: ${c.hex}" 
+                title="${c.name}" aria-label="${c.name}"></button>
+      `).join('');
+
+      html = `
+        <div class="qcm-segmented-control" role="group" aria-label="Chế độ nét đoạn 3D">
+          <button type="button" class="qcm-btn ${curStyle === 'auto' ? 'active' : ''}" data-solid-style="auto" title="Tự động theo góc xoay">⚡ Auto</button>
+          <button type="button" class="qcm-btn ${curStyle === 'solid' ? 'active' : ''}" data-solid-style="solid" title="Cố định nét liền">── Liền</button>
+          <button type="button" class="qcm-btn ${curStyle === 'dashed' ? 'active' : ''}" data-solid-style="dashed" title="Cố định nét đứt">┈ Đứt</button>
+        </div>
+        <div class="qcm-divider"></div>
+        <div class="qcm-palette" role="radiogroup" aria-label="Bảng màu sắc">
+          ${swatchesHtml}
+          <label class="qcm-color-custom-label" title="Chọn màu tùy chọn">
+            <input type="color" class="qcm-color-custom" id="qcm-color-custom" value="${seg.color || '#176b52'}">
+          </label>
+        </div>
+        <div class="qcm-divider"></div>
+        <div class="qcm-group">
+          <button type="button" class="qcm-btn qcm-btn-delete" id="qcm-btn-delete" title="Xóa đoạn 3D" aria-label="Xóa đoạn 3D">
+            <span class="qcm-icon">🗑️</span>
+          </button>
+        </div>
+      `;
+      break;
+    }
+
+    case 'crosssection3d':
+    case 'plane3d': {
+      const plane = target.data;
+      const currentColor = (plane.color || (target.type === 'crosssection3d' ? '#dfac48' : '#176b52')).toLowerCase();
+      const curOpacity = plane.opacity ?? 0.35;
+
+      const swatchesHtml = PEDAGOGICAL_PALETTE.map(c => `
+        <button type="button" class="qcm-color-swatch ${c.hex.toLowerCase() === currentColor ? 'active' : ''}" 
+                data-color="${c.hex}" style="background-color: ${c.hex}" 
+                title="${c.name}" aria-label="${c.name}"></button>
+      `).join('');
+
+      html = `
+        <div class="qcm-palette" role="radiogroup" aria-label="Màu mặt phẳng">
+          ${swatchesHtml}
+          <label class="qcm-color-custom-label" title="Chọn màu tùy chọn">
+            <input type="color" class="qcm-color-custom" id="qcm-color-custom" value="${plane.color || '#176b52'}">
+          </label>
+        </div>
+        <div class="qcm-divider"></div>
+        <div class="qcm-group qcm-opacity-group" role="group" aria-label="Độ mờ mặt phẳng">
+          <button type="button" class="qcm-btn ${Math.abs(curOpacity - 0.15) < 0.05 ? 'active' : ''}" data-opacity="0.15" title="Mờ nhẹ (15%)">15%</button>
+          <button type="button" class="qcm-btn ${Math.abs(curOpacity - 0.35) < 0.05 ? 'active' : ''}" data-opacity="0.35" title="Chuẩn SGK (35%)">35%</button>
+          <button type="button" class="qcm-btn ${Math.abs(curOpacity - 0.60) < 0.05 ? 'active' : ''}" data-opacity="0.60" title="Đậm (60%)">60%</button>
+        </div>
+        <div class="qcm-divider"></div>
+        <div class="qcm-group">
+          <button type="button" class="qcm-btn qcm-btn-delete" id="qcm-btn-delete" title="Xóa mặt phẳng / thiết diện" aria-label="Xóa mặt phẳng">
+            <span class="qcm-icon">🗑️</span>
+          </button>
+        </div>
+      `;
+      break;
+    }
+  }
+
+  return html;
+}
+
+export function bindContextMenuEvents(container, selectedId) {
+  const target = getSelectedTarget(doc, selectedId, mode);
+  if (!target) return;
+
+  container.onpointerdown = e => e.stopPropagation();
+  container.onclick = e => e.stopPropagation();
+
+  const labelInput = container.querySelector('#qcm-label-input');
+  if (labelInput) {
+    labelInput.onkeydown = e => {
+      e.stopPropagation();
+      if (e.key === 'Enter') labelInput.blur();
+      if (e.key === 'Escape') {
+        labelInput.blur();
+        hideQuickContextMenu();
+      }
+    };
+    const saveLabel = () => {
+      const newLabel = labelInput.value.trim();
+      if (!newLabel) return;
+      const next = structuredClone(doc);
+      if (target.type === 'point2d') {
+        const pt = next.points.find(p => p.id === selectedId);
+        if (pt && pt.label !== newLabel) {
+          pt.label = newLabel;
+          commit(next, { keepSelection: true });
+          notify(`Đã đổi nhãn điểm thành ${newLabel}`);
+        }
+      } else if (target.type === 'vertex3d') {
+        const pt = next.solid?.points?.find(p => p.id === selectedId);
+        if (pt && pt.label !== newLabel) {
+          pt.label = newLabel;
+          commit(next, { keepSelection: true });
+          notify(`Đã đổi nhãn đỉnh 3D thành ${newLabel}`);
+        }
+      }
+    };
+    labelInput.onchange = saveLabel;
+    labelInput.onblur = saveLabel;
+  }
+
+  const applyColor = color => {
+    const next = structuredClone(doc);
+    if (target.type === 'shape2d') {
+      const s = next.shapes.find(sh => sh.id === selectedId);
+      if (s) s.color = color;
+    } else if (target.type === 'segment3d') {
+      const s = next.solid?.segments?.find(sg => sg.id === selectedId);
+      if (s) s.color = color;
+    } else if (target.type === 'crosssection3d') {
+      const cs = next.solid?.crossSections?.find(c => c.id === selectedId);
+      if (cs) cs.color = color;
+    } else if (target.type === 'plane3d') {
+      const pl = next.solid?.planes?.find(p => p.id === selectedId);
+      if (pl) pl.color = color;
+    }
+    commit(next, { keepSelection: true });
+  };
+
+  container.querySelectorAll('.qcm-color-swatch').forEach(btn => {
+    btn.onclick = () => applyColor(btn.dataset.color);
+  });
+  const customColorInput = container.querySelector('#qcm-color-custom');
+  if (customColorInput) {
+    customColorInput.onchange = e => applyColor(e.target.value);
+  }
+
+  const dashBtn = container.querySelector('#qcm-btn-dash');
+  if (dashBtn) {
+    dashBtn.onclick = () => {
+      const next = structuredClone(doc);
+      const s = next.shapes.find(sh => sh.id === selectedId);
+      if (s) {
+        s.dashed = !s.dashed;
+        commit(next, { keepSelection: true });
+      }
+    };
+  }
+
+  container.querySelectorAll('.qcm-btn-width').forEach(btn => {
+    btn.onclick = () => {
+      const width = Number(btn.dataset.width);
+      const next = structuredClone(doc);
+      const s = next.shapes.find(sh => sh.id === selectedId);
+      if (s) {
+        s.strokeWidth = width;
+        commit(next, { keepSelection: true });
+      }
+    };
+  });
+
+  container.querySelectorAll('[data-solid-style]').forEach(btn => {
+    btn.onclick = () => {
+      const style = btn.dataset.solidStyle;
+      const next = toggleSegmentStyle(doc, selectedId, style);
+      commit(next, { keepSelection: true });
+    };
+  });
+
+  container.querySelectorAll('[data-opacity]').forEach(btn => {
+    btn.onclick = () => {
+      const opacity = Number(btn.dataset.opacity);
+      const next = structuredClone(doc);
+      if (target.type === 'crosssection3d') {
+        const cs = next.solid?.crossSections?.find(c => c.id === selectedId);
+        if (cs) cs.opacity = opacity;
+      } else if (target.type === 'plane3d') {
+        const pl = next.solid?.planes?.find(p => p.id === selectedId);
+        if (pl) {
+          pl.opacity = opacity;
+          pl.transparent = true;
+        }
+      }
+      commit(next, { keepSelection: true });
+    };
+  });
+
+  const deleteBtn = container.querySelector('#qcm-btn-delete');
+  if (deleteBtn) {
+    deleteBtn.onclick = () => {
+      let next;
+      if (target.type === 'point2d' || target.type === 'vertex3d') {
+        next = removePoint(doc, selectedId);
+      } else if (target.type === 'shape2d') {
+        next = structuredClone(doc);
+        next.shapes = next.shapes.filter(s => s.id !== selectedId);
+      } else if (target.type === 'segment3d') {
+        next = structuredClone(doc);
+        next.solid.segments = next.solid.segments.filter(s => s.id !== selectedId);
+      } else if (target.type === 'crosssection3d') {
+        next = structuredClone(doc);
+        next.solid.crossSections = next.solid.crossSections.filter(c => c.id !== selectedId);
+      } else if (target.type === 'plane3d') {
+        next = structuredClone(doc);
+        next.solid.planes = (next.solid.planes || []).filter(p => p.id !== selectedId);
+      }
+      if (next) {
+        selected = '';
+        hideQuickContextMenu();
+        commit(next);
+        notify('Đã xóa đối tượng.');
+      }
+    };
+  }
+}
+
+export function showQuickContextMenu(targetId) {
+  if (typeof document === 'undefined') return;
+  const menu = $('quick-context-menu');
+  if (!menu || !targetId) return;
+
+  const contentHtml = renderContextMenuContent(targetId);
+  if (!contentHtml) {
+    hideQuickContextMenu();
+    return;
+  }
+
+  menu.innerHTML = contentHtml;
+  menu.hidden = false;
+  bindContextMenuEvents(menu, targetId);
+
+  const targetEl = findSelectedElement(targetId);
+  if (targetEl) {
+    updateContextMenuPosition(targetEl);
+  }
+}
+
+export function hideQuickContextMenu() {
+  if (typeof document === 'undefined') return;
+  const menu = $('quick-context-menu');
+  if (!menu) return;
+  menu.hidden = true;
+  menu.innerHTML = '';
+}
+
+export function updateQuickContextMenu() {
+  if (typeof document === 'undefined') return;
+  const canShow = shouldShowContextMenu({
+    mode,
+    tool,
+    selected,
+    selectedIdsCount: selectedIds.size,
+    doc
+  });
+  if (!canShow) {
+    hideQuickContextMenu();
+    return;
+  }
+  showQuickContextMenu(selected);
+}
+
+export function setShapeColor(d, shapeId, color) {
+  const next = structuredClone(d);
+  const s = next.shapes?.find(sh => sh.id === shapeId);
+  if (s) s.color = color;
+  return next;
+}
+
+export function toggleShapeDashed(d, shapeId) {
+  const next = structuredClone(d);
+  const s = next.shapes?.find(sh => sh.id === shapeId);
+  if (s) s.dashed = !s.dashed;
+  return next;
+}
+
+export function setShapeStrokeWidth(d, shapeId, width) {
+  const next = structuredClone(d);
+  const s = next.shapes?.find(sh => sh.id === shapeId);
+  if (s) s.strokeWidth = width;
+  return next;
+}
+
+export function updatePointLabel(d, pointId, label) {
+  const next = structuredClone(d);
+  const p = next.points?.find(pt => pt.id === pointId);
+  if (p) p.label = label;
+  return next;
+}
+
+export function deleteShape(d, shapeId) {
+  const next = structuredClone(d);
+  next.shapes = (next.shapes || []).filter(sh => sh.id !== shapeId);
+  return next;
+}
+
+export function setSolidSegmentColor(d, segId, color) {
+  const next = structuredClone(d);
+  const s = next.solid?.segments?.find(sg => sg.id === segId);
+  if (s) s.color = color;
+  return next;
+}
+
+export function updateSolidPointLabel(d, ptId, label) {
+  const next = structuredClone(d);
+  const p = next.solid?.points?.find(pt => pt.id === ptId);
+  if (p) p.label = label;
+  return next;
+}
+
+export function setCrossSectionColor(d, csId, color) {
+  const next = structuredClone(d);
+  const cs = next.solid?.crossSections?.find(c => c.id === csId);
+  if (cs) cs.color = color;
+  return next;
+}
+
+export function setCrossSectionOpacity(d, csId, opacity) {
+  const next = structuredClone(d);
+  const cs = next.solid?.crossSections?.find(c => c.id === csId);
+  if (cs) cs.opacity = opacity;
+  return next;
+}
+
+export function deleteSolidSegment(d, segId) {
+  const next = structuredClone(d);
+  if (next.solid?.segments) {
+    next.solid.segments = next.solid.segments.filter(s => s.id !== segId);
+  }
+  return next;
+}
+
+export function deleteCrossSection(d, csId) {
+  const next = structuredClone(d);
+  if (next.solid?.crossSections) {
+    next.solid.crossSections = next.solid.crossSections.filter(c => c.id !== csId);
+  }
+  return next;
+}
+
 const field=(label,html)=>`<label class="field">${label}${html}</label>`;
 const number=(id,value,attrs='')=>`<input id="${id}" type="number" value="${value}" ${/\bstep=/.test(attrs)?'':'step="0.1"'} ${attrs}>`;
 function renderProperties(){const target=$('properties');if(mode==='geometry'&&selectedIds.size){$('properties-title').textContent='Tập chọn';renderGroupProperties(target);return;}$('properties-title').textContent=mode==='geometry'?'Thuộc tính':mode==='graph'?'Hàm số & tham số':mode==='chart'?'Dữ liệu thống kê':'Góc nhìn không gian';
   if(mode==='geometry'){const p=doc.points.find(p=>p.id===selected),s=doc.shapes.find(s=>s.id===selected),coords=resolve(doc).points[selected];let html='<select class="object-list" id="object-select" aria-label="Chọn đối tượng"><option value="">Chọn một đối tượng…</option>'+doc.points.map(p=>`<option value="${escape(p.id)}" ${p.id===selected?'selected':''}>Điểm ${escape(p.label||p.id)}${p.kind?' · '+names[p.kind]:''}</option>`).join('')+doc.shapes.map(s=>`<option value="${escape(s.id)}" ${s.id===selected?'selected':''}>${names[s.type]} ${s.refs.join('')}</option>`).join('')+'</select>';
     if(p){html+=`<div class="point-card" style="margin-top:14px"><strong>Điểm ${escape(p.label||p.id)}</strong><small>${p.kind?escape(names[p.kind]+' · '+p.refs.join(', ')):'Điểm tự do · có thể kéo'}</small></div>`+field('Nhãn',`<input id="point-label" maxlength="80" value="${escape(p.label||p.id)}">`);const editable=!p.kind||['onLine','onCircle'].includes(p.kind);html+='<div class="coordinates">'+field('x',number('point-x',coords?.x.toFixed(3)??0,editable?'':'disabled'))+field('y',number('point-y',coords?.y.toFixed(3)??0,editable?'':'disabled'))+'</div>';if(editable)html+='<button id="apply-coordinates" class="secondary full">Áp dụng tọa độ</button>';if(['equal','onCircle','rotate','rotateAround'].includes(p.kind))html+=field('Góc hướng (độ)',number('point-angle',(p.angle??0)*180/Math.PI));if(['vectorScale','scaleFrom'].includes(p.kind))html+=field('Hệ số k',number('point-factor',p.factor??1));if(p.kind==='translate'){html+=field('Dịch x (dx)',number('point-dx',p.dx??0))+field('Dịch y (dy)',number('point-dy',p.dy??0));}if(p.kind==='affine')html+=field('Hệ số dọc AB (u)',number('point-u',p.u??0))+field('Hệ số vuông AB (v)',number('point-v',p.v??1));if(p.kind==='onLine')html+=field('Tham số t (A + t·AB)',number('point-t',p.t??.5));if(['lineCircle','circleCircle','tangent'].includes(p.kind))html+=field('Nhánh giao / tiếp tuyến',`<select id="point-branch"><option value="1" ${p.branch!==-1?'selected':''}>Nhánh +</option><option value="-1" ${p.branch===-1?'selected':''}>Nhánh −</option></select>`);if(p.kind&&!editable)html+='<p class="tiny">Điểm được tính từ nguồn; chọn điểm nguồn để thay vị trí.</p>';}
-    else if(s){html+=`<div class="point-card" style="margin-top:14px"><strong>${names[s.type]} ${s.refs.join(', ')}</strong></div>`+field('Màu nét',`<input type="color" id="shape-color" value="${s.color||'#176b52'}">`)+`<label class="check"><input type="checkbox" id="shape-visible" ${s.visible!==false?'checked':''}>Hiển thị</label><label class="check"><input type="checkbox" id="shape-dashed" ${s.dashed?'checked':''}>Nét đứt</label>`+field('Ký hiệu (đánh dấu thủ công)',`<select id="shape-mark">${[['none','Không'],['tick','Một gạch'],['double','Hai gạch'],['parallel','Song song'],['right','Góc vuông']].map(([v,n])=>`<option value="${v}" ${(s.mark||'none')===v?'selected':''}>${n}</option>`).join('')}</select>`);html+='<p class="tiny">Ký hiệu chỉ là chú thích. Dùng công cụ quan hệ để tạo ràng buộc thật.</p>';}
+    else if(s){html+=`<div class="point-card" style="margin-top:14px"><strong>${names[s.type]} ${s.refs.join(', ')}</strong></div>`+field('Màu nét',`<input type="color" id="shape-color" value="${s.color||'#176b52'}">`)+`<label class="check"><input type="checkbox" id="shape-visible" ${s.visible!==false?'checked':''}>Hiển thị</label><label class="check"><input type="checkbox" id="shape-dashed" ${s.dashed?'checked':''}>Nét đứt</label>`+(['sector','ellipse','polygon'].includes(s.type)?field('Màu tô',`<input type="color" id="shape-fill" value="${s.fill||s.color||'#176b52'}">`)+field('Độ mờ tô',`<input type="number" id="shape-fill-opacity" min="0" max="1" step="0.05" value="${s.fillOpacity??(s.type==='sector'?0.25:s.type==='polygon'?0.3:0.25)}">`):'')+field('Ký hiệu (đánh dấu thủ công)',`<select id="shape-mark">${[['none','Không'],['tick','Một gạch'],['double','Hai gạch'],['triple','Ba gạch'],['parallel','Song song'],['right','Góc vuông'],['single','Góc bằng nhau']].map(([v,n])=>`<option value="${v}" ${(s.mark||'none')===v?'selected':''}>${n}</option>`).join('')}</select>`);html+='<p class="tiny">Ký hiệu chỉ là chú thích. Dùng công cụ quan hệ để tạo ràng buộc thật.</p>';}
     else html+='<p class="empty-properties">Chọn điểm hoặc đường trên bảng vẽ để xem tọa độ, đổi nhãn và kiểu nét.</p>';
     if(p||s)html+='<button id="delete-object" class="secondary full delete">Xóa đối tượng…</button>';target.innerHTML=html;
     $('object-select').onchange=e=>{selected=e.target.value;render();};
     if(p){$('point-label').onchange=e=>{const next=structuredClone(doc);next.points.find(q=>q.id===p.id).label=e.target.value;commit(next);};const applyCoordinates=()=>{const x=Number($('point-x').value),y=Number($('point-y').value);if($('point-x').value===''||$('point-y').value==='')return notify('Cần nhập đủ tọa độ');commit(movePoint(doc,p.id,x,y));};for(const axis of ['x','y'])$('point-'+axis).onkeydown=e=>{if(e.key==='Enter')applyCoordinates();};if($('apply-coordinates'))$('apply-coordinates').onclick=applyCoordinates;if($('point-visible'))$('point-visible').onchange=e=>{const next=structuredClone(doc);next.points.find(q=>q.id===p.id).visible=e.target.checked;commit(next);};for(const[k,id,factor]of [['angle','point-angle',Math.PI/180],['t','point-t',1],['branch','point-branch',1],['factor','point-factor',1],['u','point-u',1],['v','point-v',1],['dx','point-dx',1],['dy','point-dy',1]])if($(id))$(id).onchange=e=>{const next=structuredClone(doc);next.points.find(q=>q.id===p.id)[k]=Number(e.target.value)*factor;commit(next);};}
-    if(s){$('shape-color').onchange=e=>editShape('color',e.target.value);$('shape-visible').onchange=e=>editShape('visible',e.target.checked);if($('shape-fill'))$('shape-fill').onchange=e=>editShape('fill',e.target.value||null);$('shape-dashed').onchange=e=>editShape('dashed',e.target.checked);$('shape-mark').onchange=e=>editShape('mark',e.target.value);}
+    if(s){$('shape-color').onchange=e=>editShape('color',e.target.value);$('shape-visible').onchange=e=>editShape('visible',e.target.checked);if($('shape-fill'))$('shape-fill').onchange=e=>editShape('fill',e.target.value||null);if($('shape-fill-opacity'))$('shape-fill-opacity').onchange=e=>editShape('fillOpacity',Number(e.target.value));$('shape-dashed').onchange=e=>editShape('dashed',e.target.checked);$('shape-mark').onchange=e=>editShape('mark',e.target.value);}
     if($('delete-object'))$('delete-object').onclick=deleteSelection;
   }else if(mode==='graph'){
       const exps = doc.graph.expressions.map((e, i) => `
@@ -990,14 +1832,17 @@ function renderProperties(){const target=$('properties');if(mode==='geometry'&&s
     const segs=doc.solid?.segments||[];
     const css=doc.solid?.crossSections||[];
 
+    const pls=doc.solid?.planes||[];
     const p=pts.find(pt=>pt.id===selected);
     const s=segs.find(sg=>sg.id===selected);
     const cs=css.find(c=>c.id===selected);
+    const pl=pls.find(p=>p.id===selected);
 
     let objSelect='<select class="object-list" id="solid-object-select" aria-label="Chọn đối tượng 3D"><option value="">Tất cả / Chưa chọn đối tượng…</option>'+
       pts.map(pt=>`<option value="${escape(pt.id)}" ${pt.id===selected?'selected':''}>Điểm ${escape(pt.label||pt.id)}${pt.kind?' · '+(names[pt.kind]||pt.kind):''}</option>`).join('')+
       segs.map(sg=>`<option value="${escape(sg.id)}" ${sg.id===selected?'selected':''}>Đoạn ${sg.refs.join(' – ')} · ${sg.styleMode==='dashed'?'Nét đứt':sg.styleMode==='solid'?'Nét liền':'Tự động'}</option>`).join('')+
       css.map(c=>`<option value="${escape(c.id)}" ${c.id===selected?'selected':''}>Thiết diện ${(c.planeRefs||c.refs||[]).join(' – ')}</option>`).join('')+
+      pls.map(pl=>`<option value="${escape(pl.id)}" ${pl.id===selected?'selected':''}>Mặt phẳng (${(pl.refs||[]).join('')})</option>`).join('')+
       '</select>';
 
     if(p){
@@ -1125,6 +1970,37 @@ function renderProperties(){const target=$('properties');if(mode==='geometry'&&s
         selected='';
         commit(next);
         notify(`Đã xóa thiết diện ${(cs.planeRefs||cs.refs||[]).join(' – ')}.`);
+      };
+      return;
+    }
+
+    if(pl){
+      let html=objSelect+
+        `<div class="solid-card"><strong>Mặt phẳng 3D: ${(pl.refs||[]).join(' – ')}</strong><small>ID: ${pl.id}</small></div>`+
+        field('Màu tô',`<input type="color" id="solid-pl-color" value="${pl.color||'#3b82f6'}">`)+
+        field('Độ đậm mờ (opacity)',`<input type="range" min="0" max="1" step="0.05" id="solid-pl-opacity" value="${pl.opacity??0.25}">`)+
+        `<button id="delete-solid-object" class="secondary full delete">Xóa mặt phẳng này</button>`;
+      target.innerHTML=html;
+
+      $('solid-object-select').onchange=e=>{selected=e.target.value;render();};
+      $('solid-pl-color').onchange=e=>{
+        const next=structuredClone(doc);
+        const targetPl=next.solid?.planes?.find(p=>p.id===pl.id);
+        if(targetPl)targetPl.color=e.target.value;
+        commit(next);
+      };
+      $('solid-pl-opacity').oninput=e=>{
+        const next=structuredClone(doc);
+        const targetPl=next.solid?.planes?.find(p=>p.id===pl.id);
+        if(targetPl)targetPl.opacity=Number(e.target.value);
+        commit(next);
+      };
+      $('delete-solid-object').onclick=()=>{
+        const next=structuredClone(doc);
+        if(next.solid?.planes)next.solid.planes=next.solid.planes.filter(p=>p.id!==pl.id);
+        selected='';
+        commit(next);
+        notify(`Đã xóa mặt phẳng ${(pl.refs||[]).join(' – ')}.`);
       };
       return;
     }
@@ -1273,11 +2149,20 @@ function usePoint(id){if(tool==='select'||tool==='region'){selectedIds.clear();s
   }
   if(definition[3]===-1||pending.length<definition[3]){render();return;}
   const next=structuredClone(doc),refs=[...pending];pending=[];
-  if(['segment','line','ray','polygon','circle','vector','angle','length','dot','vectorAngle','vectorCoords'].includes(tool))addShape(next,tool,refs);
+  if(['segment','line','ray','polygon','circle','vector','angle','length','dot','vectorAngle','vectorCoords','arc','sector','ellipse'].includes(tool)){
+    if(tool==='sector'){
+      addShape(next,'sector',refs,{fill:'#176b52',fillOpacity:0.25});
+    }else{
+      addShape(next,tool,refs);
+    }
+  }
+  else if(tool==='rightAngle'){
+    addShape(next,'angle',refs,{mark:'right',color:'#176b52'});
+  }
   else if(tool==='perpendicularBisector'){const mid=freshId(next);next.points.push({id:mid,kind:'midpoint',refs});const direction=freshId(next);next.points.push({id:direction,kind:'perpendicular',refs:[mid,...refs],visible:false});addShape(next,'line',[mid,direction]);ensureSegment(next,refs[0],refs[1],{dashed:true,color:'#789589'});}
   else if(tool==='equilateralTriangle'){const c=freshId(next);next.points.push({id:c,kind:'rotateAround',refs:[refs[1],refs[0]],angle:Math.PI/3});addShape(next,'polygon',[refs[0],refs[1],c]);selected=c;}
   else if(tool==='square'){const d=freshId(next);next.points.push({id:d,kind:'rotateAround',refs:[refs[1],refs[0]],angle:Math.PI/2});const c=freshId(next);next.points.push({id:c,kind:'rotateAround',refs:[refs[0],refs[1]],angle:-Math.PI/2});addShape(next,'polygon',[refs[0],refs[1],c,d]);selected=c;}
-  else{const id=freshId();next.points.push({id,kind:tool,refs,...(tool==='onLine'?{t:.5}:{}),...(['vectorScale','scaleFrom'].includes(tool)?{factor:.5}:{}),...(tool==='rotateAround'?{angle:Math.PI/2}:{}),...(tool==='translate'?{dx:2,dy:1}:{}),...(['onCircle','equal'].includes(tool)?{angle:0}:{}),...(['lineCircle','circleCircle','tangent'].includes(tool)?{branch:1}:{})});selected=id;if(tool==='foot'){addShape(next,'segment',[refs[0],id],{dashed:true,color:'#d09232'});ensureSegment(next,refs[1],refs[2]);addShape(next,'angle',[refs[0],id,refs[2]],{mark:'right',color:'#d09232'});}if(['parallel','perpendicular'].includes(tool))addShape(next,'line',[refs[0],id]);if(tool==='bisector'){addShape(next,'line',[refs[1],id]);ensureSegment(next,refs[0],refs[1]);ensureSegment(next,refs[1],refs[2]);}if(['equal','vectorSum','vectorDifference','vectorScale'].includes(tool))addShape(next,tool==='equal'?'segment':'vector',[refs[0],id]);if(tool==='tangent')addShape(next,'line',[refs[0],id]);if(tool==='circumcenter'){addShape(next,'circle',[id,refs[0]]);ensureSegment(next,refs[0],refs[1]);ensureSegment(next,refs[1],refs[2]);ensureSegment(next,refs[2],refs[0]);}if(tool==='incenter'){const footId=id+'_H';next.points.push({id:footId,kind:'foot',refs:[id,refs[0],refs[1]]});addShape(next,'circle',[id,footId]);ensureSegment(next,refs[0],refs[1]);ensureSegment(next,refs[1],refs[2]);ensureSegment(next,refs[2],refs[0]);}selected=id;}
+  else{const id=freshId();next.points.push({id,kind:tool,refs,...(tool==='onLine'?{t:.5}:{}),...(['vectorScale','scaleFrom'].includes(tool)?{factor:.5}:{}),...(tool==='rotateAround'?{angle:Math.PI/2}:{}),...(tool==='translate'?{dx:2,dy:1}:{}),...(['onCircle','equal'].includes(tool)?{angle:0}:{}),...(['lineCircle','circleCircle','tangent'].includes(tool)?{branch:1}:{})});selected=id;if(tool==='centroid'){ensureSegment(next,refs[0],refs[1]);ensureSegment(next,refs[1],refs[2]);ensureSegment(next,refs[2],refs[0]);}if(tool==='orthocenter'){ensureSegment(next,refs[0],refs[1]);ensureSegment(next,refs[1],refs[2]);ensureSegment(next,refs[2],refs[0]);const footA=freshId(next);next.points.push({id:footA,kind:'foot',refs:[refs[0],refs[1],refs[2]],visible:false});addShape(next,'segment',[refs[0],footA],{dashed:true,color:'#d09232'});addShape(next,'angle',[refs[0],footA,refs[2]],{mark:'right',color:'#d09232'});}if(tool==='foot'){addShape(next,'segment',[refs[0],id],{dashed:true,color:'#d09232'});ensureSegment(next,refs[1],refs[2]);addShape(next,'angle',[refs[0],id,refs[2]],{mark:'right',color:'#d09232'});}if(['parallel','perpendicular'].includes(tool))addShape(next,'line',[refs[0],id]);if(tool==='bisector'){addShape(next,'line',[refs[1],id]);ensureSegment(next,refs[0],refs[1]);ensureSegment(next,refs[1],refs[2]);}if(['equal','vectorSum','vectorDifference','vectorScale'].includes(tool))addShape(next,tool==='equal'?'segment':'vector',[refs[0],id]);if(tool==='tangent')addShape(next,'line',[refs[0],id]);if(tool==='circumcenter'){addShape(next,'circle',[id,refs[0]]);ensureSegment(next,refs[0],refs[1]);ensureSegment(next,refs[1],refs[2]);ensureSegment(next,refs[2],refs[0]);}if(tool==='incenter'){const footId=id+'_H';next.points.push({id:footId,kind:'foot',refs:[id,refs[0],refs[1]]});addShape(next,'circle',[id,footId]);ensureSegment(next,refs[0],refs[1]);ensureSegment(next,refs[1],refs[2]);ensureSegment(next,refs[2],refs[0]);}selected=id;}
   if(draftBefore)addSourceGuides(next,tool,refs);
   finishConstruction(next);
 }
@@ -1286,6 +2171,7 @@ function addSourceGuides(next,tool,refs){
  const result=selected;for(const [type,source]of guides[tool]||[]){const exists=next.shapes.some(s=>s.type===type&&((s.refs[0]===source[0]&&s.refs[1]===source[1])||(type!=='circle'&&type!=='vector'&&s.refs[1]===source[0]&&s.refs[0]===source[1])));if(!exists)addShape(next,type,source,{dashed:true,color:'#789589'});}selected=result;
 }
 function useShape(id){const shape=doc.shapes.find(s=>s.id===id);let accepted=false;
+ if(['centroid','orthocenter'].includes(tool)&&shape.type==='polygon'&&shape.refs.length===3&&pending.length===0){accepted=true;notify('');for(const ref of shape.refs)usePoint(ref);return;}
  const lineLike=['line','segment','ray','vector'].includes(shape.type),circle=shape.type==='circle';
  if(['onLine','midpoint','perpendicularBisector','length'].includes(tool)&&lineLike&&pending.length===0)accepted=true;
  if(tool==='onCircle'&&circle&&pending.length===0)accepted=true;
@@ -1300,6 +2186,7 @@ function useShape(id){const shape=doc.shapes.find(s=>s.id===id);let accepted=fal
 }
 function svgCoords(e){const canvas=$('canvas'),svg=canvas.querySelector('svg'),p=svg.createSVGPoint(),box=canvas.getBoundingClientRect();p.x=Math.max(box.left,Math.min(box.right,e.clientX));p.y=Math.max(box.top,Math.min(box.bottom,e.clientY));const q=p.matrixTransform(svg.getScreenCTM().inverse());return{x:q.x,y:q.y};}
 function visibleCanvasBounds(){const b=$('canvas').getBoundingClientRect(),a=svgCoords({clientX:b.left,clientY:b.top}),z=svgCoords({clientX:b.right,clientY:b.bottom});return{x:a.x,y:a.y,width:z.x-a.x,height:z.y-a.y};}
+export function getExportedSVG(){let svg=exportSVG(doc,mode,{scale,pan,viewport:mode==='geometry'?(typeof document!=='undefined'&&$('canvas')?visibleCanvasBounds():undefined):undefined,showTitle:false});if(mode==='solid'){svg=svg.replace(/<text x="30" y="40"[^>]*>[\s\S]*?<\/text>/g,'');}return svg;}
 function updateCanvasGrid(){const canvas=$('canvas');canvas.style.backgroundImage=mode==='geometry'&&$('grid').checked?'radial-gradient(circle, #cddcd5 1px, transparent 1px)':'none';if(mode!=='geometry')return;const svg=canvas.querySelector('svg'),matrix=svg.getScreenCTM(),b=canvas.getBoundingClientRect(),step=25*(scale/55)*matrix.a,p=svg.createSVGPoint();p.x=500;p.y=330;const origin=p.matrixTransform(matrix);canvas.style.backgroundSize=step+'px '+step+'px';canvas.style.backgroundPosition=(origin.x-b.left-step/2)+'px '+(origin.y-b.top-step/2)+'px';}
 if (typeof ResizeObserver !== 'undefined' && typeof document !== 'undefined' && $('canvas')) {
   new ResizeObserver(()=>{if(!$('canvas').clientWidth||!$('canvas').clientHeight)return;renderCanvas();if(drag?.region)drawMarquee();}).observe($('canvas'));
@@ -1384,6 +2271,10 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
     // Find clicked cross section
     const csTarget=e.target.closest('[data-crosssection]');
     const hitCrossSection=csTarget?.dataset?.crosssection;
+
+    // Find clicked plane
+    const planeTarget=e.target.closest('[data-plane]');
+    const hitPlane=planeTarget?.dataset?.plane;
 
     if(hitVertex){
       if(tool==='segment3d'){
@@ -1551,6 +2442,97 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
         }
         return;
       }
+      if(tool==='plane3d'){
+        if(pending.includes(hitVertex)){
+          notify('Đỉnh này đã được chọn. Chọn đỉnh khác.');
+        }else{
+          pending.push(hitVertex);
+          if(pending.length<3){
+            render();
+            notify(`Đã chọn ${pending.length}/3 điểm mặt phẳng (${pending.join(', ')}). Chọn tiếp.`);
+          }else{
+            const refs=[...pending];
+            pending=[];
+            const next=createPlane3D(doc,refs);
+            commit(next);
+            notify(`Đã dựng mặt phẳng qua 3 điểm [${refs.join(', ')}].`);
+          }
+        }
+        return;
+      }
+      if(tool==='parallel3d'){
+        if(!pending.length){
+          pending=[hitVertex];
+          render();
+          notify(`Đã chọn điểm P (${hitVertex}). Chọn 2 điểm A, B của đường thẳng gốc (hoặc click vào 1 đoạn thẳng).`);
+        }else{
+          if(pending.includes(hitVertex)){
+            notify('Đỉnh này đã được chọn. Chọn đỉnh khác.');
+          }else{
+            pending.push(hitVertex);
+            if(pending.length===2){
+              render();
+              notify(`Đã chọn điểm gốc A (${hitVertex}). Chọn tiếp điểm B.`);
+            }else{
+              const [pId, aId, bId]=pending;
+              pending=[];
+              const next=createParallel3D(doc,pId,[aId,bId]);
+              commit(next);
+              notify(`Đã dựng đường thẳng qua ${pId} song song với [${aId}, ${bId}].`);
+            }
+          }
+        }
+        return;
+      }
+      if(tool==='measureAngle3d'){
+        pending.push(hitVertex);
+        if(pending.length<4){
+          render();
+          notify(`Đã chọn ${pending.length}/4 điểm đo góc (${pending.join(', ')}). Chọn tiếp.`);
+        }else{
+          const [p1,p2,p3,p4]=pending;
+          pending=[];
+          render();
+          try{
+            const {deg,rad}=measureAngle3D(doc,p1,p2,p3,p4);
+            showMeasureHUD(`Góc giữa [${p1}${p2}] và [${p3}${p4}]`, `${deg.toFixed(2)}°`, `rad = ${rad.toFixed(4)}`);
+          }catch(err){
+            notify(err.message);
+          }
+        }
+        return;
+      }
+      if(tool==='measureDistance3d'){
+        pending.push(hitVertex);
+        if(pending.length===1){
+          render();
+          notify(`Đã chọn điểm thứ nhất (${hitVertex}). Chọn điểm thứ 2 để đo khoảng cách (hoặc chọn 3 điểm mặt phẳng).`);
+        }else if(pending.length===2){
+          render();
+          const [p1,p2]=pending;
+          try{
+            const d=measureDistance3D(doc,p1,p2);
+            showMeasureHUD(`Khoảng cách [${p1}${p2}]`, `${d.toFixed(2)}`, `d(${p1}, ${p2}) = ${d.toFixed(4)}`);
+            notify(`Khoảng cách giữa ${p1} và ${p2}: ${d.toFixed(2)}. (Chọn tiếp 2 điểm nếu muốn đo khoảng cách từ ${p1} đến mặt phẳng).`);
+          }catch(err){
+            notify(err.message);
+          }
+        }else if(pending.length===3){
+          render();
+          notify(`Đã chọn điểm ${pending[0]} và 2 điểm mặt phẳng (${pending.slice(1).join(', ')}). Chọn điểm thứ 3 của mặt phẳng.`);
+        }else if(pending.length===4){
+          const [p0,p1,p2,p3]=pending;
+          pending=[];
+          render();
+          try{
+            const d=measureDistance3D(doc,p0,p1,p2,p3);
+            showMeasureHUD(`Khoảng cách ${p0} đến (${p1}${p2}${p3})`, `${d.toFixed(2)}`, `d = ${d.toFixed(4)}`);
+          }catch(err){
+            notify(err.message);
+          }
+        }
+        return;
+      }
       // select3d or orbit3d
       selected=hitVertex;
       sidebarView='properties';
@@ -1586,6 +2568,44 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
         notify(`Đã tìm giao điểm giữa đoạn [${s.refs.join('')}] và mặt phẳng (${planeRefs.join('')}).`);
         return;
       }
+      if(tool==='parallel3d'&&s&&pending.length===1){
+        const pId=pending[0];
+        pending=[];
+        const next=createParallel3D(doc,pId,s.refs);
+        commit(next);
+        notify(`Đã dựng đường thẳng qua ${pId} song song với đoạn [${s.refs.join(', ')}].`);
+        return;
+      }
+      if(tool==='measureAngle3d'&&s){
+        if(pending.length===0){
+          pending=[...s.refs];
+          render();
+          notify(`Đã chọn đoạn thứ nhất [${s.refs.join('')}]. Hãy chọn đoạn thứ hai.`);
+          return;
+        }else if(pending.length===2){
+          const [p1,p2]=pending;
+          const [p3,p4]=s.refs;
+          pending=[];
+          render();
+          try{
+            const {deg,rad}=measureAngle3D(doc,p1,p2,p3,p4);
+            showMeasureHUD(`Góc giữa [${p1}${p2}] và [${p3}${p4}]`, `${deg.toFixed(2)}°`, `rad = ${rad.toFixed(4)}`);
+          }catch(err){
+            notify(err.message);
+          }
+          return;
+        }
+      }
+      if(tool==='measureDistance3d'&&s&&pending.length===0){
+        const [p1,p2]=s.refs;
+        try{
+          const d=measureDistance3D(doc,p1,p2);
+          showMeasureHUD(`Độ dài đoạn [${p1}${p2}]`, `${d.toFixed(2)}`, `d = ${d.toFixed(4)}`);
+        }catch(err){
+          notify(err.message);
+        }
+        return;
+      }
       if(tool==='ratio3d'&&s){
         const tVal=prompt(`Nhập tỉ số chia đoạn t trên [${s.refs.join(', ')}] (mặc định 0.5):`,'0.5');
         const t=(tVal!==null&&!isNaN(Number(tVal)))?Number(tVal):0.5;
@@ -1610,6 +2630,17 @@ $('canvas').addEventListener('pointerdown',e=>{if(e.button!==0)return;const poin
       syncSidebarTabs();
       render();
       notify(`Đang chọn thiết diện: ${hitCrossSection}`);
+      drag={before:structuredClone(doc),px:e.clientX,py:e.clientY,solid:true,moved:false};
+      $('canvas').setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if(hitPlane){
+      selected=hitPlane;
+      sidebarView='properties';
+      syncSidebarTabs();
+      render();
+      notify(`Đang chọn mặt phẳng 3D: ${hitPlane}`);
       drag={before:structuredClone(doc),px:e.clientX,py:e.clientY,solid:true,moved:false};
       $('canvas').setPointerCapture(e.pointerId);
       return;
@@ -1776,6 +2807,17 @@ $('canvas').addEventListener('pointermove',e=>{
       vDoc.points.push({id: ghostId, x, y, visible:false});
       if(tool==='polygon')addShape(vDoc,pending.length>1?'polygon':'segment',[...pending,ghostId]);
       if (['segment','line','ray','vector','circle'].includes(tool)) addShape(vDoc, tool==='vector'?'vector':tool, [pending[0], ghostId]);
+      if (['arc','sector'].includes(tool)) {
+        if (pending.length === 1) addShape(vDoc, 'segment', [pending[0], ghostId], { dashed: true, color: '#789589' });
+        else if (pending.length === 2) addShape(vDoc, tool, [pending[0], pending[1], ghostId], tool === 'sector' ? { fill: '#176b52', fillOpacity: 0.18 } : {});
+      }
+      if (tool === 'ellipse') {
+        if (pending.length === 1) addShape(vDoc, 'segment', [pending[0], ghostId], { dashed: true, color: '#789589' });
+        else if (pending.length === 2) addShape(vDoc, 'ellipse', [pending[0], pending[1], ghostId]);
+      }
+      if (tool === 'rightAngle' && pending.length === 2) {
+        addShape(vDoc, 'angle', [pending[0], pending[1], ghostId], { mark: 'right' });
+      }
       if (['parallel','perpendicular'].includes(tool)) addShape(vDoc, 'line', [pending[0], ghostId]);
       if (['equilateralTriangle', 'square'].includes(tool) && pending.length === 2) {
         const pA = resolve(doc).points[pending[0]];
@@ -1875,7 +2917,8 @@ document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{
   render();
 });
 $('undo').onclick=()=>{cancelConstruction();selectedIds.clear();if(history.length){future.push(doc);doc=history.pop();revision++;selected='';pending=[];persist();render();}};$('redo').onclick=()=>{cancelConstruction();selectedIds.clear();if(future.length){history.push(doc);doc=future.pop();revision++;selected='';pending=[];persist();render();}};
-document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||e.target.isContentEditable||document.querySelector('dialog[open]'))return;if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelection();return;}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$(e.shiftKey?'redo':'undo').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();$('redo').click();}if(e.key==='Escape'){endDrag(true);cancelConstruction();selectedIds.clear();selected='';notify('');tool='select';render();}});
+document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||e.target.isContentEditable||document.querySelector('dialog[open]'))return;if(mode==='solid'&&selected&&doc.solid?.segments?.some(s=>s.id===selected)){if(e.key.toLowerCase()==='a'){e.preventDefault();commit(toggleSegmentStyle(doc,selected,'auto'));notify('Đã chuyển nét đoạn sang Tự động');return;}if(e.key.toLowerCase()==='s'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();commit(toggleSegmentStyle(doc,selected,'solid'));notify('Đã chuyển nét đoạn sang Nét liền');return;}if(e.key.toLowerCase()==='d'&&!e.ctrlKey&&!e.metaKey){e.preventDefault();commit(toggleSegmentStyle(doc,selected,'dashed'));notify('Đã chuyển nét đoạn sang Nét đứt');return;}}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();deleteSelection();return;}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();$(e.shiftKey?'redo':'undo').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();$('redo').click();}if(e.key==='Escape'){endDrag(true);cancelConstruction();selectedIds.clear();selected='';notify('');tool='select';render();}});
+$('canvas').addEventListener('dblclick',e=>{if(mode==='solid'){const segTarget=e.target.closest('[data-segment-3d]');const segId=segTarget?.getAttribute('data-segment-3d')||segTarget?.dataset?.segment3d||segTarget?.dataset?.['segment-3d']||selected;if(segId&&doc.solid?.segments?.some(s=>s.id===segId)){commit(toggleSegmentStyle(doc,segId));notify('Đã chuyển đổi kiểu nét đoạn 3D');}}});
 for(const[id,factor]of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{scale=Math.max(15,Math.min(160,scale*factor));render();};$('reset-view').onclick=()=>{scale=55;pan={x:0,y:0};render();};$('grid').onchange=render;
 if($('snap-magnet'))$('snap-magnet').onchange=e=>{magnetActive=e.target.checked;renderCanvas();};
 if($('title'))$('title').onchange=e=>{const title=e.target.value;cancelConstruction();commit({...doc,title});};
@@ -1907,7 +2950,7 @@ $('blank-template').onclick=()=>applyGallery('blank');
 
 function download(content,name,type){const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 if($('save'))$('save').onclick=()=>{cancelConstruction();render();download(JSON.stringify(doc,null,2),'ve-hinh.json','application/json');};$('load').onclick=()=>$('document-file').click();$('document-file').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>1e6)throw Error('File tối đa 1 MB');const next=validateDocument(JSON.parse(await file.text()));selected='';pending=[];if(commit(next))notify('Đã mở tài liệu. Có thể hoàn tác về bản trước.');}catch(err){notify('Không mở file: '+err.message);}finally{e.target.value='';}};
-$('export').onclick=()=>{cancelConstruction();render();$('export-dialog').showModal();};$('export-svg').onclick=()=>{download(exportSVG(doc,mode,{scale,pan,viewport:mode==='geometry'?visibleCanvasBounds():undefined}),'ve-hinh-'+mode+'.svg','image/svg+xml');$('export-dialog').close();};$('export-png').onclick=async()=>{try{const url=URL.createObjectURL(new Blob([exportSVG(doc,mode,{scale,pan,viewport:mode==='geometry'?visibleCanvasBounds():undefined})],{type:'image/svg+xml'}));const img=new Image();img.src=url;await img.decode();const c=document.createElement('canvas');c.width=2000;const bounds=mode==='geometry'?visibleCanvasBounds():{width:1000,height:660};c.height=Math.max(1,Math.round(c.width*bounds.height/bounds.width));c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);const blob=await new Promise(r=>c.toBlob(r,'image/png'));if(!blob)throw Error('Không tạo được PNG');download(blob,'ve-hinh-'+mode+'.png','image/png');$('export-dialog').close();}catch(e){notify('Xuất PNG thất bại: '+e.message);}};
+$('export').onclick=()=>{cancelConstruction();render();$('export-dialog').showModal();};$('export-svg').onclick=()=>{download(getExportedSVG(),'ve-hinh-'+mode+'.svg','image/svg+xml');$('export-dialog').close();};$('export-png').onclick=async()=>{try{const url=URL.createObjectURL(new Blob([getExportedSVG()],{type:'image/svg+xml'}));const img=new Image();img.src=url;await img.decode();const c=document.createElement('canvas');c.width=2000;const bounds=mode==='geometry'?visibleCanvasBounds():{width:1000,height:660};c.height=Math.max(1,Math.round(c.width*bounds.height/bounds.width));c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);const blob=await new Promise(r=>c.toBlob(r,'image/png'));if(!blob)throw Error('Không tạo được PNG');download(blob,'ve-hinh-'+mode+'.png','image/png');$('export-dialog').close();}catch(e){notify('Xuất PNG thất bại: '+e.message);}};
 $('help').onclick=()=>$('help-dialog').showModal();document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 if($('help-dialog')){$('help-dialog').querySelectorAll('[data-help-tab]').forEach(btn=>{btn.onclick=()=>{const tab=btn.dataset.helpTab;$('help-dialog').querySelectorAll('[data-help-tab]').forEach(b=>b.classList.toggle('active',b===btn));$('help-dialog').querySelectorAll('[data-help-pane]').forEach(p=>{p.hidden=(p.dataset.helpPane!==tab);});};});}
 async function loadImage(file){if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type))return notify('Chọn ảnh PNG, JPEG hoặc WebP');if(file.size>4*1024*1024)return notify('Ảnh tối đa 4 MB. Cắt rõ cả đề bài và hình.');try{const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(Error('Không đọc được ảnh'));r.readAsDataURL(file);});const test=new Image();test.src=data;await test.decode();image=data;$('source-image').src=data;$('source-image').hidden=false;$('remove-image').hidden=false;notify('Ảnh đang ở thiết bị; chỉ gửi khi bạn bấm tạo bản đề xuất.');}catch(e){notify(e.message);}}
@@ -2110,5 +3153,13 @@ if (typeof window !== 'undefined') {
     } catch {
       container.textContent = source || '';
     }
+  };
+  window.__veHinh = {
+    getDoc: () => doc,
+    getMode: () => mode,
+    getTool: () => tool,
+    getSelected: () => selected,
+    exportTikZ: () => exportTikZ(doc),
+    exportSVG: () => getExportedSVG()
   };
 }

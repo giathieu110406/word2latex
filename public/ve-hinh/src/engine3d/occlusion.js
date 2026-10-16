@@ -325,12 +325,21 @@ export function compute3DOcclusion(solidData, camera = {}) {
       { name: 'left', verts: ['A', 'D', 'D1', 'A1'] },
       { name: 'right', verts: ['C', 'B', 'B1', 'C1'] }
     ];
-  } else if (solidData.type === 'tetrahedron') {
+  } else if (solidData.type === 'tetrahedron' || solidData.type === 'regular-tetrahedron') {
     rawFaces = [
       { name: 'base', verts: ['A', 'B', 'C'] },
       { name: 'SAB', verts: ['S', 'A', 'B'] },
       { name: 'SBC', verts: ['S', 'B', 'C'] },
       { name: 'SCA', verts: ['S', 'C', 'A'] }
+    ];
+  } else if (solidData.type === 'frustum') {
+    rawFaces = [
+      { name: 'bottom', verts: ['A', 'B', 'C', 'D'] },
+      { name: 'top', verts: ['A1', 'D1', 'C1', 'B1'] },
+      { name: 'front', verts: ['D', 'C', 'C1', 'D1'] },
+      { name: 'back', verts: ['B', 'A', 'A1', 'B1'] },
+      { name: 'left', verts: ['A', 'D', 'D1', 'A1'] },
+      { name: 'right', verts: ['C', 'B', 'B1', 'C1'] }
     ];
   } else if (solidData.type === 'prism') {
     rawFaces = [
@@ -344,7 +353,7 @@ export function compute3DOcclusion(solidData, camera = {}) {
 
   if (Array.isArray(solidData.planes)) {
     for (const pl of solidData.planes) {
-      if (pl.refs && pl.refs.length >= 3) {
+      if (pl.transparent === false && pl.refs && pl.refs.length >= 3) {
         rawFaces.push({ name: pl.id || 'plane', verts: pl.refs });
       }
     }

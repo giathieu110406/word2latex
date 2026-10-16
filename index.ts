@@ -27,6 +27,7 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.all('/api/ve-hinh', drawingHandler);
 app.all('/api/activity', activityHandler);
+app.use('/ve-hinh', express.static(path.join(process.cwd(), 'public', 've-hinh')));
 
 // VERCEL PROXY HANDLER (cho cả local dev và production Vercel)
 

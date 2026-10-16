@@ -125,7 +125,23 @@ export function renderSVG(doc,{grid=true,scale=55,selected='',pending=[],selecte
       allSegments.push({ a: q[0], b: q[1] });
       if (incidentMap.has(s.refs[0])) incidentMap.get(s.refs[0]).push(q[1]);
       if (incidentMap.has(s.refs[1])) incidentMap.get(s.refs[1]).push(q[0]);
-      if(['tick','double','parallel'].includes(s.mark)){const mx=(q[0].x+q[1].x)/2,my=(q[0].y+q[1].y)/2,dx=q[1].x-q[0].x,dy=q[1].y-q[0].y,n=Math.hypot(dx,dy);for(const offset of s.mark==='double'?[-4,4]:[0])out+=line({x:mx+dx/n*offset-dy/n*7,y:my+dy/n*offset+dx/n*7},{x:mx+dx/n*offset+dy/n*7,y:my+dy/n*offset-dx/n*7},`stroke="${color}" stroke-width="2"`);if(s.mark==='parallel')out+=text(mx+8,my-8,'∥');}
+      if(['tick','double','triple','parallel'].includes(s.mark)){
+        const mx=(q[0].x+q[1].x)/2,my=(q[0].y+q[1].y)/2,dx=q[1].x-q[0].x,dy=q[1].y-q[0].y,n=Math.hypot(dx,dy);
+        if(n>1e-6){
+          if(s.mark!=='parallel'){
+            const offsets=s.mark==='triple'?[-6,0,6]:s.mark==='double'?[-4,4]:[0];
+            for(const offset of offsets){
+              out+=line(
+                {x:mx+(dx/n)*offset-(dy/n)*7,y:my+(dy/n)*offset+(dx/n)*7},
+                {x:mx+(dx/n)*offset+(dy/n)*7,y:my+(dy/n)*offset-(dx/n)*7},
+                `stroke="${color}" stroke-width="2"`
+              );
+            }
+          }else{
+            out+=text(mx+8,my-8,'∥');
+          }
+        }
+      }
     }else if(s.type==='polygon'){
       out+=`<polygon points="${q.map(v=>`${v.x},${v.y}`).join(' ')}" ${attrs} style="fill:${s.fill||color};fill-opacity:${s.fill?0.3:0.035}"/>`;
       for (let i = 0; i < q.length; i++) {
@@ -134,21 +150,102 @@ export function renderSVG(doc,{grid=true,scale=55,selected='',pending=[],selecte
         if (incidentMap.has(s.refs[i])) incidentMap.get(s.refs[i]).push(q[j]);
         if (incidentMap.has(s.refs[j])) incidentMap.get(s.refs[j]).push(q[i]);
       }
-    }else if(s.type==='circle'){const r=Math.hypot(q[1].x-q[0].x,q[1].y-q[0].y);if(r>1e-7)out+=`<circle cx="${q[0].x}" cy="${q[0].y}" r="${r}" ${attrs}/>`;}
-    else if(s.type==='length')out+=text((q[0].x+q[1].x)/2+8,(q[0].y+q[1].y)/2-12,Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y).toFixed(2),`data-shape="${escape(s.id)}" style="fill:${chosen.has(s.id)?'#b07519':color};font-weight:${chosen.has(s.id)?600:400}"`);
+    }else if(s.type==='circle'){
+      const r=Math.hypot(q[1].x-q[0].x,q[1].y-q[0].y);
+      if(r>1e-7)out+=`<circle cx="${q[0].x}" cy="${q[0].y}" r="${r}" ${attrs}/>`;
+    }else if(s.type==='arc'||s.type==='sector'){
+      if(q.length>=3){
+        const r=Math.hypot(q[1].x-q[0].x,q[1].y-q[0].y);
+        const dB=Math.hypot(q[2].x-q[0].x,q[2].y-q[0].y);
+        if(r>1e-6&&dB>1e-6){
+          const x1=q[1].x,y1=q[1].y;
+          const x2=q[0].x+r*(q[2].x-q[0].x)/dB;
+          const y2=q[0].y+r*(q[2].y-q[0].y)/dB;
+          const a1=Math.atan2(p[1].y-p[0].y,p[1].x-p[0].x);
+          const a2=Math.atan2(p[2].y-p[0].y,p[2].x-p[0].x);
+          let span=a2-a1;
+          if(span<0)span+=2*Math.PI;
+          if(span<1e-4)span=2*Math.PI;
+          const largeArc=span>Math.PI?1:0;
+          const sweep=0;
+          if(s.type==='arc'){
+            out+=`<path d="M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${largeArc} ${sweep} ${x2.toFixed(2)} ${y2.toFixed(2)}" ${attrs}/>`;
+          }else{
+            const fillStyle=` style="fill:${escape(s.fill||color)};fill-opacity:${s.fillOpacity??(s.fill?0.3:0.15)}"`;
+            out+=`<path d="M ${q[0].x.toFixed(2)} ${q[0].y.toFixed(2)} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${largeArc} ${sweep} ${x2.toFixed(2)} ${y2.toFixed(2)} Z" ${attrs}${fillStyle}/>`;
+            allSegments.push({ a: q[0], b: { x: x1, y: y1 } }, { a: q[0], b: { x: x2, y: y2 } });
+          }
+        }
+      }
+    }else if(s.type==='ellipse'){
+      if(q.length>=2){
+        const rxMath=Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y);
+        if(rxMath>1e-6){
+          let ryMath=p[2]?Math.hypot(p[2].x-p[0].x,p[2].y-p[0].y):(s.ry||0.6*rxMath);
+          if(ryMath<1e-6)ryMath=0.6*rxMath;
+          const rxScreen=rxMath*scale;
+          const ryScreen=ryMath*scale;
+          const deg=Math.atan2(q[1].y-q[0].y,q[1].x-q[0].x)*180/Math.PI;
+          const fillStyle=s.fill?` style="fill:${escape(s.fill)};fill-opacity:${s.fillOpacity??0.25}"`:'';
+          out+=`<ellipse cx="${q[0].x.toFixed(2)}" cy="${q[0].y.toFixed(2)}" rx="${rxScreen.toFixed(2)}" ry="${ryScreen.toFixed(2)}" transform="rotate(${deg.toFixed(2)} ${q[0].x.toFixed(2)} ${q[0].y.toFixed(2)})" ${attrs}${fillStyle}/>`;
+        }
+      }
+    }else if(s.type==='length')out+=text((q[0].x+q[1].x)/2+8,(q[0].y+q[1].y)/2-12,Math.hypot(p[1].x-p[0].x,p[1].y-p[0].y).toFixed(2),`data-shape="${escape(s.id)}" style="fill:${chosen.has(s.id)?'#b07519':color};font-weight:${chosen.has(s.id)?600:400}"`);
     else if(s.type==='vectorCoords'){out+=text((q[0].x+q[1].x)/2+8,(q[0].y+q[1].y)/2+25,`(${(p[1].x-p[0].x).toFixed(2)}; ${(p[1].y-p[0].y).toFixed(2)})`,`data-shape="${escape(s.id)}" style="fill:${chosen.has(s.id)?'#b07519':color};font-weight:${chosen.has(s.id)?600:400}"`);}
     else if(['dot','vectorAngle'].includes(s.type)){const u={x:p[1].x-p[0].x,y:p[1].y-p[0].y},v={x:p[3].x-p[2].x,y:p[3].y-p[2].y},prod=u.x*v.x+u.y*v.y,den=Math.hypot(u.x,u.y)*Math.hypot(v.x,v.y);if(s.type==='dot'||den>1e-9)out+=text(q[0].x+12,q[0].y+35,s.type==='dot'?`${s.refs[0]}${s.refs[1]} · ${s.refs[2]}${s.refs[3]} = ${prod.toFixed(2)}`:`Góc vectơ = ${(Math.acos(Math.max(-1,Math.min(1,prod/den)))*180/Math.PI).toFixed(1)}°`,`data-shape="${escape(s.id)}" style="fill:${chosen.has(s.id)?'#b07519':color};font-weight:${chosen.has(s.id)?600:400}"`);}
-    else if(s.type==='angle'){const[a,b,c]=q,u={x:a.x-b.x,y:a.y-b.y},v={x:c.x-b.x,y:c.y-b.y},nu=Math.hypot(u.x,u.y),nv=Math.hypot(v.x,v.y);if(nu<1e-7||nv<1e-7)continue;const dot=(u.x*v.x+u.y*v.y)/(nu*nv),angle=Math.acos(Math.max(-1,Math.min(1,dot))),r=25;if(s.mark==='right'||Math.abs(angle-Math.PI/2)<1e-3){const r2=18,p1={x:b.x+u.x/nu*r2,y:b.y+u.y/nu*r2},p2={x:b.x+(u.x/nu+v.x/nv)*r2,y:b.y+(u.y/nu+v.y/nv)*r2},p3={x:b.x+v.x/nv*r2,y:b.y+v.y/nv*r2};out+=`<path d="M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p3.x} ${p3.y}" ${attrs}/>`;allSegments.push({a:p1,b:p2},{a:p2,b:p3});}else{const start={x:b.x+u.x/nu*r,y:b.y+u.y/nu*r},end={x:b.x+v.x/nv*r,y:b.y+v.y/nv*r};out+=`<path d="M ${start.x} ${start.y} A ${r} ${r} 0 0 ${u.x*v.y-u.y*v.x>0?1:0} ${end.x} ${end.y}" ${attrs}/>`;const midAngle=Math.atan2(u.y/nu+v.y/nv,u.x/nu+v.x/nv);out+=text(b.x+Math.cos(midAngle)*(r+16),b.y+Math.sin(midAngle)*(r+16),(angle*180/Math.PI).toFixed(0)+'°',`style="font-size:13px;fill:${chosen.has(s.id)?'#b07519':color}"`);}}
+    else if(s.type==='angle'){
+      const[a,b,c]=q,u={x:a.x-b.x,y:a.y-b.y},v={x:c.x-b.x,y:c.y-b.y};
+      const nu=Math.hypot(u.x,u.y),nv=Math.hypot(v.x,v.y);
+      if(nu>=1e-7&&nv>=1e-7){
+        const dot=(u.x*v.x+u.y*v.y)/(nu*nv);
+        const angle=Math.acos(Math.max(-1,Math.min(1,dot)));
+        const sweep=u.x*v.y-u.y*v.x>0?1:0;
+        if(s.mark==='right'||Math.abs(angle-Math.PI/2)<1e-3){
+          const r2=18;
+          const p1={x:b.x+(u.x/nu)*r2,y:b.y+(u.y/nu)*r2};
+          const p2={x:b.x+(u.x/nu+v.x/nv)*r2,y:b.y+(u.y/nu+v.y/nv)*r2};
+          const p3={x:b.x+(v.x/nv)*r2,y:b.y+(v.y/nv)*r2};
+          out+=`<path d="M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} L ${p2.x.toFixed(2)} ${p2.y.toFixed(2)} L ${p3.x.toFixed(2)} ${p3.y.toFixed(2)}" ${attrs}/>`;
+          allSegments.push({a:p1,b:p2},{a:p2,b:p3});
+        }else if(s.mark==='double'){
+          for(const rArc of [20,26]){
+            const start={x:b.x+(u.x/nu)*rArc,y:b.y+(u.y/nu)*rArc};
+            const end={x:b.x+(v.x/nv)*rArc,y:b.y+(v.y/nv)*rArc};
+            out+=`<path d="M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${rArc} ${rArc} 0 0 ${sweep} ${end.x.toFixed(2)} ${end.y.toFixed(2)}" ${attrs}/>`;
+          }
+        }else if(s.mark==='single'||s.mark==='tick'){
+          const rArc=24;
+          const start={x:b.x+(u.x/nu)*rArc,y:b.y+(u.y/nu)*rArc};
+          const end={x:b.x+(v.x/nv)*rArc,y:b.y+(v.y/nv)*rArc};
+          out+=`<path d="M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${rArc} ${rArc} 0 0 ${sweep} ${end.x.toFixed(2)} ${end.y.toFixed(2)}" ${attrs}/>`;
+          const w={x:u.x/nu+v.x/nv,y:u.y/nu+v.y/nv},nw=Math.hypot(w.x,w.y);
+          if(nw>1e-6){
+            const t1={x:b.x+(w.x/nw)*(rArc-5),y:b.y+(w.y/nw)*(rArc-5)};
+            const t2={x:b.x+(w.x/nw)*(rArc+5),y:b.y+(w.y/nw)*(rArc+5)};
+            out+=line(t1,t2,`stroke="${color}" stroke-width="2"`);
+          }
+        }else{
+          const rArc=25;
+          const start={x:b.x+(u.x/nu)*rArc,y:b.y+(u.y/nu)*rArc};
+          const end={x:b.x+(v.x/nv)*rArc,y:b.y+(v.y/nv)*rArc};
+          out+=`<path d="M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${rArc} ${rArc} 0 0 ${sweep} ${end.x.toFixed(2)} ${end.y.toFixed(2)}" ${attrs}/>`;
+          const midAngle=Math.atan2(u.y/nu+v.y/nv,u.x/nu+v.x/nv);
+          out+=text(b.x+Math.cos(midAngle)*(rArc+16),b.y+Math.sin(midAngle)*(rArc+16),(angle*180/Math.PI).toFixed(0)+'°',`style="font-size:13px;fill:${chosen.has(s.id)?'#b07519':color}"`);
+        }
+      }
+    }
   }
 
   const allCircles = [];
   for (const s of doc.shapes) {
-    if (s.visible === false || s.type !== 'circle') continue;
-    const p = s.refs.map(r => points[r]);
-    if (p.some(v => !v)) continue;
-    const q = p.map(to);
-    const r = Math.hypot(q[1].x - q[0].x, q[1].y - q[0].y);
-    if (r > 1e-4) allCircles.push({ center: q[0], r });
+    if (s.visible === false) continue;
+    if (s.type === 'circle' || s.type === 'arc' || s.type === 'sector') {
+      const p = s.refs.map(r => points[r]);
+      if (p.some(v => !v)) continue;
+      const q = p.map(to);
+      const r = Math.hypot(q[1].x - q[0].x, q[1].y - q[0].y);
+      if (r > 1e-4) allCircles.push({ center: q[0], r });
+    }
   }
 
   const placedLabels = [];
@@ -200,7 +297,7 @@ for(const e of graph.expressions){
 return wrapper(out);}
 export function chartSVG(chart,{grid=true}={}){if(chart.enabled===false)return wrapper(text(500,330,'Chưa có biểu đồ · chọn Vẽ lại','text-anchor="middle"'));const {labels,values,type}=chart,colors=['#176b52','#dca544','#6f9e8f','#4f7eb1','#b97563','#9b8cb5'];let out='';if(type==='pie'){const total=values.reduce((a,b)=>a+b,0);let angle=-Math.PI/2;values.forEach((v,i)=>{const sweep=v/total*2*Math.PI,next=angle+sweep;if(v===total)out+='<circle cx="380" cy="330" r="210" fill="#176b52"/>';else if(v>0)out+=`<path d="M 380 330 L ${380+210*Math.cos(angle)} ${330+210*Math.sin(angle)} A 210 210 0 ${sweep>Math.PI?1:0} 1 ${380+210*Math.cos(next)} ${330+210*Math.sin(next)} Z" fill="${colors[i%colors.length]}" stroke="white" stroke-width="3"/>`;out+=`<rect x="${610+Math.floor(i/20)*190}" y="${100+(i%20)*25}" width="12" height="12" fill="${colors[i%colors.length]}"/>`+text(628+Math.floor(i/20)*190,111+(i%20)*25,labels[i]+': '+(v/total*100).toFixed(1)+'%',`style="font-size:11px" textLength="${Math.min(166,(labels[i].length+9)*5.5)}" lengthAdjust="spacingAndGlyphs"`);angle=next;});}
   else{const second=type==='double'?chart.second:[],max=Math.max(1,...values,...second),width=840/values.length,bottom=550;for(let i=0;i<=5;i++){const y=bottom-i*90;out+=(grid||i===0?line({x:90,y},{x:950,y},'stroke="#e3eae6"'):'')+text(20,y+5,(max*i/5).toFixed(1));}let path='';values.forEach((v,i)=>{const x=100+i*width,y=bottom-v/max*450;if(type==='line'){path+=(i?' L ':'M ')+(x+width/2)+' '+y;out+=`<circle cx="${x+width/2}" cy="${y}" r="5" fill="#176b52"/>`;}else{const bw=type==='double'?width*.35:type==='histogram'?width:width*.65;out+=`<rect x="${x+(type==='histogram'?0:width*.08)}" y="${y}" width="${bw}" height="${bottom-y}" rx="${type==='histogram'?0:4}" fill="#176b52"/>`;if(type==='double')out+=`<rect x="${x+width*.48}" y="${bottom-second[i]/max*450}" width="${bw}" height="${second[i]/max*450}" rx="4" fill="#dfac48"/>`;}const label=type==='histogram'?`${chart.start+i*chart.width}–${chart.start+(i+1)*chart.width}`:labels[i];out+=text(x+width/2,580,label,'text-anchor="middle" style="font-size:15px"');});if(path)out+=`<path d="${path}" fill="none" stroke="#176b52" stroke-width="3"/>`;if(type==='double')out+=text(110,50,'● Dãy 1   ● Dãy 2 (vàng)');}return wrapper(out);}
-export const solidNames={box:'Hình hộp chữ nhật',cube:'Lập phương',pyramid:'Chóp đáy đều',prism:'Lăng trụ đáy đều',tetrahedron:'Tứ diện đều',cylinder:'Hình trụ',cone:'Hình nón',sphere:'Hình cầu',custom:'Không gian 3D tự do','sa-perp-pyramid':'Chóp SA ⊥ đáy','trapezoid-pyramid':'Chóp đáy hình thang','prism4':'Lăng trụ tứ giác'};
+export const solidNames={box:'Hình hộp chữ nhật',cube:'Lập phương',pyramid:'Chóp đáy đều',prism:'Lăng trụ đáy đều',tetrahedron:'Tứ diện đều','regular-tetrahedron':'Tứ diện đều',frustum:'Chóp cụt tứ giác',cylinder:'Hình trụ',cone:'Hình nón',sphere:'Hình cầu',custom:'Không gian 3D tự do','sa-perp-pyramid':'Chóp SA ⊥ đáy','trapezoid-pyramid':'Chóp đáy hình thang','prism4':'Lăng trụ tứ giác'};
 const sphereCurves=[...[-60,-30,0,30,60].map(latitude=>{
   const a=latitude*Math.PI/180;return Array.from({length:97},(_,i)=>{const t=i*2*Math.PI/96;return[2*Math.cos(a)*Math.cos(t),2*Math.sin(a),2*Math.cos(a)*Math.sin(t)];});
 }),...Array.from({length:6},(_,j)=>{const t=j*Math.PI/6;return Array.from({length:97},(_,i)=>{const a=i*2*Math.PI/96;return[2*Math.cos(a)*Math.cos(t),2*Math.sin(a),2*Math.cos(a)*Math.sin(t)];});})];
@@ -212,7 +309,7 @@ export function solidSVG(solid,{selectedFace=null}={}){
   const camera={rotation:solid.rotation??30,tilt:solid.tilt??20};
   let out='<rect width="1000" height="660" fill="url(#dots)"/>'+text(30,40,solidNames[solid.type]||solid.type||'Hình học không gian');
 
-  if(solid.type==='sphere'){
+  if(solid.type==='sphere' && !Array.isArray(solid.points)){
     const paths=['',''],xy=p=>`${(500+p[0]*90).toFixed(2)} ${(330-p[1]*90).toFixed(2)}`;
     for(const curve of sphereCurves){const points=curve.map(rotate);let previous=-1;for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],front=Number(a[2]+b[2]>0);paths[front]+=(front===previous?' L ':' M '+xy(a)+' L ')+xy(b);previous=front;}}
     for(const front of [0,1])out+=`<path data-sphere-depth="${front?'front':'back'}" d="${paths[front]}" fill="none" stroke="${front?'#176b52':'#a4bfb0'}" stroke-width="${front?1.8:1}" ${front?'':'stroke-dasharray="4 5"'}/>`;
@@ -231,7 +328,23 @@ export function solidSVG(solid,{selectedFace=null}={}){
     }
 
     let faces=[];
-    if(solid.type&&solid.type!=='custom'){
+    if(solid.type==='regular-tetrahedron'||solid.type==='tetrahedron'){
+      faces=[
+        { name: 'base', verts: ['A', 'B', 'C'] },
+        { name: 'SAB', verts: ['S', 'A', 'B'] },
+        { name: 'SBC', verts: ['S', 'B', 'C'] },
+        { name: 'SCA', verts: ['S', 'C', 'A'] }
+      ].filter(f=>f.verts.every(vid=>ptsMap[vid]));
+    } else if(solid.type==='frustum'){
+      faces=[
+        { name: 'bottom', verts: ['A', 'B', 'C', 'D'] },
+        { name: 'top', verts: ['A1', 'D1', 'C1', 'B1'] },
+        { name: 'front', verts: ['D', 'C', 'C1', 'D1'] },
+        { name: 'back', verts: ['B', 'A', 'A1', 'B1'] },
+        { name: 'left', verts: ['A', 'D', 'D1', 'A1'] },
+        { name: 'right', verts: ['C', 'B', 'B1', 'C1'] }
+      ].filter(f=>f.verts.every(vid=>ptsMap[vid]));
+    } else if(solid.type&&solid.type!=='custom'){
       const std=getStandardSolidGeometry(solid.type,solid.sides);
       faces=std.faces.filter(f=>f.verts.every(vid=>ptsMap[vid]));
     }
@@ -243,6 +356,21 @@ export function solidSVG(solid,{selectedFace=null}={}){
       ptsMap
     );
     const polyOcclusion=evaluatePolyhedronEdges(orientedFaces,camera);
+
+    // 3D Planes (transparent surfaces)
+    if(Array.isArray(solid.planes)){
+      for(const pl of solid.planes){
+        if(pl.visible===false)continue;
+        const refs=pl.refs;
+        if(refs&&refs.length>=3&&refs.every(r=>ptsScreen[r])){
+          const color=pl.color||'#3b82f6';
+          const opacity=pl.opacity??0.25;
+          const strokeWidth=pl.strokeWidth??1.5;
+          const polyPts=refs.map(r=>`${ptsScreen[r].x.toFixed(1)},${ptsScreen[r].y.toFixed(1)}`).join(' ');
+          out+=`<polygon data-plane="${escape(pl.id)}" points="${polyPts}" fill="${escape(color)}" fill-opacity="${opacity}" stroke="${escape(color)}" stroke-width="${strokeWidth}" pointer-events="all"/>`;
+        }
+      }
+    }
 
     // Cross sections
     if(Array.isArray(solid.crossSections)){
@@ -256,6 +384,63 @@ export function solidSVG(solid,{selectedFace=null}={}){
           out+=`<polygon points="${polyPts}" fill="${escape(color)}" fill-opacity="${opacity}" stroke="${escape(color)}" stroke-width="1.5" stroke-dasharray="4 4"/>`;
         }
       }
+    }
+
+    // Render curved primitives outlines (cone, cylinder, sphere)
+    if(solid.type==='cone'){
+      const oPt=ptsScreen['O']||screen3D({x:0,y:-1.2,z:0},camera);
+      const sPt=ptsScreen['S']||screen3D({x:0,y:2,z:0},camera);
+      const rx=1.8*85;
+      const ry=Math.max(1.0,rx*Math.abs(Math.sin(tilt)));
+      const cx=oPt.x,cy=oPt.y;
+      const isTiltPositive=tilt>=0;
+      const upperArc=`M ${(cx-rx).toFixed(1)} ${cy.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${(cx+rx).toFixed(1)} ${cy.toFixed(1)}`;
+      const lowerArc=`M ${(cx-rx).toFixed(1)} ${cy.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 0 ${(cx+rx).toFixed(1)} ${cy.toFixed(1)}`;
+      const backArc=isTiltPositive?upperArc:lowerArc;
+      const frontArc=isTiltPositive?lowerArc:upperArc;
+      out+=`<path data-cone-back="true" d="${backArc}" fill="none" stroke="#8bada0" stroke-width="2.5" stroke-dasharray="8 7"/>`;
+      out+=`<path data-cone-front="true" d="${frontArc}" fill="none" stroke="#176b52" stroke-width="2.5"/>`;
+      out+=`<line data-cone-generator="left" x1="${sPt.x.toFixed(1)}" y1="${sPt.y.toFixed(1)}" x2="${(cx-rx).toFixed(1)}" y2="${cy.toFixed(1)}" stroke="#176b52" stroke-width="2.5"/>`;
+      out+=`<line data-cone-generator="right" x1="${sPt.x.toFixed(1)}" y1="${sPt.y.toFixed(1)}" x2="${(cx+rx).toFixed(1)}" y2="${cy.toFixed(1)}" stroke="#176b52" stroke-width="2.5"/>`;
+    } else if(solid.type==='cylinder'){
+      const o1Pt=ptsScreen['O1']||screen3D({x:0,y:1.3,z:0},camera);
+      const o2Pt=ptsScreen['O2']||screen3D({x:0,y:-1.3,z:0},camera);
+      const rx=1.5*85;
+      const ry=Math.max(1.0,rx*Math.abs(Math.sin(tilt)));
+      const isTiltPositive=tilt>=0;
+      if(isTiltPositive){
+        out+=`<ellipse data-cylinder-top="true" cx="${o1Pt.x.toFixed(1)}" cy="${o1Pt.y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="none" stroke="#176b52" stroke-width="2.5"/>`;
+      } else {
+        const cx1=o1Pt.x,cy1=o1Pt.y;
+        const upper1=`M ${(cx1-rx).toFixed(1)} ${cy1.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${(cx1+rx).toFixed(1)} ${cy1.toFixed(1)}`;
+        const lower1=`M ${(cx1-rx).toFixed(1)} ${cy1.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 0 ${(cx1+rx).toFixed(1)} ${cy1.toFixed(1)}`;
+        out+=`<path data-cylinder-top-front="true" d="${upper1}" fill="none" stroke="#176b52" stroke-width="2.5"/>`;
+        out+=`<path data-cylinder-top-back="true" d="${lower1}" fill="none" stroke="#8bada0" stroke-width="2.5" stroke-dasharray="8 7"/>`;
+      }
+      if(!isTiltPositive){
+        out+=`<ellipse data-cylinder-bottom="true" cx="${o2Pt.x.toFixed(1)}" cy="${o2Pt.y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="none" stroke="#176b52" stroke-width="2.5"/>`;
+      } else {
+        const cx2=o2Pt.x,cy2=o2Pt.y;
+        const upper2=`M ${(cx2-rx).toFixed(1)} ${cy2.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${(cx2+rx).toFixed(1)} ${cy2.toFixed(1)}`;
+        const lower2=`M ${(cx2-rx).toFixed(1)} ${cy2.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 0 ${(cx2+rx).toFixed(1)} ${cy2.toFixed(1)}`;
+        out+=`<path data-cylinder-bottom-back="true" d="${upper2}" fill="none" stroke="#8bada0" stroke-width="2.5" stroke-dasharray="8 7"/>`;
+        out+=`<path data-cylinder-bottom-front="true" d="${lower2}" fill="none" stroke="#176b52" stroke-width="2.5"/>`;
+      }
+      out+=`<line data-cylinder-generator="left" x1="${(o2Pt.x-rx).toFixed(1)}" y1="${o2Pt.y.toFixed(1)}" x2="${(o1Pt.x-rx).toFixed(1)}" y2="${o1Pt.y.toFixed(1)}" stroke="#176b52" stroke-width="2.5"/>`;
+      out+=`<line data-cylinder-generator="right" x1="${(o2Pt.x+rx).toFixed(1)}" y1="${o2Pt.y.toFixed(1)}" x2="${(o1Pt.x+rx).toFixed(1)}" y2="${o1Pt.y.toFixed(1)}" stroke="#176b52" stroke-width="2.5"/>`;
+    } else if(solid.type==='sphere'){
+      const oPt=ptsScreen['O']||screen3D({x:0,y:0,z:0},camera);
+      const rx=1.8*85;
+      const ry=Math.max(1.0,rx*Math.abs(Math.sin(tilt)));
+      const cx=oPt.x,cy=oPt.y;
+      out+=`<circle data-sphere-silhouette="true" data-sphere-contour="true" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rx.toFixed(1)}" fill="none" stroke="#176b52" stroke-width="2.5"/>`;
+      const isTiltPositive=tilt>=0;
+      const upper=`M ${(cx-rx).toFixed(1)} ${cy.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${(cx+rx).toFixed(1)} ${cy.toFixed(1)}`;
+      const lower=`M ${(cx-rx).toFixed(1)} ${cy.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 0 ${(cx+rx).toFixed(1)} ${cy.toFixed(1)}`;
+      const backArc=isTiltPositive?upper:lower;
+      const frontArc=isTiltPositive?lower:upper;
+      out+=`<path data-sphere-equator-back="true" d="${backArc}" fill="none" stroke="#8bada0" stroke-width="2.5" stroke-dasharray="8 7"/>`;
+      out+=`<path data-sphere-equator-front="true" d="${frontArc}" fill="none" stroke="#176b52" stroke-width="2.5"/>`;
     }
 
     // Segments
@@ -310,7 +495,7 @@ export function solidSVG(solid,{selectedFace=null}={}){
       const pa=ptsScreen[s.a],pb=ptsScreen[s.b];
       const color=s.color||'#8bada0';
       const width=s.strokeWidth||2.5;
-      out+=line(pa,pb,`stroke="${escape(color)}" stroke-width="${width}" stroke-dasharray="8 7"`);
+      out+=line(pa,pb,`data-segment-3d="${s.id}" stroke="${escape(color)}" stroke-width="${width}" stroke-dasharray="8 7"`);
     }
 
     // Render solid segments
@@ -318,7 +503,7 @@ export function solidSVG(solid,{selectedFace=null}={}){
       const pa=ptsScreen[s.a],pb=ptsScreen[s.b];
       const color=s.color||'#176b52';
       const width=s.strokeWidth||2.5;
-      out+=line(pa,pb,`stroke="${escape(color)}" stroke-width="${width}"`);
+      out+=line(pa,pb,`data-segment-3d="${s.id}" stroke="${escape(color)}" stroke-width="${width}"`);
     }
 
     // Render vertices and smart labels
@@ -503,7 +688,7 @@ export function exportSVG(doc,mode,{scale=55,pan={x:0,y:0},viewport=null}={}){
  if(mode!=='geometry'&&doc[mode]?.enabled===false)svg=wrapper('');
  else if(mode==='geometry')svg=renderSVG(doc,options).replace('viewBox="0 0 1000 660"','viewBox="'+(viewport?`${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`:`${pan.x} ${pan.y} 1000 660`)+'"');
  else if(mode==='graph')svg=graphSVG(doc.graph,options);else if(mode==='chart')svg=chartSVG(doc.chart,options);else if(mode==='solid')svg=solidSVG(doc.solid);else throw Error('Chế độ xuất không hợp lệ');
- return svg.replace(/<rect width="1000" height="660" fill="(?:#ffffff|url\(#dots\))"\/>/g,'').replace(/<pattern id="dots"[\s\S]*?<\/pattern>/g,'');
+ return svg.replace(/<rect width="1000" height="660" fill="(?:#ffffff|url\(#dots\))"\/>/g,'').replace(/<pattern id="dots"[\s\S]*?<\/pattern>/g,'').replace(/<text x="30" y="40"[^>]*>[\s\S]*?<\/text>/g,'');
 }
 
 export function renderSnapOverlay(snapInfo, scale = 55, pan = { x: 0, y: 0 }) {
