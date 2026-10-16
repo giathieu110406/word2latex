@@ -1,16 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateActivity, vietnamDate, classifySource } from '../shared/activity';
+import { aggregateActivity, aggregateDashboardUsage, classifyFeatureBucket, vietnamDate, classifySource } from '../shared/activity';
 import { writeActivity, withActivity, requestSource } from '../server/activity';
 import { grantPlan } from '../server/admin-plan';
 
-test('Vietnam calendar and environment separation, no invented duration or duplicate events', () => {
+test('Vietnam calendar and strict word2latex.io.vn web source separation', () => {
   assert.equal(vietnamDate(new Date('2026-10-08T17:01:00Z')), '2026-10-09');
   assert.equal(classifySource({headers:{host:'localhost:3000'}}), 'localhost');
   assert.equal(classifySource({headers:{host:'[::1]:3000'}}), 'localhost');
-  assert.equal(classifySource({headers:{host:'[2001:db8::1]:3000'}}), 'web');
-  assert.equal(classifySource({headers:{host:'word2latex.com','x-activity-source':'localhost'}}), 'web');
-  assert.equal(classifySource({headers:{host:'word2latex.com','x-activity-source':'test'}}), 'test');
+  assert.equal(classifySource({headers:{host:'[2001:db8::1]:3000'}}), 'localhost');
+  assert.equal(classifySource({headers:{host:'word2latex-preview.vercel.app'}}), 'localhost');
+  assert.equal(classifySource({headers:{host:'word2latex.io.vn'}}), 'web');
+  assert.equal(classifySource({headers:{host:'www.word2latex.io.vn:443'}}), 'web');
+  assert.equal(classifySource({headers:{host:'internal.vercel.app','x-forwarded-host':'word2latex.io.vn'}}), 'web');
+  assert.equal(classifySource({headers:{host:'word2latex.io.vn','x-activity-source':'localhost'}}), 'web');
+  assert.equal(classifySource({headers:{host:'word2latex.io.vn','x-activity-source':'test'}}), 'test');
   const events = [
     {id:'a',date:'2026-10-09',hour:'00',actorUid:'alice',action:'AI Vẽ hình',source:'web',status:'success',durationMs:1200},
     {id:'b',date:'2026-10-09',hour:'01',actorUid:'bob',action:'AI Vẽ hình',source:'test',status:'error',durationMs:2200},
@@ -24,6 +28,46 @@ test('Vietnam calendar and environment separation, no invented duration or dupli
   assert.equal(all[0].errors,1);
   assert.equal(all[0].observations,1);
   assert.equal(aggregateActivity(events, {source:'all',uid:'bob'})[0].requests,0);
+});
+
+test('dashboard 5-feature quota aggregation filters web-only and groups per-user daily history', () => {
+  assert.equal(classifyFeatureBucket({action:'Chuyển đổi LaTeX',status:'observed'}), 'convert');
+  assert.equal(classifyFeatureBucket({action:'Áp dụng tinh chỉnh AI',status:'observed'}), 'ai');
+  assert.equal(classifyFeatureBucket({action:'Áp dụng đề thi',status:'observed'}), 'exam');
+  assert.equal(classifyFeatureBucket({action:'Soạn đề thi (AI)',status:'success'}), 'exam');
+  assert.equal(classifyFeatureBucket({action:'AI Vẽ hình',status:'success'}), 'drawing');
+  assert.equal(classifyFeatureBucket({action:'MarkItDown AI',status:'success'}), 'markitdown');
+  assert.equal(classifyFeatureBucket({action:'Xem tính năng: Tổng quan',status:'observed'}), null);
+  assert.equal(classifyFeatureBucket({action:'AI Vẽ hình',status:'error'}), null);
+
+  const events = [
+    {id:'1',date:'2026-10-15',occurredAt:'2026-10-15T08:00:00Z',actorUid:'u1',actorName:'Alice',actorEmail:'alice@example.com',action:'Chuyển đổi LaTeX',source:'web',status:'observed'},
+    {id:'2',date:'2026-10-15',occurredAt:'2026-10-15T09:00:00Z',actorUid:'u1',actorName:'Alice',actorEmail:'alice@example.com',action:'AI Canvas',source:'web',status:'success'},
+    {id:'3',date:'2026-10-15',occurredAt:'2026-10-15T09:00:02Z',actorUid:'u1',actorName:'Alice',actorEmail:'alice@example.com',action:'Áp dụng tinh chỉnh AI',source:'web',status:'observed'},
+    {id:'4',date:'2026-10-15',occurredAt:'2026-10-15T10:00:00Z',actorUid:'u2',actorName:'Bob',actorEmail:'bob@example.com',action:'AI Vẽ hình',source:'web',status:'success'},
+    {id:'5',date:'2026-10-15',occurredAt:'2026-10-15T10:05:00Z',actorUid:'u2',actorName:'Bob',actorEmail:'bob@example.com',action:'MarkItDown AI',source:'web',status:'success'},
+    {id:'6',date:'2026-10-15',occurredAt:'2026-10-15T10:10:00Z',actorUid:'u2',actorName:'Bob',actorEmail:'bob@example.com',action:'Áp dụng đề thi',source:'web',status:'observed'},
+    {id:'7',date:'2026-10-15',occurredAt:'2026-10-15T11:00:00Z',actorUid:'u1',actorName:'Alice',actorEmail:'alice@example.com',action:'Chuyển đổi LaTeX',source:'localhost',status:'observed'},
+  ];
+
+  const summary = aggregateDashboardUsage(events, {from:'2026-10-10',to:'2026-10-16',feature:'all'});
+  assert.equal(summary.days.length, 7);
+  assert.deepEqual(summary.totals, {all:5, convert:1, ai:1, exam:1, drawing:1, markitdown:1});
+  const oct15Users = summary.usersByDate['2026-10-15'];
+  assert.equal(oct15Users.length, 2);
+  assert.equal(oct15Users[0].uid, 'u2');
+  assert.equal(oct15Users[0].total, 3);
+  assert.equal(oct15Users[1].uid, 'u1');
+  assert.equal(oct15Users[1].total, 2);
+  assert.equal(oct15Users[1].convert, 1);
+  assert.equal(oct15Users[1].ai, 1);
+  assert.equal(oct15Users[1].events.length, 2);
+
+  const drawingOnly = aggregateDashboardUsage(events, {from:'2026-10-10',to:'2026-10-16',feature:'drawing'});
+  assert.equal(drawingOnly.usersByDate['2026-10-15'].length, 1);
+  assert.equal(drawingOnly.usersByDate['2026-10-15'][0].uid, 'u2');
+  assert.equal(drawingOnly.usersByDate['2026-10-15'][0].filteredTotal, 1);
+  assert.equal(drawingOnly.usersByDate['2026-10-15'][0].events.length, 1);
 });
 
 test('admin grant, payment history and actor audit are one transaction and replay does not extend plan',async()=>{

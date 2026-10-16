@@ -190,15 +190,16 @@ export const QBuilder: React.FC<QBuilderProps> = ({
           </div>
         </div>
         {/* Font selector */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end min-w-0">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
-            Phông chữ Word:
+            <span className="hidden xs:inline">Phông chữ Word:</span>
+            <span className="xs:hidden">Phông Word:</span>
           </span>
-          <div className="relative">
+          <div className="relative min-w-0 flex-1 sm:flex-none max-w-[210px] xs:max-w-[260px] sm:max-w-none">
             <select
               value={wordFont}
               onChange={(e) => setWordFont(e.target.value)}
-              className="appearance-none bg-white/40 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 py-2 pl-3 pr-8 cursor-pointer outline-none transition-all shadow-3xs"
+              className="w-full appearance-none bg-white/40 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 py-2 pl-3 pr-8 cursor-pointer outline-none transition-all shadow-3xs truncate"
             >
               <option value="'Times New Roman', Times, serif">
                 Times New Roman (Chuẩn Quốc gia)
@@ -806,25 +807,11 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                     return (
                       <>
                         {/* Mobile Card List (< sm) */}
-                        <div className="sm:hidden space-y-2.5 max-h-[320px] overflow-y-auto pr-0.5 select-none">
+                        <div className="sm:hidden space-y-2 max-h-[320px] overflow-y-auto pr-0.5 select-none">
                           {filteredQuestions.map((q) => {
                             const isEditing = editingQuestionId === q.id;
                             const origIdx = docQuestions.findIndex((item) => item.id === q.id);
-                            const sameTypeQuestions = docQuestions.filter(
-                              (item) => item.type === q.type,
-                            );
-                            const displayNum =
-                              sameTypeQuestions.findIndex(
-                                (item) => item.id === q.id,
-                              ) + 1;
-                            const typeSuffix =
-                              q.type === "trac_nghiem"
-                                ? "TN"
-                                : q.type === "trac_nghiem_dung_sai"
-                                ? "Đ/S"
-                                : q.type === "trac_nghiem_tra_loi_ngan"
-                                ? "TLN"
-                                : "TL";
+                            const displayNum = origIdx + 1;
                             const typeLabel =
                               q.type === "trac_nghiem"
                                 ? "TN 4 LC"
@@ -837,76 +824,42 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                             return (
                               <div
                                 key={q.id}
-                                className={`p-3 rounded-xl border transition-all ${
+                                className={`p-2.5 rounded-xl border transition-all ${
                                   isEditing
                                     ? "bg-amber-50/90 border-amber-300 ring-2 ring-amber-200/60 shadow-xs"
                                     : `bg-white/80 border-slate-200/90 shadow-3xs ${borderColors[q.type] || ""}`
                                 }`}
                               >
-                                {/* Card Header */}
-                                <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-150/70">
+                                {/* Card Header: Câu 1, 2, 3 and Actions */}
+                                <div className="flex items-center justify-between gap-2">
                                   <div
                                     onClick={() => handleStartEditQuestion(q)}
-                                    className="flex items-center gap-1.5 cursor-pointer font-extrabold text-xs text-slate-800 hover:text-indigo-600 transition-colors"
+                                    className="flex items-center gap-1.5 cursor-pointer font-extrabold text-xs text-slate-800 hover:text-indigo-600 transition-colors shrink-0"
                                   >
                                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
-                                    <span>Câu {displayNum} ({typeSuffix})</span>
+                                    <span>Câu {displayNum}</span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-3xs shrink-0 ${
+                                        q.type === "trac_nghiem"
+                                          ? "bg-blue-100/80 text-blue-800 border-blue-200"
+                                          : q.type === "trac_nghiem_dung_sai"
+                                          ? "bg-purple-100/80 text-purple-800 border-purple-200"
+                                          : q.type === "trac_nghiem_tra_loi_ngan"
+                                          ? "bg-teal-100/80 text-teal-800 border-teal-200"
+                                          : "bg-rose-100/80 text-rose-800 border-rose-200"
+                                      }`}
+                                    >
+                                      {typeLabel}
+                                    </span>
                                     {isEditing && (
                                       <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
                                         Đang sửa
                                       </span>
                                     )}
                                   </div>
-                                  <span
-                                    className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-3xs shrink-0 ${
-                                      q.type === "trac_nghiem"
-                                        ? "bg-blue-100/80 text-blue-800 border-blue-200"
-                                        : q.type === "trac_nghiem_dung_sai"
-                                        ? "bg-purple-100/80 text-purple-800 border-purple-200"
-                                        : q.type === "trac_nghiem_tra_loi_ngan"
-                                        ? "bg-teal-100/80 text-teal-800 border-teal-200"
-                                        : "bg-rose-100/80 text-rose-800 border-rose-200"
-                                    }`}
-                                  >
-                                    {typeLabel}
-                                  </span>
-                                </div>
 
-                                {/* Card Body: Content Summary */}
-                                <div
-                                  onClick={() => handleStartEditQuestion(q)}
-                                  className="text-xs text-slate-650 leading-relaxed font-medium line-clamp-3 mb-2.5 cursor-pointer hover:text-slate-900 transition-colors"
-                                  title="Bấm để chỉnh sửa câu hỏi này"
-                                >
-                                  {getCleanQuestionBody(q.questionText)}
-                                </div>
-
-                                {/* Column selector for multiple choice on mobile */}
-                                {q.type === "trac_nghiem" && (
-                                  <div className="flex items-center justify-between gap-2 mb-2.5 bg-slate-50/80 p-2 rounded-lg border border-slate-200/60">
-                                    <span className="text-[11px] font-bold text-slate-500">Cột đáp án:</span>
-                                    <div className="inline-flex gap-1 bg-white p-0.5 rounded-md border border-slate-200 shadow-3xs">
-                                      {[1, 2, 4].map((c) => (
-                                        <button
-                                          key={c}
-                                          type="button"
-                                          onClick={() => handleUpdateQuestionColumns(q.id, c)}
-                                          className={`px-2 py-0.5 rounded text-[10px] font-extrabold cursor-pointer transition-all ${
-                                            (q.columns || 4) === c
-                                              ? "bg-indigo-600 text-white shadow-xs scale-105"
-                                              : "bg-transparent hover:bg-slate-100 text-slate-600"
-                                          }`}
-                                        >
-                                          {c} cột
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Card Footer: Action Buttons */}
-                                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                                  <div className="flex items-center gap-1">
+                                  {/* Action Buttons */}
+                                  <div className="flex items-center gap-1 shrink-0">
                                     <button
                                       type="button"
                                       onClick={() => handleMoveQuestion(origIdx, "up")}
@@ -927,12 +880,10 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                     >
                                       ▼
                                     </button>
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
                                     <button
                                       type="button"
                                       onClick={() => handleStartEditQuestion(q)}
-                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all border ${
+                                      className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all border ${
                                         isEditing
                                           ? "bg-amber-100 text-amber-800 border-amber-300"
                                           : "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200/60"
@@ -943,12 +894,35 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteQuestion(q.id)}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 cursor-pointer transition-all"
+                                      className="px-2.5 py-1 rounded-lg text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 cursor-pointer transition-all"
                                     >
                                       Xóa
                                     </button>
                                   </div>
                                 </div>
+
+                                {/* Column selector for multiple choice on mobile */}
+                                {q.type === "trac_nghiem" && (
+                                  <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100 bg-slate-50/60 -mx-2.5 -mb-2.5 px-2.5 py-1.5 rounded-b-xl">
+                                    <span className="text-[11px] font-bold text-slate-500">Cột đáp án:</span>
+                                    <div className="inline-flex gap-1 bg-white p-0.5 rounded-md border border-slate-200 shadow-3xs">
+                                      {[1, 2, 4].map((c) => (
+                                        <button
+                                          key={c}
+                                          type="button"
+                                          onClick={() => handleUpdateQuestionColumns(q.id, c)}
+                                          className={`px-2 py-0.5 rounded text-[10px] font-extrabold cursor-pointer transition-all ${
+                                            (q.columns || 4) === c
+                                              ? "bg-indigo-600 text-white shadow-xs scale-105"
+                                              : "bg-transparent hover:bg-slate-100 text-slate-600"
+                                          }`}
+                                        >
+                                          {c} cột
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -992,25 +966,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                       }`}
                                       title="Bấm để chỉnh sửa câu hỏi này"
                                     >
-                                      {(() => {
-                                        const sameTypeQuestions =
-                                          docQuestions.filter(
-                                            (item) => item.type === q.type,
-                                          );
-                                        const displayNum =
-                                          sameTypeQuestions.findIndex(
-                                            (item) => item.id === q.id,
-                                          ) + 1;
-                                        const typeSuffix =
-                                          q.type === "trac_nghiem"
-                                            ? "TN"
-                                            : q.type === "trac_nghiem_dung_sai"
-                                            ? "Đ/S"
-                                            : q.type === "trac_nghiem_tra_loi_ngan"
-                                            ? "TLN"
-                                            : "TL";
-                                        return `Câu ${displayNum} (${typeSuffix})`;
-                                      })()}
+                                      {`Câu ${origIdx + 1}`}
                                     </td>
                                     <td
                                       onClick={() =>

@@ -36,7 +36,7 @@ export function requestSource(req: any, user: any) {
   // Only administrators/CI can label a request as test; a client cannot promote localhost to production.
   const source = classifySource({...req,headers:{...req.headers,'x-activity-source':user?.role === 'admin' || user?.isOwner ? req.headers?.['x-activity-source'] : undefined}});
   if (process.env.ACTIVITY_SOURCE === 'test') return 'test';
-  return process.env.VERCEL_ENV && source !== 'test' ? 'web' : source;
+  return source;
 }
 export const AI_ACTIONS: Record<string,string> = {
   'parse-exam':'Soạn đề thi (AI)','smart-paste-parse':'Dán AI','fix-logic':'Chuyển đổi LaTeX',

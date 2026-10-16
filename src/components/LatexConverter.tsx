@@ -237,16 +237,16 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
         </div>
 
         {/* Font selector */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end min-w-0">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
             <span className="hidden xs:inline">Phông chữ Word:</span>
             <span className="xs:hidden">Phông:</span>
           </span>
-          <div className="relative">
+          <div className="relative min-w-0 flex-1 sm:flex-none max-w-[210px] xs:max-w-[260px] sm:max-w-none">
             <select
               value={wordFont}
               onChange={(e) => setWordFont(e.target.value)}
-              className="appearance-none bg-white/40 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 py-2 pl-3 pr-8 cursor-pointer outline-none transition-all shadow-3xs"
+              className="w-full appearance-none bg-white/40 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 py-2 pl-3 pr-8 cursor-pointer outline-none transition-all shadow-3xs truncate"
             >
               <option value="'Times New Roman', Times, serif">
                 Times New Roman (Chuẩn Quốc gia)

@@ -8024,19 +8024,14 @@ ${bodyHtml}
       </div> {/* This closes max-w-[1600px] or inner container maybe? */}
 
       {/* Footer */}
-      <footer hidden={sidebarView === 'drawing'} className="w-full text-center py-4 bg-white/50 border-t border-slate-200/60 mt-auto shrink-0 select-none px-4">
-        <div className="max-w-[1600px] mx-auto space-y-2 sm:space-y-1">
-          <p className="text-xs text-slate-500 font-medium flex flex-col sm:block items-center justify-center gap-1 leading-relaxed">
-            <span>Bản quyền thuộc về </span>
-            <strong className="text-slate-800 font-semibold">
-              Trần Gia Thiều - Giathieu110406@gmail.com
-            </strong>
-            <span className="hidden sm:inline"> · </span>
-            <span className="block sm:inline mt-1 sm:mt-0">Phiên bản v4.3</span>
-          </p>
-          <p className="text-[11px] text-slate-400 font-medium px-2">
-            © Q-Builder · Số hóa công thức LaTeX · Tự động hóa xây dựng đề thi ·
-            Chính xác & Tốc độ.
+      <footer hidden={sidebarView === 'drawing'} className="w-full text-center py-2.5 sm:py-3.5 bg-white/60 backdrop-blur-xs border-t border-slate-200/60 mt-auto shrink-0 select-none px-3">
+        <div className="max-w-[1600px] mx-auto text-[11px] sm:text-xs text-slate-500 leading-normal">
+          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+            <span>Bản quyền © <strong className="text-slate-700 font-semibold">Trần Gia Thiều</strong> (<a href="mailto:Giathieu110406@gmail.com" className="text-indigo-600 hover:underline font-medium">Giathieu110406@gmail.com</a>)</span>
+            <span className="text-slate-300">·</span>
+            <span className="text-slate-500 font-semibold">v4.3</span>
+            <span className="hidden md:inline text-slate-300">·</span>
+            <span className="hidden md:inline text-slate-400">Q-Builder · Số hóa LaTeX · Tự động hóa xây dựng đề thi</span>
           </p>
         </div>
       </footer>
