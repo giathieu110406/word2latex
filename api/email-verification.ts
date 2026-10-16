@@ -169,8 +169,8 @@ export function createEmailVerificationHandler(dependencies: EmailVerificationHa
         await sender.sendMail({
           to: email,
           subject: 'Mã xác thực Word2LaTeX',
-          text: `Mã xác nhận Word2LaTeX của bạn là ${otp}. Mã hết hạn sau 10 phút. Số liên hệ ${phoneNumber} sẽ được khóa sau khi xác nhận qua email. Đây không phải xác minh quyền sở hữu số điện thoại.`,
-          html: `<p>Mã xác nhận Word2LaTeX của bạn là <strong>${otp}</strong>.</p><p>Mã hết hạn sau 10 phút. Số liên hệ ${phoneNumber} sẽ được khóa sau khi xác nhận qua email. Đây không phải xác minh quyền sở hữu số điện thoại.</p>`,
+          text: `Mã xác nhận Word2LaTeX của bạn là ${otp}.\n\nMã hết hạn sau 10 phút. Số liên hệ ${phoneNumber} sẽ được khóa sau khi xác nhận qua email.`,
+          html: `<p>Mã xác nhận Word2LaTeX của bạn là <strong>${otp}</strong>.</p><p>Mã hết hạn sau 10 phút. Số liên hệ ${phoneNumber} sẽ được khóa sau khi xác nhận qua email.</p>`,
         });
         await store.markDelivered(decoded.uid, challengeId);
 
