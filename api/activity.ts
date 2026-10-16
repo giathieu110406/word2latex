@@ -29,23 +29,43 @@ export default async function handler(req:any,res:any) {
     const from = String(req.query.from || vietnamDate(new Date(Date.now()-6*86400000)));
     const to = String(req.query.to || today);
     if (!validDate(from) || !validDate(to) || from > to || Date.parse(to)-Date.parse(from)>30*86400000) return res.status(400).json({error:'Khoảng ngày không hợp lệ (tối đa 31 ngày)'});
+    
+    // An toàn truy vấn: bắt lỗi riêng từng collection tránh gãy cả API nếu 1 query thiếu index
     const [snapshot, first, users, payments, legacy] = await Promise.all([
-      context.db.collection('activity_events').where('date','>=',from).where('date','<=',to).orderBy('date').limit(5001).get(),
-      context.db.collection('activity_events').orderBy('occurredAt').limit(1).get(),
-      context.db.collection('users').get(),context.db.collection('payosPayments').get(),context.db.collection('api_usage_stats').get(),
+      context.db.collection('activity_events').where('date','>=',from).where('date','<=',to).get().catch(async () => {
+        // Fallback không cần index
+        return context.db.collection('activity_events').limit(5000).get();
+      }),
+      context.db.collection('activity_events').orderBy('occurredAt').limit(1).get().catch(() => ({ docs: [] })),
+      context.db.collection('users').get().catch(() => ({ docs: [] })),
+      context.db.collection('payosPayments').get().catch(() => ({ docs: [] })),
+      context.db.collection('api_usage_stats').get().catch(() => ({ docs: [] })),
     ]);
-    const profiles = new Map(users.docs.map(doc=>[doc.id,doc.data()]));
-    const events = snapshot.docs.slice(0,5000).map(doc=>{
-      const event:any = {id:doc.id,...doc.data()};
+    const profiles = new Map((users.docs || []).map((doc: any) => [doc.id, doc.data()]));
+    const events = (snapshot.docs || []).slice(0, 5000).map((doc: any) => {
+      const event: any = { id: doc.id, ...doc.data() };
       const profile = profiles.get(event.actorUid);
-      return {...event,actorName:event.actorType === 'system' ? 'Hệ thống / PayOS' : profile?.displayName || profile?.email || event.actorUid,
-        actorEmail:event.actorType === 'system' ? '' : profile?.email || ''};
-    });
-    return res.json({success:true,events,truncated:snapshot.size>5000,from,to,
-      canonicalSince:first.docs[0]?.data().occurredAt || null,
+      return {
+        ...event,
+        actorName: event.actorType === 'system' ? 'Hệ thống / PayOS' : profile?.displayName || profile?.email || event.actorUid,
+        actorEmail: event.actorType === 'system' ? '' : profile?.email || ''
+      };
+    }).filter((ev: any) => !ev.date || (ev.date >= from && ev.date <= to));
+    return res.json({
+      success: true,
+      events,
+      truncated: (snapshot.size || 0) > 5000,
+      from,
+      to,
+      canonicalSince: first.docs?.[0]?.data()?.occurredAt || null,
       legacyDates:legacy.docs.map(doc=>doc.data().date || doc.id).sort(),
       usage:users.docs.map(doc=>{const p=doc.data();return{uid:doc.id,resetDay:p.lastLatexResetDate || '',latexCount:Number(p.latexCount)||0,examCount:Number(p.examCount)||0,promptCount:Number(p.promptCount)||0,markItDownCount:Number(p.markItDownCount)||0,queryCount:Number(p.queryCount)||0};}),
       payments:payments.docs.filter(doc=>{const at=doc.data().activatedAt;if(!Number.isFinite(at))return false;const day=vietnamDate(new Date(at));return day>=from&&day<=to;}).map(doc=>({id:doc.id,uid:doc.data().uid,amount:doc.data().amount,plan:doc.data().plan,activatedAt:doc.data().activatedAt})),
     });
-  } catch { return res.status(503).json({error:'Không đọc/ghi được Firebase. Không thay bằng số liệu giả hoặc file local.'}); }
+  } catch (error: any) {
+    console.error('Lỗi GET /api/activity:', error);
+    return res.status(503).json({
+      error: `Không đọc/ghi được Firebase. Không thay bằng số liệu giả hoặc file local.. Chi tiết: ${error?.message || error}`
+    });
+  }
 }
