@@ -77,6 +77,10 @@ app.get("/api/admin/payments", async (req, res) => {
   await adminPaymentsHandler(req as any, res as any);
 });
 
+app.delete("/api/admin/payments", async (req, res) => {
+  await adminPaymentsHandler(req as any, res as any);
+});
+
 app.post('/api/admin/grant-plan', (req,res) => grantPlanHandler(req as any,res as any));
 
 app.post("/api/user/update-phone", async (req, res) => {

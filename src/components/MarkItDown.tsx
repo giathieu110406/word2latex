@@ -51,7 +51,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [conversionMode, setConversionMode] = useState<"fast" | "ai">("ai");
+  const [conversionMode, setConversionMode] = useState<"fast" | "ai">("fast");
   const [isCopied, setIsCopied] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
   const [hasChargedCurrentFile, setHasChargedCurrentFile] = useState(false);
@@ -861,16 +861,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
               )}
 
               {/* Bộ chọn Chế độ Chuyển đổi (Conversion Mode Selector) */}
-              <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-200/80 shadow-xs flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-amber-500" />
-                    Chế độ Chuyển đổi
-                  </span>
-                  <span className="text-[11px] font-medium text-slate-400">
-                    {conversionMode === "fast" ? "⚡ Siêu tốc (0 AI token)" : "✨ AI Math Polish"}
-                  </span>
-                </div>
+              <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200/80 shadow-xs flex flex-col gap-1.5">
                 <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/50">
                   <button
                     type="button"
@@ -882,9 +873,8 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                         : "text-slate-600 hover:text-slate-800"
                     } disabled:opacity-50`}
                   >
-                    <Zap className="w-3.5 h-3.5" />
+                    <Zap className="w-3.5 h-3.5 text-amber-500" />
                     <span>Siêu tốc</span>
-                    <span className="text-[10px] font-normal px-1 py-0.2 bg-amber-100 text-amber-700 rounded-sm">Fast</span>
                   </button>
                   <button
                     type="button"
@@ -896,16 +886,10 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                         : "text-slate-600 hover:text-slate-800"
                     } disabled:opacity-50`}
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
                     <span>AI Math Polish</span>
-                    <span className="text-[10px] font-normal px-1 py-0.2 bg-indigo-100 text-indigo-700 rounded-sm">AI</span>
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-tight">
-                  {conversionMode === "fast" 
-                    ? "⚡ Trích xuất Markdown thuần tức thì qua AnyDoc (<300ms), 0 token AI."
-                    : "✨ Xuất kết quả siêu tốc tức thì trước, sau đó gọi AI chuẩn hóa công thức Toán LaTeX ($...$, $$...$$)."}
-                </p>
               </div>
 
               {/* Khu vực Tiến trình Hệ thống Phân tích & Báo lỗi */}

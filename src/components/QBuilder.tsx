@@ -410,7 +410,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
               {/* Collapse Toggle Button */}
               <div
-                className="cursor-pointer text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider pt-4 border-t border-slate-200/50 hover:text-indigo-600 transition-colors"
+                className="cursor-pointer text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider pt-3.5 mt-4 border-t border-slate-200/50 hover:text-indigo-600 transition-colors"
                 onClick={() => setIsHeaderOpen(!isHeaderOpen)}
               >
                 {isHeaderOpen ? "Thu gọn (▲)" : "Mở rộng (▼)"}
@@ -784,10 +784,25 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   </p>
                 ) : (
                   (() => {
-                    const filteredQuestions = docQuestions.filter((q) => {
-                      if (savedQuestionTab === "all") return true;
-                      return q.type === savedQuestionTab;
-                    });
+                    const typeOrder: Record<string, number> = {
+                      trac_nghiem: 1,
+                      trac_nghiem_dung_sai: 2,
+                      trac_nghiem_tra_loi_ngan: 3,
+                      tu_luan: 4,
+                    };
+
+                    const filteredQuestions = docQuestions
+                      .filter((q) => {
+                        if (savedQuestionTab === "all") return true;
+                        return q.type === savedQuestionTab;
+                      })
+                      .sort((a, b) => {
+                        if (savedQuestionTab === "all") {
+                          const orderDiff = (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+                          if (orderDiff !== 0) return orderDiff;
+                        }
+                        return 0;
+                      });
 
                     if (filteredQuestions.length === 0) {
                       return (
@@ -804,6 +819,27 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       tu_luan: "border-l-[3px] border-l-rose-500",
                     };
 
+                    const textColors: Record<string, string> = {
+                      trac_nghiem: "text-blue-600",
+                      trac_nghiem_dung_sai: "text-purple-600",
+                      trac_nghiem_tra_loi_ngan: "text-teal-600",
+                      tu_luan: "text-rose-600",
+                    };
+
+                    const dotColors: Record<string, string> = {
+                      trac_nghiem: "bg-blue-500",
+                      trac_nghiem_dung_sai: "bg-purple-500",
+                      trac_nghiem_tra_loi_ngan: "bg-teal-500",
+                      tu_luan: "bg-rose-500",
+                    };
+
+                    // Hàm tính số thứ tự câu bắt đầu lại từ 1 theo từng loại
+                    const getCategoryIndex = (targetQ: typeof docQuestions[0]) => {
+                      const sameTypeQuestions = docQuestions.filter((item) => item.type === targetQ.type);
+                      const idx = sameTypeQuestions.findIndex((item) => item.id === targetQ.id);
+                      return idx >= 0 ? idx + 1 : 1;
+                    };
+
                     return (
                       <>
                         {/* Mobile Card List (< sm) */}
@@ -811,7 +847,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                           {filteredQuestions.map((q) => {
                             const isEditing = editingQuestionId === q.id;
                             const origIdx = docQuestions.findIndex((item) => item.id === q.id);
-                            const displayNum = origIdx + 1;
+                            const displayNum = getCategoryIndex(q);
                             const typeLabel =
                               q.type === "trac_nghiem"
                                 ? "TN 4 LC"
@@ -834,10 +870,10 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                 <div className="flex items-center justify-between gap-2">
                                   <div
                                     onClick={() => handleStartEditQuestion(q)}
-                                    className="flex items-center gap-1.5 cursor-pointer font-extrabold text-xs text-slate-800 hover:text-indigo-600 transition-colors shrink-0"
+                                    className="flex items-center gap-1.5 cursor-pointer font-extrabold text-xs hover:opacity-80 transition-opacity shrink-0"
                                   >
-                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
-                                    <span>Câu {displayNum}</span>
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColors[q.type] || "bg-indigo-500"}`} />
+                                    <span className={textColors[q.type] || "text-slate-800"}>Câu {displayNum}</span>
                                     <span
                                       className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-3xs shrink-0 ${
                                         q.type === "trac_nghiem"
@@ -959,14 +995,14 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                       onClick={() =>
                                         handleStartEditQuestion(q)
                                       }
-                                      className={`p-3 font-bold cursor-pointer hover:text-indigo-650 transition-colors ${
+                                      className={`p-3 font-bold cursor-pointer hover:opacity-80 transition-opacity ${
                                         isEditing
                                           ? "text-amber-700"
-                                          : "text-slate-700"
+                                          : textColors[q.type] || "text-slate-700"
                                       }`}
                                       title="Bấm để chỉnh sửa câu hỏi này"
                                     >
-                                      {`Câu ${origIdx + 1}`}
+                                      {`Câu ${getCategoryIndex(q)}`}
                                     </td>
                                     <td
                                       onClick={() =>

@@ -4344,14 +4344,14 @@ ${bodyHtml}
                   <button onClick={() => handleSidebarNav('qbuilder')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'qbuilder' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <FileText className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Soạn đề thi (AI)</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('drawing')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'drawing' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
-                      <Pencil className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Vẽ hình</span>
-                  </button>
-                  <button onClick={() => handleSidebarNav('markitdown')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'markitdown' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('drawing')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'drawing' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
                       <div className="flex items-center gap-3 truncate">
-                          <Layout className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">MarkItDown AI</span>
+                          <Pencil className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Vẽ hình</span>
                       </div>
-                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-md shrink-0">PRO</span>
+                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-md shrink-0">BETA</span>
+                  </button>
+                  <button onClick={() => handleSidebarNav('markitdown')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'markitdown' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                      <Layout className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">MarkItDown AI</span>
                   </button>
               </div>
 
@@ -4579,9 +4579,7 @@ ${bodyHtml}
                         <FileText className="w-4 h-4 text-blue-600" />
                       </div>
                       <div>
-                        <div className="text-lg font-black text-slate-800">
-                          {totalLatexCount} <span className="text-slate-400 text-[10px] font-bold">/ 100</span>
-                        </div>
+                        <div className="text-lg font-black text-slate-800">{totalLatexCount}</div>
                         <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">LaTeX đã dùng</div>
                       </div>
                     </div>
@@ -4590,9 +4588,7 @@ ${bodyHtml}
                         <span className="font-black text-rose-600 text-xs tracking-tight">AI</span>
                       </div>
                       <div>
-                        <div className="text-lg font-black text-slate-800">
-                          {totalPromptCount} <span className="text-slate-400 text-[10px] font-bold">/ 20</span>
-                        </div>
+                        <div className="text-lg font-black text-slate-800">{totalPromptCount}</div>
                         <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Dàn AI đã dùng</div>
                       </div>
                     </div>
@@ -6805,7 +6801,7 @@ ${bodyHtml}
                   </div>
                   <div>
                     <h3 className="text-base font-extrabold text-slate-800 font-sans">
-                      MarkItDown AI (PRO)
+                      MarkItDown AI
                     </h3>
                     <p className="text-xs text-slate-500 font-medium mt-1.5 leading-relaxed">
                       Chuyển đổi mọi loại tài liệu (PDF, Word, Excel, PowerPoint, HTML, Audio, Hình ảnh, YouTube) sang định dạng Markdown chuẩn xác bằng trí tuệ nhân tạo.
@@ -7225,7 +7221,7 @@ ${bodyHtml}
 
             return (
               <div
-                className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto"
+                className="fixed inset-0 bg-white z-50 overflow-hidden flex flex-col"
                 id="notifications-list-overlay"
                 onClick={(e) => {
                   if (e.target === e.currentTarget) {
@@ -7242,13 +7238,13 @@ ${bodyHtml}
                 }}
               >
                 <motion.div
-                  initial={{ scale: 0.98, opacity: 0, y: 10 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ scale: 0.98, opacity: 0, y: 10 }}
-                  className="bg-white rounded-2xl shadow-xl border border-slate-200/80 max-w-xl w-full overflow-hidden flex flex-col my-8 relative"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="bg-white w-full h-full flex flex-col relative"
                 >
                   {/* Header */}
-                  <div className="bg-white px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                  <div className="bg-white px-6 md:px-10 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
                     <div>
                       <h3 className="font-extrabold text-sm md:text-base text-slate-800 flex items-center gap-2 flex-wrap">
                         <span>Thông Báo Hệ Thống & Khảo Sát</span>
@@ -7294,20 +7290,12 @@ ${bodyHtml}
                   </div>
 
                   {noticeCountdown > 0 && !isAdminUser(user, userDoc) && (
-                    <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-2.5 flex items-center justify-between text-xs font-bold shadow-xs">
+                    <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-2.5 flex items-center justify-between text-xs font-bold shadow-xs shrink-0">
                       <span className="flex items-center gap-2">
                         ⚠️ Thông báo mới từ Ban Quản trị! Bạn không thể đóng màn hình này trong 10 giây.
                       </span>
                       <span className="bg-black/20 px-2 py-0.5 rounded text-[11px] font-black shrink-0">
                         Còn {noticeCountdown}s
-                      </span>
-                    </div>
-                  )}
-
-                  {hasPendingMandatoryPoll && !isAdminUser(user, userDoc) && noticeCountdown === 0 && (
-                    <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-2.5 flex items-center justify-between text-xs font-bold shadow-xs">
-                      <span className="flex items-center gap-2">
-                        🗳️ Thông báo có cuộc bình chọn bắt buộc! Vui lòng chọn và gửi ý kiến để tiếp tục sử dụng web.
                       </span>
                     </div>
                   )}
@@ -7328,11 +7316,11 @@ ${bodyHtml}
                   )}
 
                   {!isAdminUser(user, userDoc) && (
-                    <div className="px-6 py-3 border-b border-slate-100 bg-white">
+                    <div className="px-6 md:px-10 py-3 border-b border-slate-100 bg-white">
                       <button
                         type="button"
                         onClick={() => setIsFeedbackOpen(true)}
-                        className="w-full flex items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-3 text-left transition-colors hover:bg-indigo-50 cursor-pointer"
+                        className="w-full flex items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-left transition-colors hover:bg-indigo-50 cursor-pointer"
                       >
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
                           <MessageSquarePlus className="w-4 h-4" />
@@ -7346,12 +7334,13 @@ ${bodyHtml}
                     </div>
                   )}
 
-                  <div className="p-6 overflow-y-auto max-h-[480px] space-y-4 bg-slate-50/30">
-                    {visibleNotifications.length === 0 ? (
-                      <div className="py-12 text-center text-slate-400 italic text-xs font-medium">
-                        Hộp thư trống. Không có thông báo hoặc phản hồi nào dành cho bạn.
-                      </div>
-                    ) : (
+                  <div className="flex-1 overflow-y-auto bg-slate-50/30 p-4 md:p-8 w-full">
+                    <div className="w-full space-y-4">
+                      {visibleNotifications.length === 0 ? (
+                        <div className="py-20 text-center text-slate-400 italic text-sm font-medium">
+                          Hộp thư trống. Không có thông báo hoặc phản hồi nào dành cho bạn.
+                        </div>
+                      ) : (
                       visibleNotifications.map((notif) => {
                         const allNotifVotes = getAllVotesForNotif(notif, allUsers, user?.uid, userDoc);
                         const myVote = getUserVoteForNotif(notif, user?.uid, userDoc);
@@ -7632,9 +7621,10 @@ ${bodyHtml}
                         );
                       })
                     )}
+                    </div>
                   </div>
 
-                  <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex items-center justify-between">
+                  <div className="bg-slate-50 px-6 md:px-10 py-4 border-t border-slate-100 flex items-center justify-between shrink-0">
                     {noticeCountdown > 0 && !isAdminUser(user, userDoc) ? (
                       <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1">
                         🔒 Vui lòng xem thông báo trước khi tiếp tục (Còn {noticeCountdown}s)
@@ -8024,15 +8014,32 @@ ${bodyHtml}
       </div> {/* This closes max-w-[1600px] or inner container maybe? */}
 
       {/* Footer */}
-      <footer hidden={sidebarView === 'drawing'} className="w-full text-center py-2.5 sm:py-3.5 bg-white/60 backdrop-blur-xs border-t border-slate-200/60 mt-auto shrink-0 select-none px-3">
-        <div className="max-w-[1600px] mx-auto text-[11px] sm:text-xs text-slate-500 leading-normal">
-          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
-            <span>Bản quyền © <strong className="text-slate-700 font-semibold">Trần Gia Thiều</strong> (<a href="mailto:Giathieu110406@gmail.com" className="text-indigo-600 hover:underline font-medium">Giathieu110406@gmail.com</a>)</span>
-            <span className="text-slate-300">·</span>
-            <span className="text-slate-500 font-semibold">v4.3</span>
-            <span className="hidden md:inline text-slate-300">·</span>
-            <span className="hidden md:inline text-slate-400">Q-Builder · Số hóa LaTeX · Tự động hóa xây dựng đề thi</span>
-          </p>
+      <footer hidden={sidebarView === 'drawing'} className="w-full text-center py-2.5 sm:py-3.5 bg-white/60 backdrop-blur-xs border-t border-slate-200/60 mt-auto shrink-0 select-none px-3 sm:px-4">
+        <div className="max-w-[1600px] mx-auto">
+          {/* Mobile View: Exactly 2 lines, no wrapping */}
+          <div className="sm:hidden space-y-0.5 text-[11px] leading-snug">
+            <p className="font-semibold text-slate-700 whitespace-nowrap tracking-tight">
+              Trần Gia Thiều - <a href="mailto:Giathieu110406@gmail.com" className="text-slate-800 hover:text-indigo-600">Giathieu110406@gmail.com</a>
+            </p>
+            <p className="text-slate-500 font-medium whitespace-nowrap">
+              © Word2LaTeX · Phiên bản v4.3
+            </p>
+          </div>
+
+          {/* Desktop View */}
+          <div className="hidden sm:block space-y-1">
+            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+              <span>Bản quyền thuộc về </span>
+              <strong className="text-slate-800 font-semibold">
+                Trần Gia Thiều - <a href="mailto:Giathieu110406@gmail.com" className="hover:text-indigo-600">Giathieu110406@gmail.com</a>
+              </strong>
+              <span> · </span>
+              <span>Phiên bản v4.3</span>
+            </p>
+            <p className="text-[11px] text-slate-400 font-medium px-2">
+              © Word2LaTeX · Số hóa công thức LaTeX · Tự động hóa xây dựng đề thi · Chính xác & Tốc độ.
+            </p>
+          </div>
         </div>
       </footer>
 

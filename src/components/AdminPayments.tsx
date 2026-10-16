@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { auth } from "../firebase";
-import { Loader2, Banknote, Search, Sparkles, Gift, X, CheckCircle2 } from "lucide-react";
+import { Loader2, Banknote, Search, Sparkles, Gift, X, CheckCircle2, Trash2, AlertTriangle } from "lucide-react";
 
 interface AdminPaymentsProps {
   allUsers: any[];
@@ -14,6 +14,14 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
   const [filterType, setFilterType] = useState<"all" | "payos" | "admin">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Swiped row id and delete states
+  const [swipedPaymentId, setSwipedPaymentId] = useState<string | null>(null);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [mouseStartX, setMouseStartX] = useState<number | null>(null);
+  const [paymentToDelete, setPaymentToDelete] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // Modal cấp gói
   const [showGrantModal, setShowGrantModal] = useState(false);
@@ -105,6 +113,35 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
       setGrantErrorMsg(err.message || "Không thể cấp gói cho người dùng");
     } finally {
       setIsSubmittingGrant(false);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("Chưa đăng nhập");
+
+      const res = await fetch(`/api/admin/payments?id=${encodeURIComponent(paymentId)}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Không thể xóa giao dịch");
+      }
+
+      setSwipedPaymentId(null);
+      setPaymentToDelete(null);
+      fetchPayments();
+    } catch (err: any) {
+      setDeleteError(err.message || "Lỗi khi xóa giao dịch");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -286,84 +323,144 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
                   </td>
                 </tr>
               ) : (
-                currentPayments.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="font-mono text-xs font-semibold text-slate-700 flex items-center gap-1">
-                        #{p.id}
-                      </div>
-                      <div className="mt-1">
-                        {p.isAdminGrant ? (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                            <Sparkles className="w-2.5 h-2.5" /> Admin cấp
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            PayOS QR
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      {p.user ? (
-                        <div className="flex items-center gap-2.5">
-                          <img src={p.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.user.displayName || p.user.email || 'User')}&background=random`} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
-                          <div className="min-w-0">
-                            <div className="font-bold text-slate-700 truncate">{p.user.displayName || "Thành viên"}</div>
-                            <div className="text-[10px] text-slate-500 truncate">{p.user.email}</div>
-                          </div>
+                currentPayments.map((p) => {
+                  const isSwiped = swipedPaymentId === p.id;
+                  return (
+                    <tr
+                      key={p.id}
+                      className="hover:bg-slate-50/50 transition-colors relative"
+                      onTouchStart={(e) => {
+                        if (!p.isAdminGrant) return;
+                        setTouchStartX(e.touches[0].clientX);
+                      }}
+                      onTouchEnd={(e) => {
+                        if (!p.isAdminGrant || touchStartX === null) return;
+                        const diff = touchStartX - e.changedTouches[0].clientX;
+                        if (diff > 40) setSwipedPaymentId(p.id);
+                        else if (diff < -40 && swipedPaymentId === p.id) setSwipedPaymentId(null);
+                        setTouchStartX(null);
+                      }}
+                      onMouseDown={(e) => {
+                        if (!p.isAdminGrant) return;
+                        setMouseStartX(e.clientX);
+                      }}
+                      onMouseUp={(e) => {
+                        if (!p.isAdminGrant || mouseStartX === null) return;
+                        const diff = mouseStartX - e.clientX;
+                        if (diff > 40) setSwipedPaymentId(p.id);
+                        else if (diff < -40 && swipedPaymentId === p.id) setSwipedPaymentId(null);
+                        setMouseStartX(null);
+                      }}
+                    >
+                      {/* Col 1: Mã Đơn / Kênh */}
+                      <td className="py-3 px-4">
+                        <div className="font-mono text-xs font-semibold text-slate-700 flex items-center gap-1">
+                          #{p.id}
                         </div>
-                      ) : (
-                        <div>
-                          <span className="text-xs italic text-slate-400">UID: {p.uid}</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex flex-col items-start gap-1">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${getPlanColor(p.plan)}`}>
-                          {p.plan || 'UNKNOWN'}
-                        </span>
-                        <span className="font-black text-slate-800 text-sm">
+                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                           {p.isAdminGrant ? (
-                            <span className="text-purple-700 font-bold">0 ₫ <span className="text-[10px] font-normal text-slate-400">(Miễn phí)</span></span>
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                              <Sparkles className="w-2.5 h-2.5" /> Admin cấp
+                            </span>
                           ) : (
-                            new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(p.amount) || 0)
-                          )}
-                        </span>
-                        {p.note && (
-                          <span className="text-[10px] text-slate-400 italic max-w-[150px] truncate" title={p.note}>
-                            {p.note}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      {p.user ? (
-                        <div className="text-[11px]">
-                          <div className="font-semibold text-slate-700 flex items-center gap-1.5">
-                            Gói hiện tại: <span className={`uppercase font-bold ${getPlanColor(p.user.planType).replace('bg-', 'text-').split(' ')[1]}`}>{p.user.planType || 'FREE'}</span>
-                          </div>
-                          {p.user.planExpiresAt && p.user.planType !== 'free' && (
-                            <div className="text-slate-500 mt-0.5 flex items-center gap-1">
-                              Hết hạn: {new Date(p.user.planExpiresAt).toLocaleDateString('vi-VN')}
-                            </div>
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              PayOS QR
+                            </span>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="text-sm font-semibold text-slate-700">
-                        {p.activatedAt ? new Date(p.activatedAt).toLocaleDateString('vi-VN') : "N/A"}
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        {p.activatedAt ? new Date(p.activatedAt).toLocaleTimeString('vi-VN') : ""}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+
+                      {/* Col 2: Khách hàng */}
+                      <td className="py-3 px-4">
+                        {p.user ? (
+                          <div className="flex items-center gap-2.5">
+                            <img src={p.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.user.displayName || p.user.email || 'User')}&background=random`} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-700 truncate text-xs">{p.user.displayName || "Thành viên"}</div>
+                              <div className="text-[10px] text-slate-500 truncate">{p.user.email}</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="text-xs italic text-slate-400">UID: {p.uid}</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Col 3: Gói / Giá trị */}
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${getPlanColor(p.plan)}`}>
+                            {p.plan || 'UNKNOWN'}
+                          </span>
+                          <span className="font-black text-slate-800 text-sm">
+                            {p.isAdminGrant ? (
+                              <span className="text-purple-700 font-bold">0 ₫ <span className="text-[10px] font-normal text-slate-400">(Miễn phí)</span></span>
+                            ) : (
+                              new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(p.amount) || 0)
+                            )}
+                          </span>
+                          {p.note && (
+                            <span className="text-[10px] text-slate-400 italic max-w-[150px] truncate" title={p.note}>
+                              {p.note}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Col 4: Trạng thái gói hiện tại */}
+                      <td className="py-3 px-4">
+                        {p.user ? (
+                          <div className="text-[11px]">
+                            <div className="font-semibold text-slate-700 flex items-center gap-1.5">
+                              Gói hiện tại: <span className={`uppercase font-bold ${getPlanColor(p.user.planType).replace('bg-', 'text-').split(' ')[1]}`}>{p.user.planType || 'FREE'}</span>
+                            </div>
+                            {p.user.planExpiresAt && p.user.planType !== 'free' && (
+                              <div className="text-slate-500 mt-0.5 flex items-center gap-1">
+                                Hết hạn: {new Date(p.user.planExpiresAt).toLocaleDateString('vi-VN')}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+
+                      {/* Col 5: Thời gian kích hoạt & Kéo sang trái lộ thùng rác */}
+                      <td className="py-3 px-4 text-right relative overflow-hidden">
+                        <div className={`transition-transform duration-200 ${isSwiped ? "-translate-x-12" : "translate-x-0"}`}>
+                          <div className="text-sm font-semibold text-slate-700">
+                            {p.activatedAt ? new Date(p.activatedAt).toLocaleDateString('vi-VN') : "N/A"}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {p.activatedAt ? new Date(p.activatedAt).toLocaleTimeString('vi-VN') : ""}
+                          </div>
+                        </div>
+
+                        {/* Thùng rác xuất hiện khi kéo sang trái */}
+                        {p.isAdminGrant && (
+                          <div
+                            className={`absolute inset-y-0 right-0 flex items-center justify-center transition-all duration-200 ${
+                              isSwiped ? "opacity-100 translate-x-0 pr-3" : "opacity-0 translate-x-full pointer-events-none"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPaymentToDelete(p);
+                              }}
+                              className="w-8 h-8 rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-xs cursor-pointer transition-transform active:scale-90"
+                              title="Xóa giao dịch này"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -555,6 +652,58 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA GIAO DỊCH ADMIN CẤP */}
+      {paymentToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-[24px] border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden flex flex-col p-6 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-800 font-sans">Xác nhận xóa giao dịch</h3>
+                <p className="text-xs text-slate-400 font-medium">Thao tác này sẽ xóa vĩnh viễn khỏi danh sách lịch sử.</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs space-y-1.5 text-slate-600">
+              <div><span className="font-semibold text-slate-700">Mã giao dịch:</span> #{paymentToDelete.id}</div>
+              <div><span className="font-semibold text-slate-700">Khách hàng:</span> {paymentToDelete.user?.displayName || paymentToDelete.user?.email || paymentToDelete.uid}</div>
+              <div><span className="font-semibold text-slate-700">Gói cấp:</span> <span className="uppercase font-bold text-purple-700">{paymentToDelete.plan}</span> (0 ₫)</div>
+            </div>
+
+            {deleteError && (
+              <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setPaymentToDelete(null);
+                  setDeleteError("");
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => handleDeletePayment(paymentToDelete.id)}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isDeleting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Xác nhận xóa
+              </button>
+            </div>
           </div>
         </div>
       )}

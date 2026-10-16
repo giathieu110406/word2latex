@@ -171,7 +171,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
     <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-0 md:h-[calc(100vh-110px)] md:max-h-[calc(100vh-110px)]">
       {/* Top Control Settings Panel */}
       <div id="tour-latex-font-controls" className="bg-white px-4 py-4 md:px-6 md:py-5 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
-        <div className="flex flex-wrap items-center gap-3 md:gap-4 w-full sm:w-auto">
+        <div className="flex items-center justify-between gap-3 md:gap-4 w-full sm:w-auto flex-1">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-indigo-50 rounded-xl border border-indigo-100/50">
               <img
@@ -193,8 +193,8 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
 
           <span className="text-slate-250 hidden md:inline h-6 w-[1px] bg-slate-200" />
 
-          {/* Font Styling Tools */}
-          <div className="flex items-center gap-1.5 bg-white/40 p-1 rounded-xl border border-slate-200/60">
+          {/* Font Styling Tools (Đưa qua sát góc bên phải) */}
+          <div className="flex items-center gap-1.5 bg-white/40 p-1 rounded-xl border border-slate-200/60 ml-auto">
             <button
               type="button"
               onClick={() => {
@@ -308,20 +308,20 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 flex-1 min-h-0 p-0 sm:p-2 lg:p-0">
           {/* Left panel: Input Area */}
           <div id="tour-latex-input-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[380px] sm:min-h-[500px] flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
-            <div className="bg-white/40 px-3.5 py-2.5 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-3 sm:gap-4 select-none">
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                <span className="text-xs md:text-sm font-bold text-slate-800 whitespace-nowrap">
+            <div className="bg-white/40 px-3.5 py-2.5 md:px-5 md:py-3.5 border-b border-slate-200/80 flex items-center justify-between gap-2 select-none">
+              <div className="flex items-center gap-2 shrink-0 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+                <span className="text-xs md:text-sm font-bold text-slate-800 whitespace-nowrap truncate">
                   <span className="hidden xs:inline">Nguồn tài liệu cần chuyển đổi</span>
                   <span className="xs:hidden">Tài liệu nguồn</span>
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end mt-1 sm:mt-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   id="tour-latex-ai-canvas"
                   type="button"
                   onClick={() => setShowAiCanvas(!showAiCanvas)}
-                  className={`text-xs font-bold flex items-center justify-center gap-1.5 px-3 py-2 h-9 rounded-xl transition-all cursor-pointer shadow-3xs group relative overflow-hidden whitespace-nowrap ${
+                  className={`text-xs font-bold flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 h-8 sm:h-9 rounded-xl transition-all cursor-pointer shadow-3xs group relative overflow-hidden whitespace-nowrap ${
                     showAiCanvas
                       ? "bg-indigo-600 text-white border border-indigo-700 hover:bg-indigo-700"
                       : "text-indigo-700 bg-indigo-50 border border-indigo-150 hover:bg-indigo-100 hover:border-indigo-200"
@@ -337,7 +337,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                 <button
                   type="button"
                   onClick={handleClear}
-                  className="text-xs text-rose-600 bg-rose-50 border border-rose-100 hover:border-rose-250 font-bold flex items-center justify-center px-3.5 py-2 h-9 hover:bg-rose-100 rounded-xl transition-all cursor-pointer shadow-3xs whitespace-nowrap"
+                  className="text-xs text-rose-600 bg-rose-50 border border-rose-100 hover:border-rose-250 font-bold flex items-center justify-center px-2.5 sm:px-3.5 py-1.5 sm:py-2 h-8 sm:h-9 hover:bg-rose-100 rounded-xl transition-all cursor-pointer shadow-3xs whitespace-nowrap"
                 >
                   Xóa sạch
                 </button>
