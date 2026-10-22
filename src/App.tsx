@@ -4412,11 +4412,11 @@ ${bodyHtml}
       {/* MAIN CONTENT WRAPPER */}
       <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] ${sidebarView === 'drawing' ? `overflow-hidden ${isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto'}`}>
           {/* TOPBAR */}
-          <div className="sticky top-0 z-30 w-full bg-[#F8F9FD]/80 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3 flex-1">
+          <div className={sidebarView === 'drawing' ? "absolute top-0 left-0 z-30 pointer-events-none p-3 sm:p-4 flex items-center gap-3" : "sticky top-0 z-30 w-full bg-[#F8F9FD]/80 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 shrink-0"}>
+              <div className="flex items-center gap-3 flex-1 pointer-events-auto">
                   <button 
                     onClick={() => setIsMenuOpen(open => !open)}
-                    className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-xs shrink-0 cursor-pointer"
+                    className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-xs shrink-0 cursor-pointer pointer-events-auto"
                     title="Mở thanh điều hướng Menu"
                   >
                     <Menu className="w-5 h-5" />
@@ -4427,7 +4427,7 @@ ${bodyHtml}
                     <button
                       id="guide-tour-topbar-btn"
                       onClick={() => setIsGuideTourOpen(true)}
-                      className="px-2.5 sm:px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 border border-slate-200 hover:border-indigo-200/80 font-bold text-xs flex items-center gap-1.5 sm:gap-2 transition-all shadow-3xs hover:shadow-xs active:scale-95 cursor-pointer group shrink-0"
+                      className="px-2.5 sm:px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 border border-slate-200 hover:border-indigo-200/80 font-bold text-xs flex items-center gap-1.5 sm:gap-2 transition-all shadow-3xs hover:shadow-xs active:scale-95 cursor-pointer group shrink-0 pointer-events-auto"
                       title="Xem hướng dẫn từng bước trực quan cho trang này"
                     >
                       <BookOpen className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
@@ -4436,6 +4436,7 @@ ${bodyHtml}
                     </button>
                   )}
               </div>
+              {sidebarView !== 'drawing' && (
               <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                   {(activePlan === 'pro' || upgradeVisibility.main) && !isAdminUser(user, userDoc) && (
                     <button 
@@ -4472,11 +4473,12 @@ ${bodyHtml}
                       ) : null}
                   </div>
               </div>
+              )}
           </div>
 
 
-      <div className={`flex-1 flex flex-col ${sidebarView === 'drawing' ? 'min-h-0' : ''}`}>
-      <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 overflow-hidden' : 'max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-10 py-2 md:py-4 flex-1 flex flex-col gap-4 md:gap-6 overflow-x-hidden'}>
+      <div className={`flex-1 flex flex-col ${sidebarView === 'drawing' ? 'min-h-0 h-full' : ''}`}>
+      <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : 'max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-10 py-2 md:py-4 flex-1 flex flex-col gap-4 md:gap-6 overflow-x-hidden'}>
         {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics" || sidebarView === "payments") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 
@@ -4488,19 +4490,10 @@ ${bodyHtml}
               const activeMembers = allUsers.filter(u => u.status === "approved").length;
               const pendingMembers = allUsers.filter(u => u.status === "pending" || !u.status).length;
 
-              const currentTodayStr = getTodayStr();
-              const totalLatexCount = allUsers.reduce((sum, u) => {
-                const isReset = u.lastLatexResetDate !== currentTodayStr;
-                return sum + (isReset ? 0 : (Number(u.latexCount) || 0));
-              }, 0);
-              const totalPromptCount = allUsers.reduce((sum, u) => {
-                const isReset = u.lastLatexResetDate !== currentTodayStr;
-                return sum + (isReset ? 0 : (Number(u.promptCount) || 0));
-              }, 0);
+              const totalLatexCount = allUsers.reduce((sum, u) => sum + (Number(u.latexCount) || 0), 0);
+              const totalPromptCount = allUsers.reduce((sum, u) => sum + (Number(u.promptCount) || 0), 0);
 
               const getUserDailyUsage = (u: any) => {
-                const isReset = u.lastLatexResetDate !== currentTodayStr;
-                if (isReset) return 0;
                 const l = Number(u.latexCount) || 0;
                 const e = Number(u.examCount) || 0;
                 const p = Number(u.promptCount) || 0;
@@ -8044,7 +8037,7 @@ ${bodyHtml}
       </footer>
 
       {/* Floating Zalo Contact Widget */}
-      <ZaloContactWidget />
+      <ZaloContactWidget isDrawingMode={sidebarView === 'drawing'} />
 
       {/* Interactive Spotlight Guided Tour Component */}
       {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (

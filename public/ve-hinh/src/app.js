@@ -855,16 +855,95 @@ if (typeof document !== 'undefined') {
   const mobileBreakpoint=window.matchMedia?.('(max-width:700px)');mobileBreakpoint?.addEventListener('change',()=>setSidebar(!mobile()));setSidebar(!mobile());
   const zoom=document.querySelector('.zoom-controls');for(const id of ['zoom-in','reset-view','zoom-out'])zoom?.append($(id));document.querySelector('.divider')?.remove();
 }
-function notify(message){if($('notice'))$('notice').textContent=message;}
+let noticeTimeoutId = null;
+function notify(message){
+  const noticeEl = $('notice');
+  const statusEl = typeof document !== 'undefined' ? document.querySelector('.canvas-status') : null;
+  if(!noticeEl) return;
+  noticeEl.textContent = message || '';
+  if(noticeTimeoutId){
+    clearTimeout(noticeTimeoutId);
+    noticeTimeoutId = null;
+  }
+  if(message && String(message).trim()){
+    if(statusEl){
+      statusEl.style.opacity = '0';
+      statusEl.style.visibility = 'hidden';
+    }
+    noticeTimeoutId = setTimeout(()=>{
+      noticeEl.textContent = '';
+      if(statusEl){
+        statusEl.style.opacity = '1';
+        statusEl.style.visibility = 'visible';
+      }
+    }, 4500);
+  } else {
+    if(statusEl){
+      statusEl.style.opacity = '1';
+      statusEl.style.visibility = 'visible';
+    }
+  }
+}
 function persist(){if($('save-state'))$('save-state').textContent=testing?'Kiểm thử · không ghi bản người dùng':'Trong phiên · Lưu JSON để giữ';}
 function commit(next,{keepSelection=false}={}){try{next=validateDocument(next);}catch(e){notify(e.message);return false;}if(draftBefore)doc=draftBefore;draftBefore=null;pending=[];snappedPointId=null;currentSnapInfo=null;if(!keepSelection)selectedIds.clear();if(JSON.stringify(next)===JSON.stringify(doc)){render();return true;}history.push(structuredClone(doc));if(history.length>80)history.shift();future=[];doc=next;revision++;persist();render();if(!testing&&typeof window !== 'undefined')window.parent?.word2latexDrawingLog?.('Vẽ hình: chỉnh sửa');return true;}
 function freshId(source=doc){for(let i=0;i<26;i++){const id=String.fromCharCode(65+i);if(![...source.points,...source.shapes].some(p=>p.id===id))return id;}let i=1;while([...source.points,...source.shapes].some(p=>p.id==='P'+i))i++;return'P'+i;}
 function addShape(next,type,refs,extra={}){let i=1;while(next.shapes.some(s=>s.id==='s'+i)||next.points.some(p=>p.id==='s'+i))i++;next.shapes.push({id:'s'+i,type,refs:[...refs],color:'#176b52',...extra});selected='s'+i;}
 function ensureSegment(next,p1,p2,options={}){const exists=next.shapes.some(s=>['segment','polygon'].includes(s.type)&&(s.refs.includes(p1)&&s.refs.includes(p2)));if(!exists)addShape(next,'segment',[p1,p2],{color:options.color||'#176b52',...options});}
 function pickTool(value){cancelConstruction();selectedIds.clear();selected='';notify('');tool=value;closeMobileSidebar();render();}
+export function getToolSvg(id){
+  const svgs = {
+    select: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7 18 3-7 7-3L3 3z"/><path d="m13 13 6 6"/></svg>`,
+    region: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/><path d="m3 9 6-6m3 18 9-9M3 15l12-12m3 18 3-3"/></svg>`,
+    point: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>`,
+    segment: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="19" r="2" fill="currentColor"/><circle cx="19" cy="5" r="2" fill="currentColor"/><line x1="6.5" y1="17.5" x2="17.5" y2="6.5"/></svg>`,
+    line: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="22" x2="22" y2="2"/><circle cx="8" cy="16" r="2" fill="currentColor"/><circle cx="16" cy="8" r="2" fill="currentColor"/></svg>`,
+    ray: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="19" r="2" fill="currentColor"/><line x1="6.5" y1="17.5" x2="20" y2="4"/><path d="m14 4 6 0 0 6"/></svg>`,
+    polygon: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 3 21 9 18 20 6 20 3 9"/></svg>`,
+    circle: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>`,
+    arc: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 18 A 9 9 0 0 1 20 18"/><circle cx="12" cy="18" r="1.5" fill="currentColor"/></svg>`,
+    sector: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18 L6 8 A 9 9 0 0 1 18 8 Z"/><circle cx="12" cy="18" r="1.5" fill="currentColor"/></svg>`,
+    ellipse: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>`,
+    equilateralTriangle: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 4 21 20 3 20"/></svg>`,
+    square: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1.5"/></svg>`,
+    pan: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M12 2v20M2 12h20"/></svg>`,
+    midpoint: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="12" x2="20" y2="12"/><circle cx="4" cy="12" r="2" fill="currentColor"/><circle cx="20" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="2"/></svg>`,
+    perpendicularBisector: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="18" x2="21" y2="18"/><line x1="12" y1="3" x2="12" y2="21"/><rect x="12" y="14" width="4" height="4"/></svg>`,
+    foot: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="19" x2="20" y2="19"/><line x1="12" y1="5" x2="12" y2="19"/><circle cx="12" cy="5" r="2" fill="currentColor"/><rect x="12" y="15" width="4" height="4"/></svg>`,
+    parallel: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/></svg>`,
+    perpendicular: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="19"/><line x1="12" y1="5" x2="12" y2="19"/><rect x="12" y="15" width="4" height="4"/></svg>`,
+    bisector: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19 L19 19 M4 19 L14 6"/><line x1="4" y1="19" x2="18" y2="11" stroke-dasharray="2 2"/></svg>`,
+    equal: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="9" x2="18" y2="9"/><line x1="6" y1="15" x2="18" y2="15"/></svg>`,
+    onLine: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>`,
+    onCircle: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="17.6" cy="6.4" r="3" fill="currentColor"/></svg>`,
+    circumcenter: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polygon points="12 3 20.5 17.5 3.5 17.5" stroke-dasharray="2 2"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>`,
+    incenter: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 3 21 19 3 19"/><circle cx="12" cy="13.5" r="5.5"/><circle cx="12" cy="13.5" r="2" fill="currentColor"/></svg>`,
+    centroid: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 4 20 20 4 20"/><circle cx="12" cy="14.5" r="2.5" fill="currentColor"/></svg>`,
+    orthocenter: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 4 20 20 4 20"/><circle cx="12" cy="13" r="2.5" fill="currentColor"/><line x1="12" y1="4" x2="12" y2="20" stroke-dasharray="2 2"/></svg>`,
+    tangent: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="14" r="6"/><line x1="4" y1="8" x2="20" y2="8"/><circle cx="10" cy="8" r="2" fill="currentColor"/></svg>`,
+    intersection: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="5" y1="19" x2="19" y2="5"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>`,
+    lineCircle: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/><line x1="3" y1="12" x2="21" y2="12"/><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>`,
+    circleCircle: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>`,
+    length: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="8" x2="4" y2="16"/><line x1="20" y1="8" x2="20" y2="16"/><line x1="12" y1="9" x2="12" y2="15"/></svg>`,
+    angle: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19 L19 19 M4 19 L14 6"/><path d="M10 19 A 6 6 0 0 0 8 14"/></svg>`,
+    rightAngle: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="19"/><line x1="5" y1="5" x2="5" y2="19"/><rect x="5" y="13" width="6" height="6"/></svg>`,
+    vector: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="18" y2="6"/><path d="M11 6 h7 v7"/></svg>`,
+    vectorSum: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="14" x2="12" y2="6"/><path d="M8 6 h4 v4"/><line x1="12" y1="18" x2="20" y2="10"/><path d="M16 10 h4 v4"/></svg>`,
+    vectorDifference: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="6" x2="4" y2="14"/><path d="M4 10 v4 h4"/><line x1="20" y1="10" x2="12" y2="18"/><path d="M12 14 v4 h4"/></svg>`,
+    vectorScale: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="16" x2="18" y2="8"/><path d="M13 8 h5 v5"/><text x="4" y="9" font-size="8" font-weight="bold" fill="currentColor" stroke="none">k</text></svg>`,
+    dot: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>`,
+    vectorAngle: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="19" x2="18" y2="19"/><line x1="5" y1="19" x2="15" y2="7"/><path d="M14 19 h4"/><path d="M11 7 l4 0 0 4"/><path d="M10 19 A 5 5 0 0 0 9 14"/></svg>`,
+    vectorCoords: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><text x="3" y="16" font-size="9" font-weight="700" fill="currentColor" stroke="none">(x;y)</text></svg>`,
+    reflectAxis: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="3" x2="12" y2="21" stroke-dasharray="3 3"/><circle cx="6" cy="12" r="2.5" fill="currentColor"/><circle cx="18" cy="12" r="2.5" stroke="currentColor"/></svg>`,
+    reflectCenter: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><line x1="6" y1="18" x2="18" y2="6" stroke-dasharray="2 2"/></svg>`,
+    translate: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2"/><circle cx="18" cy="12" r="2" fill="currentColor"/><path d="M9 12 h8 M14 9 l3 3 -3 3"/></svg>`,
+    rotateAround: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12 A 9 9 0 1 1 12 3"/><path d="M12 7 V3 H8"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>`,
+    scaleFrom: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 18 10 12 6 12"/><polygon points="6 18 18 6 10 6" stroke-dasharray="2 2"/></svg>`
+  };
+  return svgs[id] || '';
+}
 const toolGroups=[['Cơ bản',['select','region','point','segment','line','ray','polygon','circle','arc','sector','ellipse','equilateralTriangle','square','pan']],['Dựng quan hệ',['midpoint','perpendicularBisector','foot','parallel','perpendicular','bisector','equal','onLine','onCircle','circumcenter','incenter','centroid','orthocenter','tangent']],['Giao điểm',['intersection','lineCircle','circleCircle']],['Đo lường & vectơ',['length','angle','rightAngle','vector','vectorSum','vectorDifference','vectorScale','dot','vectorAngle','vectorCoords']],['Biến hình',['reflectAxis','reflectCenter','translate','rotateAround','scaleFrom']]];
 const normalize=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').toLowerCase();
-function toolMarkup(){const query=normalize($('tool-search')?.value||'');let count=0;const markup=toolGroups.map(([label,ids],index)=>{const items=ids.map(id=>tools.find(t=>t[0]===id)).filter(t=>normalize(t[2]+' '+t[4]).includes(query));count+=items.length;return items.length?'<details class="tool-section" '+(query||index===0?'open':'')+'><summary>'+label+'</summary><div class="tool-grid">'+items.map(t=>`<button data-tool="${t[0]}" title="${t[4]}" class="${tool===t[0]?'active':''}" aria-pressed="${tool===t[0]}"><span class="icon" aria-hidden="true">${t[1]}</span>${t[2]}</button>`).join('')+'</div></details>':'';}).join('');if($('no-tools'))$('no-tools').hidden=count>0;return markup;}
+function toolMarkup(){const query=normalize($('tool-search')?.value||'');let count=0;const markup=toolGroups.map(([label,ids],index)=>{const items=ids.map(id=>tools.find(t=>t[0]===id)).filter(t=>normalize(t[2]+' '+t[4]).includes(query));count+=items.length;return items.length?'<details class="tool-section" '+(query||index===0?'open':'')+'><summary>'+label+'</summary><div class="tool-grid">'+items.map(t=>`<button data-tool="${t[0]}" title="${t[4]}" class="${tool===t[0]?'active':''}" aria-pressed="${tool===t[0]}"><span class="icon" aria-hidden="true">${getToolSvg(t[0]) || t[1]}</span><span class="tool-label">${t[2]}</span></button>`).join('')+'</div></details>':'';}).join('');if($('no-tools'))$('no-tools').hidden=count>0;return markup;}
 function filter3DTools(){
   if(!$('toolbar-3d'))return;
   const query=normalize($('tool-search')?.value||'');
@@ -1063,6 +1142,7 @@ function render(){
   $('reset-view').textContent=Math.round(scale/55*100)+'%';
   document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});
   document.querySelectorAll('[data-tool]').forEach(b=>{b.classList.toggle('active',b.dataset.tool===tool);b.setAttribute('aria-pressed',String(b.dataset.tool===tool));});
+  if(isDrawing)sidebarView='tools';
   $('toolbar').closest('.tools').hidden=!isDrawing||sidebarView==='properties';
   $('details-panel').hidden=isDrawing&&sidebarView==='tools';
   $('show-tools').disabled=!isDrawing;
@@ -1094,11 +1174,12 @@ function render(){
 // ============================================================================
 
 export const PEDAGOGICAL_PALETTE = [
-  { hex: '#176b52', name: 'Xanh ngọc Word2LaTeX' },
-  { hex: '#2563eb', name: 'Xanh lam hình học' },
+  { hex: '#4f46e5', name: 'Tím Indigo Word2LaTeX' },
+  { hex: '#0284c7', name: 'Xanh lam hình học' },
+  { hex: '#059669', name: 'Xanh lá ngọc' },
   { hex: '#dc2626', name: 'Đỏ đường phụ' },
-  { hex: '#d97706', name: 'Vàng nghệ thiết diện' },
-  { hex: '#1f2937', name: 'Đen in ấn' }
+  { hex: '#d97706', name: 'Vàng cam thiết diện' },
+  { hex: '#1e293b', name: 'Đen in ấn' }
 ];
 
 export function getSelectedTarget(d = doc, selectedId = selected, currentMode = mode) {
@@ -1134,9 +1215,16 @@ export function getSelectedTarget(d = doc, selectedId = selected, currentMode = 
 }
 
 export function findSelectedElement(selectedId) {
-  if (!selectedId || typeof document === 'undefined') return null;
+  if (typeof document === 'undefined') return null;
   const canvas = $('canvas');
   if (!canvas) return null;
+
+  if (selectedId === '__group__' && selectedIds && selectedIds.size > 1) {
+    const firstId = [...selectedIds][0];
+    const el = canvas.querySelector(`[data-point="${firstId}"], [data-vertex="${firstId}"], [data-segment-3d="${firstId}"], [data-segment="${firstId}"], [data-shape="${firstId}"]`);
+    if (el) return el;
+  }
+  if (!selectedId) return null;
 
   const pointEl = canvas.querySelector(`[data-point="${selectedId}"], [data-vertex="${selectedId}"]`);
   if (pointEl) {
@@ -1164,8 +1252,8 @@ export function calculateContextMenuPosition(
   menuSize = { width: 240, height: 42 },
   options = {}
 ) {
-  const padding = options.padding ?? 12;
-  const offsetY = options.offsetY ?? 10;
+  const padding = options.padding ?? 16;
+  const offsetY = options.offsetY ?? 12;
   const menuWidth = menuSize?.width || 240;
   const menuHeight = menuSize?.height || 42;
 
@@ -1181,15 +1269,21 @@ export function calculateContextMenuPosition(
   let top = targetTopY - menuHeight - offsetY;
   let flipped = false;
 
-  const flipThreshold = options.flipThreshold ?? padding;
+  const flipThreshold = options.flipThreshold ?? 70;
   if (top < flipThreshold) {
     top = targetBottomY + offsetY;
     flipped = true;
   }
 
-  const maxTop = Math.max(padding, canvasRect.height - menuHeight - padding);
+  const paddingBottom = options.paddingBottom ?? 84;
+  const maxTop = Math.max(padding, canvasRect.height - menuHeight - paddingBottom);
   if (top > maxTop) {
-    top = maxTop;
+    if (flipped && (targetTopY - menuHeight - offsetY) >= padding) {
+      top = targetTopY - menuHeight - offsetY;
+      flipped = false;
+    } else {
+      top = maxTop;
+    }
   }
   if (top < padding) {
     top = padding;
@@ -1225,12 +1319,16 @@ export function updateContextMenuPosition(targetEl) {
 }
 
 export function shouldShowContextMenu(state) {
-  const { mode: curMode, tool: curTool, selected: sel, selectedIdsCount, doc: d } = state;
+  const { mode: curMode, selected: sel, selectedIdsCount, doc: d, pending: pend } = state;
+  if (pend && pend.length > 0) return false;
+
+  if (selectedIdsCount && selectedIdsCount > 1 && curMode === 'geometry') {
+    return true;
+  }
+
   if (!sel || sel.trim() === '') return false;
-  if ((selectedIdsCount ?? 0) > 1) return false;
 
   if (curMode === 'geometry') {
-    if (curTool !== 'select') return false;
     const exists =
       (d?.points || []).some(p => p.id === sel) ||
       (d?.shapes || []).some(s => s.id === sel);
@@ -1238,7 +1336,6 @@ export function shouldShowContextMenu(state) {
   }
 
   if (curMode === 'solid') {
-    if (!['select3d', 'orbit3d'].includes(curTool)) return false;
     const solid = d?.solid || {};
     const exists =
       (solid.points || []).some(p => p.id === sel) ||
@@ -1252,6 +1349,28 @@ export function shouldShowContextMenu(state) {
 }
 
 export function renderContextMenuContent(selectedId) {
+  if (selectedId === '__group__' || (selectedIds && selectedIds.size > 1)) {
+    const swatchesHtml = PEDAGOGICAL_PALETTE.map(c => `
+      <button type="button" class="qcm-color-swatch" data-group-color="${c.hex}" style="background-color: ${c.hex}" title="${c.name}" aria-label="${c.name}"></button>
+    `).join('');
+    return `
+      <div class="qcm-group-info">
+        <span class="qcm-group-badge">${selectedIds.size}</span>
+        <span>đối tượng</span>
+      </div>
+      <div class="qcm-divider"></div>
+      <div class="qcm-palette" role="radiogroup" aria-label="Màu tập chọn">
+        ${swatchesHtml}
+      </div>
+      <div class="qcm-divider"></div>
+      <button type="button" class="qcm-btn" id="qcm-group-dash" title="Chuyển toàn bộ sang nét đứt/liền">┈ Đứt / Liền</button>
+      <div class="qcm-divider"></div>
+      <button type="button" class="qcm-btn qcm-btn-delete" id="qcm-group-delete" title="Xóa toàn bộ tập chọn (Delete)">
+        <span class="qcm-icon">🗑️</span>
+      </button>
+    `;
+  }
+
   const target = getSelectedTarget(doc, selectedId, mode);
   if (!target) return '';
 
@@ -1262,6 +1381,15 @@ export function renderContextMenuContent(selectedId) {
     case 'vertex3d': {
       const p = target.data;
       const currentLabel = p.label || p.id;
+      let coordText = '';
+      if (mode === 'geometry') {
+        const coords = resolve(doc).points[selectedId];
+        if (coords) coordText = `(${coords.x.toFixed(1)}, ${coords.y.toFixed(1)})`;
+      } else if (mode === 'solid' && p.x !== undefined) {
+        coordText = `(${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`;
+      }
+      const kindName = p.kind ? (names[p.kind] || p.kind) : 'Tự do';
+
       html = `
         <div class="qcm-group qcm-label-group">
           <input type="text" class="qcm-input qcm-label-input" id="qcm-label-input" 
@@ -1269,6 +1397,8 @@ export function renderContextMenuContent(selectedId) {
                  title="Sửa nhãn điểm (Enter hoặc blur để lưu)" 
                  aria-label="Sửa nhãn điểm">
         </div>
+        ${coordText ? `<span class="qcm-coords" title="Tọa độ">${coordText}</span>` : ''}
+        <span class="qcm-badge" title="Loại điểm">${kindName}</span>
         <div class="qcm-divider"></div>
         <div class="qcm-group">
           <button type="button" class="qcm-btn qcm-btn-delete" id="qcm-btn-delete" 
@@ -1282,7 +1412,7 @@ export function renderContextMenuContent(selectedId) {
 
     case 'shape2d': {
       const s = target.data;
-      const currentColor = (s.color || '#176b52').toLowerCase();
+      const currentColor = (s.color || '#4f46e5').toLowerCase();
       const isDashed = s.dashed === true;
       const currentWidth = s.strokeWidth || 2.5;
 
@@ -1292,11 +1422,45 @@ export function renderContextMenuContent(selectedId) {
                 title="${c.name}" aria-label="${c.name}"></button>
       `).join('');
 
+      let extraControls = '';
+      if (s.type === 'angle') {
+        const curMark = s.mark || 'none';
+        extraControls = `
+          <div class="qcm-divider"></div>
+          <div class="qcm-group qcm-mark-group" role="group" aria-label="Ký hiệu góc">
+            <button type="button" class="qcm-btn ${curMark === 'right' ? 'active' : ''}" data-mark="right" title="Ký hiệu góc vuông (⊥)">⊥</button>
+            <button type="button" class="qcm-btn ${curMark === 'single' ? 'active' : ''}" data-mark="single" title="Cung góc đơn (⌒)">⌒</button>
+            <button type="button" class="qcm-btn ${curMark === 'none' ? 'active' : ''}" data-mark="none" title="Không ký hiệu">Ø</button>
+          </div>
+        `;
+      } else if (['segment', 'line', 'ray'].includes(s.type)) {
+        const curMark = s.mark || 'none';
+        extraControls = `
+          <div class="qcm-divider"></div>
+          <div class="qcm-group qcm-mark-group" role="group" aria-label="Ký hiệu gạch cạnh">
+            <button type="button" class="qcm-btn ${curMark === 'tick' ? 'active' : ''}" data-mark="tick" title="1 gạch (|)">|</button>
+            <button type="button" class="qcm-btn ${curMark === 'double' ? 'active' : ''}" data-mark="double" title="2 gạch (||)">||</button>
+            <button type="button" class="qcm-btn ${curMark === 'parallel' ? 'active' : ''}" data-mark="parallel" title="Song song (>>)">⟫</button>
+            <button type="button" class="qcm-btn ${curMark === 'none' ? 'active' : ''}" data-mark="none" title="Không gạch">Ø</button>
+          </div>
+        `;
+      } else if (['polygon', 'sector', 'ellipse'].includes(s.type)) {
+        const curOpacity = s.fillOpacity ?? (s.type === 'sector' ? 0.25 : 0.3);
+        extraControls = `
+          <div class="qcm-divider"></div>
+          <div class="qcm-group qcm-opacity-group" role="group" aria-label="Độ mờ tô màu">
+            <button type="button" class="qcm-btn ${Math.abs(curOpacity - 0.15) < 0.05 ? 'active' : ''}" data-fill-opacity="0.15" title="Mờ nhẹ (15%)">15%</button>
+            <button type="button" class="qcm-btn ${Math.abs(curOpacity - 0.30) < 0.05 ? 'active' : ''}" data-fill-opacity="0.30" title="Chuẩn (30%)">30%</button>
+            <button type="button" class="qcm-btn ${Math.abs(curOpacity - 0.50) < 0.05 ? 'active' : ''}" data-fill-opacity="0.50" title="Đậm (50%)">50%</button>
+          </div>
+        `;
+      }
+
       html = `
         <div class="qcm-palette" role="radiogroup" aria-label="Bảng màu sắc">
           ${swatchesHtml}
           <label class="qcm-color-custom-label" title="Chọn màu tùy chọn">
-            <input type="color" class="qcm-color-custom" id="qcm-color-custom" value="${s.color || '#176b52'}">
+            <input type="color" class="qcm-color-custom" id="qcm-color-custom" value="${s.color || '#4f46e5'}">
           </label>
         </div>
         <div class="qcm-divider"></div>
@@ -1316,6 +1480,7 @@ export function renderContextMenuContent(selectedId) {
           <button type="button" class="qcm-btn qcm-btn-width ${Math.abs(currentWidth - 4.0) < 0.2 ? 'active' : ''}" 
                   data-width="4.0" title="Nét đậm (4.0px)">4.0</button>
         </div>
+        ${extraControls}
         <div class="qcm-divider"></div>
         <div class="qcm-group">
           <button type="button" class="qcm-btn qcm-btn-delete" id="qcm-btn-delete" title="Xóa hình" aria-label="Xóa hình">
@@ -1400,11 +1565,46 @@ export function renderContextMenuContent(selectedId) {
 }
 
 export function bindContextMenuEvents(container, selectedId) {
-  const target = getSelectedTarget(doc, selectedId, mode);
-  if (!target) return;
-
   container.onpointerdown = e => e.stopPropagation();
   container.onclick = e => e.stopPropagation();
+
+  // Multi-selection handling
+  if (selectedId === '__group__' || (selectedIds && selectedIds.size > 1)) {
+    container.querySelectorAll('[data-group-color]').forEach(btn => {
+      btn.onclick = () => {
+        const color = btn.dataset.groupColor;
+        const next = structuredClone(doc);
+        for (const id of selectedIds) {
+          const s = next.shapes.find(sh => sh.id === id);
+          if (s) s.color = color;
+        }
+        commit(next, { keepSelection: true });
+        notify(`Đã đổi màu ${selectedIds.size} đối tượng.`);
+      };
+    });
+    const groupDash = container.querySelector('#qcm-group-dash');
+    if (groupDash) {
+      groupDash.onclick = () => {
+        const next = structuredClone(doc);
+        const shapes = next.shapes.filter(s => selectedIds.has(s.id));
+        const anySolid = shapes.some(s => !s.dashed);
+        for (const s of shapes) s.dashed = anySolid;
+        commit(next, { keepSelection: true });
+        notify(`Đã đổi kiểu nét cho ${shapes.length} hình.`);
+      };
+    }
+    const groupDelete = container.querySelector('#qcm-group-delete');
+    if (groupDelete) {
+      groupDelete.onclick = () => {
+        deleteSelection();
+        hideQuickContextMenu();
+      };
+    }
+    return;
+  }
+
+  const target = getSelectedTarget(doc, selectedId, mode);
+  if (!target) return;
 
   const labelInput = container.querySelector('#qcm-label-input');
   if (labelInput) {
@@ -1490,6 +1690,30 @@ export function bindContextMenuEvents(container, selectedId) {
     };
   });
 
+  container.querySelectorAll('[data-mark]').forEach(btn => {
+    btn.onclick = () => {
+      const mark = btn.dataset.mark;
+      const next = structuredClone(doc);
+      const s = next.shapes.find(sh => sh.id === selectedId);
+      if (s) {
+        s.mark = mark === 'none' ? undefined : mark;
+        commit(next, { keepSelection: true });
+      }
+    };
+  });
+
+  container.querySelectorAll('[data-fill-opacity]').forEach(btn => {
+    btn.onclick = () => {
+      const opacity = Number(btn.dataset.fillOpacity);
+      const next = structuredClone(doc);
+      const s = next.shapes.find(sh => sh.id === selectedId);
+      if (s) {
+        s.fillOpacity = opacity;
+        commit(next, { keepSelection: true });
+      }
+    };
+  });
+
   container.querySelectorAll('[data-solid-style]').forEach(btn => {
     btn.onclick = () => {
       const style = btn.dataset.solidStyle;
@@ -1564,6 +1788,15 @@ export function showQuickContextMenu(targetId) {
   if (targetEl) {
     updateContextMenuPosition(targetEl);
   }
+
+  // Auto focus & select text for point label
+  const labelInput = menu.querySelector('#qcm-label-input');
+  if (labelInput) {
+    setTimeout(() => {
+      labelInput.focus();
+      labelInput.select();
+    }, 40);
+  }
 }
 
 export function hideQuickContextMenu() {
@@ -1581,13 +1814,16 @@ export function updateQuickContextMenu() {
     tool,
     selected,
     selectedIdsCount: selectedIds.size,
-    doc
+    doc,
+    pending
   });
+
   if (!canShow) {
     hideQuickContextMenu();
     return;
   }
-  showQuickContextMenu(selected);
+
+  showQuickContextMenu(selectedIds.size > 1 ? '__group__' : selected);
 }
 
 export function setShapeColor(d, shapeId, color) {
@@ -2136,7 +2372,15 @@ function deleteSelection(){
   requestDeletion(next,`Xóa ${pointCount} điểm và ${shapeCount} hình/đường, gồm các phụ thuộc của ${p?p.label||p.id:names[s.type]+' '+s.refs.join(', ')}?`);
 }
 let deletion=null;
-function requestDeletion(next,message){deletion={next,revision};$('delete-message').textContent=message;$('delete-dialog').showModal();}
+function requestDeletion(next,message){
+  selected = '';
+  selectedIds.clear();
+  pending = [];
+  deletion = null;
+  if ($('delete-dialog')?.open) $('delete-dialog').close();
+  commit(next);
+  notify('Đã xóa đối tượng. Nhấn Hoàn tác (Ctrl+Z) để khôi phục.');
+}
 function renderRestoreControl(){if(mode==='geometry')return;const key=mode==='graph'?'graph':mode==='chart'?'chart':'solid';if(doc[key].enabled===false){const b=document.createElement('button');b.id='restore-content';b.className='secondary full';b.textContent='Vẽ lại';b.onclick=()=>{const next=structuredClone(doc);next[key].enabled=true;commit(next);};$('properties').append(b);}}
 function addPoint(x,y){const next=structuredClone(doc),id=freshId();next.points.push({id,x,y});selected=id;commit(next);}
 function usePoint(id){if(tool==='select'||tool==='region'){selectedIds.clear();selected=id;render();return;}if(tool==='point')return;if(tool==='pan')return notify('Kéo nền để di chuyển khung.');notify('');const definition=tools.find(t=>t[0]===tool);
@@ -2956,6 +3200,7 @@ if($('help-dialog')){$('help-dialog').querySelectorAll('[data-help-tab]').forEac
 async function loadImage(file){if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type))return notify('Chọn ảnh PNG, JPEG hoặc WebP');if(file.size>4*1024*1024)return notify('Ảnh tối đa 4 MB. Cắt rõ cả đề bài và hình.');try{const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(Error('Không đọc được ảnh'));r.readAsDataURL(file);});const test=new Image();test.src=data;await test.decode();image=data;$('source-image').src=data;$('source-image').hidden=false;$('remove-image').hidden=false;notify('Ảnh đang ở thiết bị; chỉ gửi khi bạn bấm tạo bản đề xuất.');}catch(e){notify(e.message);}}
 for(const id of ['book-image','camera-image'])$(id).onchange=e=>loadImage(e.target.files[0]);$('remove-image').onclick=()=>{image=null;$('source-image').hidden=true;$('source-image').removeAttribute('src');$('remove-image').hidden=true;$('book-image').value='';$('camera-image').value='';};
 for(const evt of ['dragover','dragenter'])$('dropzone').addEventListener(evt,e=>{e.preventDefault();$('dropzone').classList.add('over');});$('dropzone').addEventListener('dragleave',()=>$('dropzone').classList.remove('over'));$('dropzone').addEventListener('drop',e=>{e.preventDefault();$('dropzone').classList.remove('over');loadImage(e.dataTransfer.files[0]);});
+document.querySelectorAll('.ai-chip').forEach(btn=>{btn.onclick=()=>{if($('prompt')){$('prompt').value=btn.dataset.preset||'';$('prompt').focus();}};});
 if($('prompt')){
   $('prompt').addEventListener('keydown',e=>{
     if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){
@@ -2979,13 +3224,13 @@ $('analyze').onclick=async()=>{
   }
   busy=true;
   $('analyze').disabled=true;
-  $('analyze').textContent='Đang phân tích và dựng hình với Gemini…';
+  $('analyze').textContent='Đang phân tích và dựng hình với AI…';
   if($('ai-status')){
     $('ai-status').hidden=false;
-    $('ai-status').style.color='#176b52';
-    $('ai-status').textContent='Đang gửi yêu cầu đến Gemini AI để phân tích và dựng hình...';
+    $('ai-status').style.color='#4f46e5';
+    $('ai-status').textContent='Đang gửi yêu cầu đến hệ thống AI để phân tích và dựng hình...';
   }
-  notify('Đang gửi yêu cầu đến Gemini AI để phân tích và dựng hình...');
+  notify('Đang gửi yêu cầu đến hệ thống AI để phân tích và dựng hình...');
   const before=revision,originalImage=image;
   try{
     const result=await requestProposal({prompt,document:doc,image:originalImage});
@@ -3020,7 +3265,7 @@ $('analyze').onclick=async()=>{
   }
 };
 for(const id of ['close-review','cancel-review'])$(id).onclick=()=>{proposal=null;$('review').close();if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: hủy đề xuất');};$('review').addEventListener('cancel',()=>{proposal=null;if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: hủy đề xuất');});$('confirm-review').onclick=()=>{if(!proposal)return;if(proposal.revision!==revision){notify('Bản gốc đã đổi; phân tích lại để áp dụng an toàn.');$('review').close();proposal=null;return;}selected='';pending=[];if(commit(proposal.document)){mode='geometry';render();$('review').close();proposal=null;notify('Đã áp dụng bản đề xuất đã xác nhận. Có thể hoàn tác.');if(!testing)window.parent.word2latexDrawingLog?.('Vẽ hình: áp dụng AI');}};
-fetch('/api/ve-hinh?action=config').then(r=>r.json()).then(c=>{if(!c.configured){$('ai-status').hidden=false;$('ai-status').textContent='Chưa tìm thấy GEMINI_API_KEY trên server.';}}).catch(()=>{});
+fetch('/api/ve-hinh?action=config').then(r=>r.json()).then(c=>{if(!c.configured){$('ai-status').hidden=false;$('ai-status').textContent='Chưa cấu hình API Key trên server.';}}).catch(()=>{});
 function showProposal(result,before,originalImage){proposal={...result,revision:before};$('proposal-canvas').innerHTML=renderSVG(result.document);renderProposalWorkspaces(result.document);$('extracted').textContent=result.extractedText||'Không có văn bản được trả về';$('uncertainties').replaceChildren(...result.uncertainties.map(t=>{const li=document.createElement('li');li.textContent=t;return li;}));if(!result.uncertainties.length){const li=document.createElement('li');li.textContent='Provider không liệt kê nghi vấn. Vẫn kiểm tra toàn bộ nhãn và điều kiện.';$('uncertainties').append(li);}const errors=resolve(result.document).errors;$('proposal-errors').textContent=errors.length?'Cấu hình chưa xác định: '+errors.join('; '):'';$('confirm-review').disabled=errors.length>0;$('review-source').hidden=!originalImage;$('no-source').hidden=!!originalImage;if(originalImage)$('review-source').src=originalImage;else $('review-source').removeAttribute('src');$('review').showModal();}
 const workspaceReview=document.getElementById('workspace-review-template').content.cloneNode(true);$('extracted').previousElementSibling.before(workspaceReview);
 function renderProposalWorkspaces(next){let html=`<h3>Toàn bộ thay đổi sẽ áp dụng</h3><p>Tên: ${escape(doc.title)} → ${escape(next.title)}. Điểm ${doc.points.length} → ${next.points.length}; hình/đường ${doc.shapes.length} → ${next.shapes.length}.</p>`;for(const [key,label,renderer]of [['graph','Đồ thị',graphSVG],['chart','Thống kê',chartSVG],['solid','Không gian',solidSVG]]){if(JSON.stringify(doc[key])===JSON.stringify(next[key])){html+=`<p>${label}: giữ nguyên.</p>`;continue;}html+=`<details open><summary>${label}: có thay đổi</summary><div class="compare"><figure><figcaption>Hiện tại</figcaption>${renderer(doc[key])}</figure><figure><figcaption>Đề xuất</figcaption>${renderer(next[key])}</figure></div><p>Dữ liệu hiện tại: ${escape(JSON.stringify(doc[key]))}</p><p>Dữ liệu đề xuất: ${escape(JSON.stringify(next[key]))}</p></details>`;}$('proposal-workspaces').innerHTML=html;}
@@ -3028,7 +3273,7 @@ $('export-json').onclick=()=>{download(JSON.stringify(doc,null,2),'ve-hinh.json'
 if($('export-tikz'))$('export-tikz').onclick=()=>{try{const code=exportTikZ(doc);if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(code).then(()=>notify('Đã sao chép mã TikZ (LaTeX) vào bộ nhớ tạm!')).catch(()=>download(code,'hinh-ve.tikz','text/plain'));}else{download(code,'hinh-ve.tikz','text/plain');}notify('Đã xuất mã TikZ (LaTeX) thành công!');$('export-dialog').close();}catch(e){notify('Không xuất được TikZ: '+e.message);}};
 const deleteButton=document.createElement('button');deleteButton.id='delete-selected';deleteButton.className='delete';deleteButton.textContent='Xóa';deleteButton.title='Xóa đối tượng đã chọn · Delete';deleteButton.onclick=deleteSelection;document.querySelector('.canvas-bar').append(deleteButton);
 $('confirm-delete').onclick=()=>{if(deletion&&deletion.revision===revision){selected='';pending=[];commit(deletion.next);}else notify('Tài liệu đã đổi; chọn lại đối tượng cần xóa.');deletion=null;$('delete-dialog').close();};
-const detailsButton=document.createElement('button');detailsButton.id='toggle-details';detailsButton.textContent='Đối tượng';detailsButton.title='Mở thuộc tính trong sidebar';detailsButton.onclick=()=>{cancelConstruction();sidebarView=sidebarView==='properties'?'tools':'properties';setSidebar(true);syncSidebarTabs();render();};document.querySelector('.canvas-bar').append(detailsButton);
+// detailsButton removed: properties now handled by Smart Floating Inspector
 render();
 
 

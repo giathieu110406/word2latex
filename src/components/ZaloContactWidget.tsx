@@ -144,7 +144,11 @@ const STATUS_LABEL: Record<string, string> = {
   blocked: "Gặp sự cố",
 };
 
-export const ZaloContactWidget: React.FC = () => {
+interface ZaloContactWidgetProps {
+  isDrawingMode?: boolean;
+}
+
+export const ZaloContactWidget: React.FC<ZaloContactWidgetProps> = ({ isDrawingMode = false }) => {
   const activity = useSyncExternalStore(
     subscribeToCodexPetActivity,
     getCodexPetActivity,
@@ -154,12 +158,19 @@ export const ZaloContactWidget: React.FC = () => {
   const dragStart = useRef<{ pointerId: number; startX: number; startY: number; left: number; top: number; width: number; height: number; moved: boolean; target: HTMLElement } | null>(null);
   const clickBlockedUntil = useRef(0);
   const [bannerIndex, setBannerIndex] = useState<number>(0);
-  const [isBubbleVisible, setIsBubbleVisible] = useState<boolean>(true);
+  const [isBubbleVisible, setIsBubbleVisible] = useState<boolean>(!isDrawingMode);
   const [isPetHovered, setIsPetHovered] = useState<boolean>(false);
   const [isPetDragging, setIsPetDragging] = useState<boolean>(false);
   const [dragPosition, setDragPosition] = useState<{ left: number; top: number } | null>(null);
   const [showPetDevTools, setShowPetDevTools] = useState(false);
   const [previewStatus, setPreviewStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isDrawingMode) {
+      setIsBubbleVisible(false);
+    }
+    setDragPosition(null);
+  }, [isDrawingMode]);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -280,7 +291,7 @@ export const ZaloContactWidget: React.FC = () => {
           exit={{ opacity: 0, scale: 0.8, y: 12 }}
           transition={{ duration: 0.2 }}
           style={{ ...(dragPosition ? { left: dragPosition.left, top: dragPosition.top } : {}), touchAction: "none" }}
-          className={`pointer-events-auto absolute flex select-none items-center gap-2.5 sm:gap-3 ${dragPosition ? "" : "bottom-5 right-4 sm:bottom-6 sm:right-6"} ${isPetDragging ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`pointer-events-auto absolute flex select-none items-center gap-2.5 sm:gap-3 ${dragPosition ? "" : (isDrawingMode ? "bottom-2 right-2 sm:bottom-3 sm:right-3" : "bottom-5 right-4 sm:bottom-6 sm:right-6")} ${isPetDragging ? "cursor-grabbing" : "cursor-grab"}`}
         >
           {isBubbleVisible && <div className="relative hidden sm:block">
             <button
@@ -333,12 +344,20 @@ export const ZaloContactWidget: React.FC = () => {
           </div>}
 
           <a
-            href={ZALO_LINK}
+            href={isDrawingMode ? undefined : ZALO_LINK}
+            role={isDrawingMode ? "button" : undefined}
             draggable={false}
-            target="_blank"
-            rel="noreferrer"
-            title={`Kéo để di chuyển thú cưng Codex · Nhắn Zalo ${ZALO_PHONE}`}
-            aria-label={`Thú cưng Codex, ${STATUS_LABEL[displayedActivity.status]}. Nhấn để nhắn Zalo ${ZALO_PHONE}`}
+            target={isDrawingMode ? undefined : "_blank"}
+            rel={isDrawingMode ? undefined : "noreferrer"}
+            title={isDrawingMode ? (isBubbleVisible ? "Ẩn lời nhắn Codex" : "Mở lời nhắn Codex") : `Kéo để di chuyển thú cưng Codex · Nhắn Zalo ${ZALO_PHONE}`}
+            aria-label={isDrawingMode ? (isBubbleVisible ? "Ẩn lời nhắn Codex" : "Mở lời nhắn Codex") : `Thú cưng Codex, ${STATUS_LABEL[displayedActivity.status]}. Nhấn để nhắn Zalo ${ZALO_PHONE}`}
+            onClick={(event) => {
+              if (dragStart.current?.moved || Date.now() < clickBlockedUntil.current) return;
+              if (isDrawingMode) {
+                event.preventDefault();
+                setIsBubbleVisible((prev) => !prev);
+              }
+            }}
             onMouseEnter={() => setIsPetHovered(true)}
             onMouseLeave={() => setIsPetHovered(false)}
             onFocus={() => setIsPetHovered(true)}
