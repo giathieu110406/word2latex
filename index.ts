@@ -17,6 +17,7 @@ import payosWebhookHandler from "./api/payos-webhook";
 import payosCheckHandler from "./api/payos-check";
 import approveUserHandler from "./api/approve-user";
 import adminPaymentsHandler from "./api/admin/payments";
+import userPaymentsHandler from "./api/user-payments";
 import { getFirebaseAdmin } from "./server/firebase-admin.js";
 
 
@@ -38,50 +39,28 @@ function generateApprovalToken(uid: string): string {
   return crypto.createHmac("sha256", SECRET_KEY).update(uid).digest("hex");
 }
 
-app.post("/api/payos-create", async (req, res) => {
-  await payosCreateHandler(req as any, res as any);
-});
+const wrap = (fn: any) => async (req: any, res: any) => {
+  try {
+    await fn(req, res);
+  } catch (err: any) {
+    console.error('[Route Error]:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err?.message || 'Internal Server Error' });
+    }
+  }
+};
 
-app.all(["/api/payos-webhook", "/api/webhook/payos"], async (req, res) => {
-  await payosWebhookHandler(req as any, res as any);
-});
-
-app.post("/api/payos-check", async (req, res) => {
-  await payosCheckHandler(req as any, res as any);
-});
-
-// 1. API: Approve user directly from email link (GET)
-app.post("/api/ai", async (req, res) => {
-  await aiHandler(req as any, res as any);
-});
-
-app.post("/api/markitdown", async (req, res) => {
-  await markitdownHandler(req as any, res as any);
-});
-
-app.post("/api/email-verification", async (req, res) => {
-  await emailVerificationHandler(req as any, res as any);
-});
-
-
-
-
-
-app.get("/api/approve-user", async (req, res) => {
-  await approveUserHandler(req as any, res as any);
-});
-
-// 2. API: Notify admin of access registration (POST) - SMTP removed by request
-
-app.get("/api/admin/payments", async (req, res) => {
-  await adminPaymentsHandler(req as any, res as any);
-});
-
-app.delete("/api/admin/payments", async (req, res) => {
-  await adminPaymentsHandler(req as any, res as any);
-});
-
-app.post('/api/admin/grant-plan', (req,res) => grantPlanHandler(req as any,res as any));
+app.post("/api/payos-create", wrap(payosCreateHandler));
+app.all(["/api/payos-webhook", "/api/webhook/payos"], wrap(payosWebhookHandler));
+app.post("/api/payos-check", wrap(payosCheckHandler));
+app.post("/api/ai", wrap(aiHandler));
+app.post("/api/markitdown", wrap(markitdownHandler));
+app.post("/api/email-verification", wrap(emailVerificationHandler));
+app.get("/api/approve-user", wrap(approveUserHandler));
+app.get("/api/admin/payments", wrap(adminPaymentsHandler));
+app.get("/api/user-payments", wrap(userPaymentsHandler));
+app.delete("/api/admin/payments", wrap(adminPaymentsHandler));
+app.post('/api/admin/grant-plan', wrap(grantPlanHandler));
 
 app.post("/api/user/update-phone", async (req, res) => {
   try {
@@ -297,7 +276,10 @@ async function startServer() {
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
-        hmr: false
+        hmr: false,
+        watch: {
+          ignored: ['**/scratch/**', '**/.git/**', '**/dist/**'],
+        }
       },
       appType: "spa"
     });
@@ -314,6 +296,13 @@ async function startServer() {
     console.log(`[BACKEND SERVER] Đang khởi động tại http://localhost:${PORT}`);
   });
 }
+
+process.on('uncaughtException', (err) => {
+  console.error('[Process Error] uncaughtException:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Process Error] unhandledRejection:', reason);
+});
 
 if (process.env.VERCEL !== "1") {
   startServer();

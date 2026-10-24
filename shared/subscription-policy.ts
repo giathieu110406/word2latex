@@ -4,6 +4,12 @@ export function getActivePlan(plan = 'free', expiresAt?: number, now = Date.now(
   return expiresAt && now >= expiresAt ? 'free' : plan;
 }
 
-export function canRegisterPlan(target: string, current = 'free', expiresAt?: number, now = Date.now()) {
+export function canRegisterPlan(target: string, current = 'free', expiresAt?: number, now = Date.now(), hasUsedTrial?: boolean) {
+  if (target === 'trial' && hasUsedTrial) return false;
   return (PLAN_RANK[target] ?? 0) > (PLAN_RANK[getActivePlan(current, expiresAt, now)] ?? 0);
+}
+
+export function getUpgradeVisibility(plan = 'free', expiresAt?: number, now = Date.now()) {
+  const activePlan = getActivePlan(plan, expiresAt, now);
+  return { sidebar: !['trial', 'plus', 'pro'].includes(activePlan), main: activePlan !== 'pro' };
 }

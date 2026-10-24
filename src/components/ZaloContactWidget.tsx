@@ -291,7 +291,7 @@ export const ZaloContactWidget: React.FC<ZaloContactWidgetProps> = ({ isDrawingM
           exit={{ opacity: 0, scale: 0.8, y: 12 }}
           transition={{ duration: 0.2 }}
           style={{ ...(dragPosition ? { left: dragPosition.left, top: dragPosition.top } : {}), touchAction: "none" }}
-          className={`pointer-events-auto absolute flex select-none items-center gap-2.5 sm:gap-3 ${dragPosition ? "" : (isDrawingMode ? "bottom-2 right-2 sm:bottom-3 sm:right-3" : "bottom-5 right-4 sm:bottom-6 sm:right-6")} ${isPetDragging ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`pointer-events-auto absolute flex select-none items-center gap-2.5 sm:gap-3 ${dragPosition ? "" : (isDrawingMode ? "bottom-0 right-0" : "bottom-0 right-0")} ${isPetDragging ? "cursor-grabbing" : "cursor-grab"}`}
         >
           {isBubbleVisible && <div className="relative hidden sm:block">
             <button

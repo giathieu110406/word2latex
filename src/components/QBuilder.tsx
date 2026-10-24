@@ -1,5 +1,5 @@
 import React from "react";
-import { Sparkles, HelpCircle, FileEdit, Eye } from "lucide-react";
+import { Sparkles, HelpCircle, FileEdit, Eye, ChevronDown, Check, Type } from "lucide-react";
 
 interface QBuilderProps {
   wordFont: string;
@@ -162,14 +162,84 @@ export const QBuilder: React.FC<QBuilderProps> = ({
   triggerToast,
   handlePasteGeneric,
 }) => {
-  const [isHeaderOpen, setIsHeaderOpen] = React.useState(true);
+  const [isHeaderOpen, setIsHeaderOpen] = React.useState(false);
+  const [isFontDropdownOpen, setIsFontDropdownOpen] = React.useState<boolean>(false);
+  const fontDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (fontDropdownRef.current && !fontDropdownRef.current.contains(e.target as Node)) {
+        setIsFontDropdownOpen(false);
+      }
+    };
+    if (isFontDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isFontDropdownOpen]);
+
+  const fontOptions = [
+    {
+      value: "'Times New Roman', Times, serif",
+      label: "Times New Roman (Chuẩn Quốc gia)",
+      fontFamily: "'Times New Roman', Times, serif",
+    },
+    {
+      value: "'Inter', 'Segoe UI', Arial, sans-serif",
+      label: "Inter (Phông mặc định Gemini)",
+      fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
+    },
+    {
+      value: "'Arial', sans-serif",
+      label: "Arial",
+      fontFamily: "'Arial', sans-serif",
+    },
+    {
+      value: "'Calibri', sans-serif",
+      label: "Calibri",
+      fontFamily: "'Calibri', sans-serif",
+    },
+  ];
+
+  const currentFontOption = fontOptions.find(f => f.value === wordFont) || fontOptions[0];
   const [mobileView, setMobileView] = React.useState<"edit" | "preview">("edit");
+
+  // Đồng bộ chiều cao cột Xem trước theo chiều cao thực tế của cột Soạn thảo
+  const leftPanelRef = React.useRef<HTMLDivElement>(null);
+  const [leftPanelHeight, setLeftPanelHeight] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    const updateHeight = () => {
+      if (leftPanelRef.current) {
+        const height = leftPanelRef.current.offsetHeight;
+        if (height > 0) {
+          setLeftPanelHeight(height);
+        }
+      }
+    };
+
+    updateHeight();
+
+    if (!leftPanelRef.current) return;
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+
+    observer.observe(leftPanelRef.current);
+    window.addEventListener("resize", updateHeight);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, []);
   
   return (
-    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-[500px] md:min-h-[calc(100vh-160px)]">
+    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col w-full h-auto shrink-0">
       {/* Top Control Settings Panel */}
-      <div className="bg-white/50 px-4 py-4 md:px-6 md:py-5 border-b border-white/50 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
-        <div className="flex flex-wrap items-center gap-3 md:gap-4 w-full sm:w-auto">
+      <div className="bg-white px-4 py-2 sm:py-2.5 md:px-5 md:py-2.5 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-4 select-none min-h-[52px] sm:min-h-[58px]">
+        <div className="flex items-center justify-between gap-3 md:gap-4 w-full sm:w-auto">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-indigo-50 rounded-xl border border-indigo-100/50">
               <img
@@ -183,42 +253,84 @@ export const QBuilder: React.FC<QBuilderProps> = ({
               <span className="font-extrabold text-sm text-slate-900 tracking-tight leading-none">
                 Q-Builder
               </span>
-              <span className="text-[10px] text-emerald-600 font-black tracking-wider mt-0.5 uppercase">
+              <span className="text-[10px] text-emerald-600 font-black tracking-wider mt-0.5 uppercase hidden xs:inline">
                 CÔNG CỤ BIÊN SOẠN ĐỀ THI THÔNG MINH
               </span>
             </div>
           </div>
         </div>
-        {/* Font selector */}
-        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end min-w-0">
+
+        {/* Custom Font Dropdown */}
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end min-w-0 relative">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
             <span className="hidden xs:inline">Phông chữ Word:</span>
-            <span className="xs:hidden">Phông Word:</span>
+            <span className="xs:hidden">Phông:</span>
           </span>
-          <div className="relative min-w-0 flex-1 sm:flex-none max-w-[210px] xs:max-w-[260px] sm:max-w-none">
-            <select
-              value={wordFont}
-              onChange={(e) => setWordFont(e.target.value)}
-              className="w-full appearance-none bg-white/40 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 py-2 pl-3 pr-8 cursor-pointer outline-none transition-all shadow-3xs truncate"
+          <div ref={fontDropdownRef} className="relative min-w-0 flex-1 sm:flex-none w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsFontDropdownOpen(prev => !prev)}
+              className="w-full sm:w-[260px] flex items-center justify-between gap-2 bg-white hover:bg-slate-50/80 border border-slate-200/90 hover:border-indigo-300 text-slate-800 text-xs font-bold rounded-xl py-2 px-3 shadow-3xs hover:shadow-xs transition-all cursor-pointer group"
+              title="Chọn phông chữ hiển thị khi xuất sang Word"
             >
-              <option value="'Times New Roman', Times, serif">
-                Times New Roman (Chuẩn Quốc gia)
-              </option>
-              <option value="'Inter', 'Segoe UI', Arial, sans-serif">
-                Inter (Phông mặc định Gemini)
-              </option>
-              <option value="'Arial', sans-serif">
-                Arial
-              </option>
-              <option value="'Calibri', sans-serif">
-                Calibri
-              </option>
-            </select>
-            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+              <div className="flex items-center gap-2 truncate min-w-0">
+                <Type className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                <span className="truncate" style={{ fontFamily: currentFontOption.fontFamily }}>
+                  {currentFontOption.label}
+                </span>
+              </div>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 shrink-0 transition-transform duration-200 ${
+                  isFontDropdownOpen ? "rotate-180 text-indigo-600" : ""
+                }`}
+              />
+            </button>
+
+            {/* Dropdown Menu Popover */}
+            {isFontDropdownOpen && (
+              <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-full sm:w-[280px] bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-900/10 p-1.5 animate-fade-in select-none">
+                <div className="px-2.5 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">
+                  Chọn phông xuất Word
+                </div>
+                <div className="flex flex-col gap-1">
+                  {fontOptions.map((opt) => {
+                    const isSelected = opt.value === wordFont;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setWordFont(opt.value);
+                          setIsFontDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left ${
+                          isSelected
+                            ? "bg-indigo-50 text-indigo-700 font-bold border border-indigo-150 shadow-3xs"
+                            : "text-slate-700 hover:bg-slate-100/80 hover:text-slate-900 border border-transparent"
+                        }`}
+                      >
+                        <div className="flex flex-col min-w-0 pr-2">
+                          <span
+                            className="text-xs truncate font-medium"
+                            style={{ fontFamily: opt.fontFamily }}
+                          >
+                            {opt.label}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            Mẫu chữ: Aa Bb Cc 123
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <div className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -258,9 +370,12 @@ export const QBuilder: React.FC<QBuilderProps> = ({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 flex-1 min-h-0">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 flex-1 items-start">
           {/* Panel 1: EDITOR / COMPILER FORM (Trái) */}
-          <div className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1 ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
+          <div 
+            ref={leftPanelRef}
+            className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col flex-1 h-auto ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}
+          >
             {/* Sub-Header: Settings */}
             <div id="tour-qbuilder-config-header" className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -274,14 +389,14 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 <div className="flex bg-slate-200/60 p-1 rounded-xl text-xs font-bold gap-1 w-full sm:w-auto">
                   <button
                     type="button"
-                    onClick={() => setDocHeaderStyle("centered")}
+                    onClick={() => { setDocHeaderStyle("centered"); setIsHeaderOpen(prev => docHeaderStyle === "centered" ? !prev : true); }}
                     className={`flex-1 sm:flex-none text-center justify-center px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${docHeaderStyle === "centered" ? "bg-white text-slate-900 shadow-3xs font-extrabold" : "text-slate-600 hover:text-slate-805"}`}
                   >
                     Căn giữa (Đơn)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDocHeaderStyle("split")}
+                    onClick={() => { setDocHeaderStyle("split"); setIsHeaderOpen(prev => docHeaderStyle === "split" ? !prev : true); }}
                     className={`flex-1 sm:flex-none text-center justify-center px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${docHeaderStyle === "split" ? "bg-white text-slate-900 shadow-3xs font-extrabold" : "text-slate-600 hover:text-slate-805"}`}
                   >
                     Khung đôi Bộ GD
@@ -409,18 +524,13 @@ export const QBuilder: React.FC<QBuilderProps> = ({
               )}
 
               {/* Collapse Toggle Button */}
-              <div
-                className="cursor-pointer text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider pt-3.5 mt-4 border-t border-slate-200/50 hover:text-indigo-600 transition-colors"
-                onClick={() => setIsHeaderOpen(!isHeaderOpen)}
-              >
-                {isHeaderOpen ? "Thu gọn (▲)" : "Mở rộng (▼)"}
-              </div>
+              
             </div>
 
             {/* Form input elements */}
             <div
               id="tour-qbuilder-type-selector"
-              className="p-4 md:p-5 pb-10 space-y-4 flex-1 overflow-y-auto min-h-0"
+              className="p-4 md:p-5 pb-6 space-y-4 flex-1 flex flex-col"
             >
               {editingQuestionId &&
                 (() => {
@@ -541,7 +651,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         onPaste={(e) =>
                           handlePasteGeneric(e, setTracNghiemText, true)
                         }
-                        rows={6}
+                        rows={4}
                         placeholder="VD: Cho hàm số $y=x+1$, tìm điểm giao với trục hoành.\nA. $(1;0)$\nB. $(-1;0)$\nC. $(0;1)$\nD. $(0;-1)$"
                         className="w-full bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed overflow-y-auto transition-all shadow-3xs"
                       />
@@ -560,33 +670,69 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         onPaste={(e) =>
                           handlePasteGeneric(e, setTracNghiemAnswerText, true)
                         }
-                        rows={6}
+                        rows={4}
                         placeholder="VD: Chọn B. Giao điểm với trục hoành có $y = 0 \implies x + 1 = 0 \implies x = -1$."
                         className="w-full bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed overflow-y-auto transition-all shadow-3xs"
                       />
                     </div>
                   </div>
 
-                  {/* Column pickers */}
-                  <div className="flex items-center gap-3 bg-slate-100/50 p-2.5 rounded-xl border border-slate-200/80 select-none">
-                    <span className="text-xs font-bold text-slate-600">
-                      Bố cục đáp án trắc nghiệm:
-                    </span>
-                    <div className="flex gap-1.5">
-                      {[1, 2, 4].map((cols) => (
+                  {/* Column pickers & inline Add button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-100/50 p-2 rounded-xl border border-slate-200/80 select-none">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-600 shrink-0">
+                        Bố cục đáp án:
+                      </span>
+                      <div className="flex gap-1">
+                        {[1, 2, 4].map((cols) => (
+                          <button
+                            key={cols}
+                            type="button"
+                            onClick={() => setNewTracNghiemColumns(cols)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              newTracNghiemColumns === cols
+                                ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500 scale-[1.03]"
+                                : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-3xs"
+                            }`}
+                          >
+                            {cols} cột
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                      {editingQuestionId && (
                         <button
-                          key={cols}
-                          
-                          onClick={() => setNewTracNghiemColumns(cols)}
-                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                            newTracNghiemColumns === cols
-                              ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500 scale-[1.03]"
-                              : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 hover:border-slate-300 shadow-2xs"
-                          }`}
+                          type="button"
+                          onClick={() => {
+                            setEditingQuestionId(null);
+                            setTracNghiemText("");
+                            setTracNghiemAnswerText("");
+                            setDungSaiText("");
+                            setDungSaiAnswerText("");
+                            setTraLoiNganText("");
+                            setTraLoiNganAnswerText("");
+                            setTuLuanQuestionText("");
+                            setTuLuanAnswerText("");
+                            triggerToast("Đã hủy bỏ chỉnh sửa.", true);
+                          }}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs cursor-pointer border border-slate-200 transition-all"
                         >
-                          {cols} cột
+                          Hủy
                         </button>
-                      ))}
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleAddQuestion}
+                        className={`px-4 py-1.5 text-white font-extrabold rounded-lg text-xs flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer whitespace-nowrap transition-all ${
+                          editingQuestionId
+                            ? "bg-amber-600 hover:bg-amber-700"
+                            : "bg-indigo-600 hover:bg-indigo-700"
+                        }`}
+                      >
+                        {editingQuestionId ? "Lưu sửa" : "Thêm câu hỏi"}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -658,8 +804,8 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 </div>
               )}
 
-              {/* Submit Add Button */}
-              <div className="flex justify-end items-center gap-2 pt-1 select-none">
+              {/* Submit Add Button for non-4-choice types */}
+              <div className={`flex justify-end items-center gap-2 pt-1 select-none ${newQuestionType === "trac_nghiem" ? "hidden" : "flex"}`}>
                 {editingQuestionId && (
                   <button
                     
@@ -712,13 +858,13 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 </div>
 
                 {docQuestions.length > 0 && (
-                  <div className="flex overflow-x-auto no-scrollbar sm:flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-xl text-[10px] font-bold select-none -mx-1 px-1">
+                  <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1.5 rounded-xl text-[10px] font-bold select-none w-full">
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("all")}
-                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all whitespace-nowrap overflow-hidden text-ellipsis ${
                         savedQuestionTab === "all"
-                          ? "bg-white text-slate-900 shadow-3xs border border-slate-200/50"
+                          ? "bg-white text-slate-900 shadow-3xs border border-slate-200/50 font-extrabold"
                           : "text-slate-550 hover:text-slate-900"
                       }`}
                     >
@@ -727,53 +873,50 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem")}
-                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis ${
                         savedQuestionTab === "trac_nghiem"
-                          ? "bg-white text-blue-700 shadow-3xs border border-blue-100"
+                          ? "bg-white text-blue-700 shadow-3xs border border-blue-100 font-extrabold"
                           : "text-slate-550 hover:text-blue-600"
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                      <span className="hidden xs:inline">TN 4 Lựa chọn</span>
-                      <span className="xs:hidden">4 LC</span> ({tracNghiemList.length})
+                      <span className="truncate">4 LC ({tracNghiemList.length})</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem_dung_sai")}
-                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis ${
                         savedQuestionTab === "trac_nghiem_dung_sai"
-                          ? "bg-white text-purple-700 shadow-3xs border border-purple-100"
+                          ? "bg-white text-purple-700 shadow-3xs border border-purple-100 font-extrabold"
                           : "text-slate-550 hover:text-purple-600"
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
-                      <span className="hidden xs:inline">TN Đúng/Sai</span>
-                      <span className="xs:hidden">Đ/S</span> ({dungSaiList.length})
+                      <span className="truncate">Đ/S ({dungSaiList.length})</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem_tra_loi_ngan")}
-                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis ${
                         savedQuestionTab === "trac_nghiem_tra_loi_ngan"
-                          ? "bg-white text-teal-700 shadow-3xs border border-teal-100"
+                          ? "bg-white text-teal-700 shadow-3xs border border-teal-100 font-extrabold"
                           : "text-slate-550 hover:text-teal-600"
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
-                      <span className="hidden xs:inline">TN Trả lời ngắn</span>
-                      <span className="xs:hidden">Ngắn</span> ({traLoiNganList.length})
+                      <span className="truncate">Ngắn ({traLoiNganList.length})</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("tu_luan")}
-                      className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis ${
                         savedQuestionTab === "tu_luan"
-                          ? "bg-white text-rose-700 shadow-3xs border border-rose-100"
+                          ? "bg-white text-rose-700 shadow-3xs border border-rose-100 font-extrabold"
                           : "text-slate-550 hover:text-rose-600"
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                      Tự luận ({tuLuanList.length})
+                      <span className="truncate">Tự luận ({tuLuanList.length})</span>
                     </button>
                   </div>
                 )}
@@ -965,15 +1108,15 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         </div>
 
                         {/* Desktop Table View (>= sm) */}
-                        <div className="hidden sm:block max-h-[225px] overflow-y-auto overflow-x-auto border border-slate-200 rounded-xl shadow-3xs select-none">
-                          <table className="w-full text-left text-xs border-collapse min-w-[540px]">
+                        <div className="hidden sm:block max-h-[225px] overflow-y-auto overflow-x-hidden overscroll-contain border border-slate-200 rounded-xl shadow-3xs select-none w-full">
+                          <table className="w-full text-left text-xs border-collapse w-full min-w-0">
                             <thead>
-                              <tr className="bg-white/40 text-slate-500 border-b border-slate-200 sticky top-0 z-10 shadow-3xs">
-                                <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Thứ tự</th>
-                                <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Phân loại</th>
-                                <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Cột đáp án</th>
-                                <th className="p-3 font-bold uppercase tracking-wider text-[10px]">Nội dung tóm tắt</th>
-                                <th className="p-3 font-bold uppercase tracking-wider text-[10px] text-center">
+                              <tr className="bg-slate-100 text-slate-600 border-b border-slate-200 sticky top-0 z-10 shadow-xs">
+                                <th className="p-2 sm:p-2.5 font-bold uppercase tracking-wider text-[10px] whitespace-nowrap w-14 bg-slate-100">Thứ tự</th>
+                                <th className="p-2 sm:p-2.5 font-bold uppercase tracking-wider text-[10px] whitespace-nowrap w-20 bg-slate-100">Phân loại</th>
+                                <th className="p-2 sm:p-2.5 font-bold uppercase tracking-wider text-[10px] whitespace-nowrap w-16 bg-slate-100">Cột</th>
+                                <th className="p-2 sm:p-2.5 font-bold uppercase tracking-wider text-[10px] bg-slate-100">Nội dung tóm tắt</th>
+                                <th className="p-2.5 sm:p-3 font-bold uppercase tracking-wider text-[10px] text-center whitespace-nowrap w-28">
                                   Thao tác
                                 </th>
                               </tr>
@@ -995,7 +1138,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                       onClick={() =>
                                         handleStartEditQuestion(q)
                                       }
-                                      className={`p-3 font-bold cursor-pointer hover:opacity-80 transition-opacity ${
+                                      className={`p-2.5 sm:p-3 font-bold cursor-pointer whitespace-nowrap hover:opacity-80 transition-opacity ${
                                         isEditing
                                           ? "text-amber-700"
                                           : textColors[q.type] || "text-slate-700"
@@ -1008,11 +1151,11 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                       onClick={() =>
                                         handleStartEditQuestion(q)
                                       }
-                                      className="p-3 cursor-pointer"
+                                      className="p-2.5 sm:p-3 cursor-pointer whitespace-nowrap"
                                       title="Bấm để chỉnh sửa câu hỏi này"
                                     >
                                       <span
-                                        className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-3xs ${
+                                        className={`inline-block whitespace-nowrap px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-3xs ${
                                           q.type === "trac_nghiem"
                                             ? "bg-blue-100/80 text-blue-800 border-blue-200"
                                             : q.type === "trac_nghiem_dung_sai"
@@ -1031,7 +1174,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                           : "Tự luận"}
                                       </span>
                                     </td>
-                                    <td className="p-3">
+                                    <td className="p-2.5 sm:p-3 whitespace-nowrap">
                                       {q.type === "trac_nghiem" ? (
                                         <div className="inline-flex gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                                           {[1, 2, 4].map((c) => (
@@ -1064,12 +1207,12 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                                       onClick={() =>
                                         handleStartEditQuestion(q)
                                       }
-                                      className="p-3 text-slate-500 truncate max-w-[130px] cursor-pointer hover:text-slate-805 transition-colors font-medium"
+                                      className="p-2.5 sm:p-3 text-slate-500 truncate max-w-[65px] sm:max-w-[85px] md:max-w-[105px] cursor-pointer hover:text-slate-805 transition-colors font-medium"
                                       title="Bấm để chỉnh sửa câu hỏi này"
                                     >
                                       {getCleanQuestionBody(q.questionText)}
                                     </td>
-                                    <td className="p-3 text-center">
+                                    <td className="p-2.5 sm:p-3 text-center whitespace-nowrap">
                                       <div className="inline-flex items-center gap-1.5">
                                         <button
                                           type="button"
@@ -1136,7 +1279,11 @@ export const QBuilder: React.FC<QBuilderProps> = ({
           </div>
 
           {/* Panel 2: EXPORT PREVIEW (Phải) */}
-          <div id="tour-qbuilder-export-panel" className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col min-h-[450px] flex-1 ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
+          <div 
+            id="tour-qbuilder-export-panel" 
+            style={leftPanelHeight ? ({ "--left-panel-h": `${leftPanelHeight}px` } as React.CSSProperties) : undefined}
+            className={`bg-white/50 rounded-2xl border border-white/50 shadow-sm overflow-hidden flex flex-col w-full flex-1 lg:h-[var(--left-panel-h)] lg:max-h-[var(--left-panel-h)] ${mobileView === "preview" ? "flex h-auto" : "hidden lg:flex"}`}
+          >
               {/* Actions Area */}
               <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col gap-4 select-none">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -1255,7 +1402,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
               {/* Document preview container */}
               <div 
-                className="p-2 md:p-4 flex-1 overflow-y-auto min-h-0 bg-white/30 border-b border-slate-150 select-none flex flex-col items-center"
+                className="p-2 md:p-4 flex-1 overflow-y-auto overscroll-contain min-h-0 bg-white/30 border-b border-slate-150 select-none flex flex-col items-center"
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
               >
@@ -1621,25 +1768,12 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       )}
                     </div>
 
-                    {/* Paper footer mark */}
-                    <div className="doc-footer text-center pt-6 border-t border-slate-200 select-none">
-                      <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">
-                        --- HẾT ---
-                      </p>
-                    </div>
+
                   </div>
                 )}
               </div>
 
-              {/* Guide tip inside preview tab */}
-              <div className="px-4 py-3 bg-white/40 flex items-center gap-2.5 select-none">
-                <span className="p-1 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
-                  <HelpCircle className="w-4 h-4" />
-                </span>
-                <p className="text-[11px] text-slate-600 font-semibold leading-relaxed">
-                  Xuất Word (.docx) với công thức Equation chỉnh sửa được. Nếu dán công thức bị sai trên máy của bạn, hãy mở file .docx rồi sao chép từ Word sang Word.
-                </p>
-              </div>
+
             </div>
           </div>
         </div>

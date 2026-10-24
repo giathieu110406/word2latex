@@ -3,116 +3,44 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseFile, parseUrl } from "../markitdown.js";
 import { verifyAuthAndApproval } from '../server/auth-guard.js';
 import { normalizeMarkdownMath } from '../src/utils/markdown-math.js';
+import { loadGenAISDK, generateContentWithRetry } from '../server/gemini-client.js';
 
-// Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
-let GoogleGenAISDK: any = null;
-let aiClient: any = null;
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  doc: "application/msword",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ppt: "application/vnd.ms-powerpoint",
+  odt: "application/vnd.oasis.opendocument.text",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  odp: "application/vnd.oasis.opendocument.presentation",
+  rtf: "application/rtf",
+  epub: "application/epub+zip",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  svg: "image/svg+xml",
+  mp3: "audio/mp3",
+  wav: "audio/wav",
+  mp4: "video/mp4",
+  txt: "text/plain",
+  md: "text/markdown",
+  csv: "text/csv",
+  json: "application/json",
+  xml: "application/xml",
+  html: "text/html",
+};
 
-async function loadGenAISDK() {
-  if (!GoogleGenAISDK) {
-    const sdk = await import('@google/genai');
-    GoogleGenAISDK = sdk.GoogleGenAI;
+function resolveSafeMimeType(filename: string, incomingMime?: string): string {
+  if (incomingMime && incomingMime !== "application/octet-stream" && incomingMime.includes("/")) {
+    return incomingMime;
   }
-}
-
-function cleanApiKey(key: string | undefined): string {
-  if (!key) return "";
-  let cleaned = key.trim();
-  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
-    cleaned = cleaned.slice(1, -1).trim();
-  }
-  return cleaned;
-}
-
-function getAiClient(): any {
-  const primaryKey = cleanApiKey(process.env.GEMINI_API_KEY);
-
-  if (!primaryKey) {
-    throw new Error("Không thể kết nối đến Trợ lý AI. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
-  }
-
-  if (!aiClient) {
-    aiClient = new GoogleGenAISDK({
-      apiKey: primaryKey,
-    });
-  }
-  return aiClient;
-}
-
-async function generateContentWithRetry(params: any, retries = 2, delay = 1000, overrideModelsToTry?: string[]) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("Không thể kết nối đến Trợ lý AI. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
-  }
-
-  let lastError: any = null;
-  let firstImportantError: any = null;
-  
-  // Chuỗi fallback: Đặt 3.5-flash-lite lên đầu để phản hồi siêu tốc (<1.5s), 3.8-flash, và 2.5-flash cực kỳ ổn định
-  const modelsToTry = overrideModelsToTry || [
-    params.model || "gemini-3.5-flash-lite",
-    "gemini-3.5-flash-lite",
-    "gemini-3.8-flash",
-    "gemini-2.5-flash"
-  ].filter((value, index, self) => self.indexOf(value) === index && value);
-  
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    for (const model of modelsToTry) {
-      try {
-        console.log(`[Gemini API] Đang gửi yêu cầu bằng model: ${model} (Lần thử ${attempt}/${retries})`);
-        const aiInstance = getAiClient();
-
-        const response: any = await aiInstance.models.generateContent({
-          ...params,
-          model: model
-        });
-        
-        // Đảm bảo kết quả trả về có chứa nội dung văn bản
-        const extracted = response?.text 
-          || response?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || "").join("")
-          || "";
-
-        if (extracted && extracted.trim().length > 0) {
-          return { ...response, text: extracted };
-        } else {
-          console.warn(`[Gemini API] Model ${model} trả về nội dung rỗng, chuyển model tiếp theo...`);
-        }
-      } catch (error: any) {
-        lastError = error;
-        if (!firstImportantError && error.status !== 404) {
-          firstImportantError = error;
-        }
-        console.warn(`[Gemini API] Model ${model} gặp lỗi (${error.status || error.message || error}), đang đổi sang model tiếp theo...`);
-        
-        if (
-          error.message?.includes("API_KEY_INVALID") ||
-          error.message?.includes("cấu hình GEMINI_API_KEY") ||
-          error.status === 403 ||
-          error.status === 401
-        ) {
-          break; 
-        }
-        
-        // Với mọi lỗi khác (429, 503, 500, overload, v.v.), lập tức chuyển model tiếp theo trong chuỗi fallback
-        continue;
-      }
-    }
-    
-    if (attempt < retries) {
-      const waitTime = delay * Math.pow(2, attempt - 1);
-      console.log(`[Gemini API] Tất cả các model đều gặp sự cố ở lần thử ${attempt}. Đang chờ ${waitTime}ms trước khi thử lại...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-  }
-  
-  let finalError = firstImportantError || lastError || new Error("Tất cả các model đều thất bại sau nhiều lần thử.");
-  if (finalError.status === 429 || (finalError.message && (finalError.message.includes("quota") || finalError.message.includes("Quota")))) {
-    finalError.message = "Đã hết hạn mức sử dụng API Gemini (Quota Exceeded) hoặc API Key không hỗ trợ gói miễn phí. Vui lòng kiểm tra lại tài khoản Google AI Studio của bạn.";
-  } else if (finalError.status === 404 || (finalError.message && finalError.message.includes("not found"))) {
-    finalError.message = "Model AI không được hỗ trợ bởi API Key này (404 Not Found). Vui lòng kiểm tra lại cấu hình.";
-  } else if (finalError.status === 503 || (finalError.message && (finalError.message.includes("high demand") || finalError.message.includes("overloaded") || finalError.message.includes("UNAVAILABLE")))) {
-    finalError.message = "Hệ thống AI đang quá tải (503). Vui lòng thử lại sau ít phút.";
-  }
-  throw finalError;
+  const ext = (filename || "").split(".").pop()?.toLowerCase() || "";
+  return MIME_BY_EXT[ext] || incomingMime || "application/octet-stream";
 }
 
 async function handler(req: VercelRequest, res: VercelResponse) {
@@ -166,7 +94,8 @@ async function handler(req: VercelRequest, res: VercelResponse) {
         return res.json({ success: true, markdown: rawText });
       }
     } else if (type === "file" && base64Data) {
-      const extracted = await parseFile(base64Data, mimeType || "", resolvedFileName, conversionMode);
+      const safeMime = resolveSafeMimeType(resolvedFileName, mimeType);
+      const extracted = await parseFile(base64Data, safeMime, resolvedFileName, conversionMode);
       
       // CHẾ ĐỘ SIÊU TỐC (FAST MODE)
       if (conversionMode === "fast") {
@@ -174,9 +103,9 @@ async function handler(req: VercelRequest, res: VercelResponse) {
           // Trả về ngay lập tức, 0 AI token, phản hồi tức thì
           return res.json({ success: true, markdown: extracted });
         } else {
-          // Trường hợp tệp hình ảnh hoặc PDF scan không có text layer
+          // Trường hợp tệp hình ảnh, âm thanh, video hoặc PDF scan cần AI
           return res.status(400).json({ 
-            error: "Không thể trích xuất văn bản ở chế độ Siêu tốc (file hình ảnh hoặc PDF scan cần nhận diện OCR). Vui lòng chuyển sang chế độ 'AI Math Polish' để xử lý." 
+            error: "Không thể trích xuất văn bản ở chế độ Siêu tốc (tệp đa phương tiện hoặc PDF scan cần AI nhận diện). Vui lòng chuyển sang chế độ 'AI Math Polish' để xử lý." 
           });
         }
       }
@@ -187,7 +116,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       } else {
         inlineParts = [{
           inlineData: {
-            mimeType: mimeType || 'application/octet-stream',
+            mimeType: safeMime,
             data: base64Data
           }
         }];
@@ -202,7 +131,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     const contents: any = {
       parts: [
         { 
-          text: `Chuyển đổi toàn bộ nội dung tài liệu này thành định dạng Markdown chuẩn xác cao. Giữ nguyên toàn bộ cấu trúc tiêu đề, bảng biểu biểu đồ, công thức toán học/hóa học, danh sách và trật tự logic.
+          text: `Chuyển đổi toàn bộ nội dung tài liệu, hình ảnh, âm thanh hoặc video này thành định dạng Markdown chuẩn xác cao. Nếu là tệp âm thanh hoặc video, hãy lắng nghe và chép lại đầy đủ nội dung lời thoại cùng cấu trúc đề mục. Giữ nguyên toàn bộ cấu trúc tiêu đề, bảng biểu, công thức toán học/hóa học, danh sách và trật tự logic.
 
 QUY TẮC CÔNG THỨC TOÁN (LATEX):
 - Công thức nội dòng (inline): dùng $...$ (ví dụ: $x_1 \\ge 0$).

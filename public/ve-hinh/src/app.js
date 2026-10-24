@@ -4,7 +4,6 @@ import {exprToLatex,compileExpressionP,detectExpressionType,normalizeToLHS} from
 import {renderSVG,graphSVG,chartSVG,solidSVG,solidNames,escape,exportSVG,screen3D,distToSegment,renderSnapOverlay} from './render.js';
 import {templateLibrary,applyLibraryTemplate} from './library.js';
 import {requestProposal} from './ai.js';
-import {buildCodexPrompt,parseCodexDraft} from './codex-bridge.js';
 import {exportTikZ} from './tikz.js';
 
 export const tools3D = [

@@ -72,25 +72,9 @@ export async function parseFile(
   const lowerName = (filename || '').toLowerCase();
   const lowerMime = (mimeType || '').toLowerCase();
 
-  // 1. Xử lý trực tiếp plain text và markdown (AnyDoc không nhận format 'txt')
-  if (
-    lowerMime.startsWith('text/plain') || 
-    lowerMime.startsWith('text/markdown') || 
-    lowerName.endsWith('.txt') || 
-    lowerName.endsWith('.md')
-  ) {
-    try {
-      const text = buffer.toString('utf-8').trim();
-      return text.length > 0 ? text : null;
-    } catch {
-      return null;
-    }
-  }
-
-  // 2. Nhận diện định dạng cho AnyDoc
+  // 1. Ưu tiên nhận diện định dạng tài liệu có cấu trúc cho AnyDoc (Word, Excel, PPT, PDF, CSV, RTF, EPUB...)
   const detectedFormat = detectDocumentFormat(buffer, lowerMime, lowerName);
 
-  // 3. Ưu tiên phân tích bằng AnyDoc nếu định dạng được hỗ trợ
   if (detectedFormat) {
     try {
       const markdown = await toMarkdownBytes(buffer, detectedFormat);
@@ -98,7 +82,6 @@ export async function parseFile(
         return markdown.trim();
       }
     } catch (anydocError: any) {
-      // Nếu PDF scan cần OCR, trả về null để Gemini Vision xử lý ở chế độ AI
       if (anydocError?.code === 'needsOcr') {
         console.warn(`[AnyDoc] File PDF '${filename}' có trang dạng ảnh cần OCR (needsOcr).`);
         return null;
@@ -107,30 +90,32 @@ export async function parseFile(
     }
   }
 
-  // 4. Cơ chế Fallback Dự phòng
-  try {
-    // 4.1. Fallback về Mammoth cho Word (.docx, .doc)
-    if (
-      lowerMime.includes('wordprocessingml') || 
-      lowerMime.includes('msword') || 
-      lowerName.endsWith('.docx') || 
-      lowerName.endsWith('.doc')
-    ) {
+  // 2. Cơ chế Fallback Dự phòng cho Word (.docx, .doc)
+  if (
+    lowerMime.includes('wordprocessingml') || 
+    lowerMime.includes('msword') || 
+    lowerName.endsWith('.docx') || 
+    lowerName.endsWith('.doc')
+  ) {
+    try {
       const mammothResult = await mammoth.extractRawText({ buffer });
       if (mammothResult?.value && mammothResult.value.trim().length > 0) {
         return mammothResult.value.trim();
       }
+    } catch (fallbackError) {
+      console.error(`[Fallback] Lỗi xử lý mammoth trên file '${filename}':`, fallbackError);
     }
+  }
 
-    // 4.2. Fallback về XLSX cho Bảng tính (.xlsx, .xls, .csv)
-    if (
-      lowerMime.includes('spreadsheetml') || 
-      lowerMime.includes('excel') || 
-      lowerMime.includes('csv') ||
-      lowerName.endsWith('.xlsx') || 
-      lowerName.endsWith('.xls') || 
-      lowerName.endsWith('.csv')
-    ) {
+  // 3. Cơ chế Fallback Dự phòng cho Bảng tính (.xlsx, .xls, .csv)
+  if (
+    lowerMime.includes('spreadsheetml') || 
+    lowerMime.includes('excel') || 
+    lowerName.endsWith('.xlsx') || 
+    lowerName.endsWith('.xls') || 
+    lowerName.endsWith('.csv')
+  ) {
+    try {
       const workbook = xlsx.read(buffer, { type: 'buffer' });
       let text = '';
       workbook.SheetNames.forEach(sheetName => {
@@ -141,12 +126,69 @@ export async function parseFile(
       if (text.trim().length > 0) {
         return text.trim();
       }
+    } catch (fallbackError) {
+      console.error(`[Fallback] Lỗi xử lý xlsx trên file '${filename}':`, fallbackError);
     }
-  } catch (fallbackError) {
-    console.error(`[Fallback] Lỗi xử lý fallback trên file '${filename}':`, fallbackError);
   }
 
-  // Trả về null cho PDF scan hoặc các định dạng hình ảnh/audio/video để Gemini Multimodal xử lý
+  // 4. Xử lý trực tiếp plain text, markdown, mã nguồn và dữ liệu văn bản thuần túy (loại trừ các file Office)
+  const isOfficeFile = 
+    lowerMime.includes('openxmlformats') || 
+    lowerMime.includes('msword') || 
+    lowerMime.includes('ms-excel') || 
+    lowerMime.includes('ms-powerpoint') ||
+    lowerName.endsWith('.docx') ||
+    lowerName.endsWith('.xlsx') ||
+    lowerName.endsWith('.pptx') ||
+    lowerName.endsWith('.doc') ||
+    lowerName.endsWith('.xls') ||
+    lowerName.endsWith('.ppt');
+
+  if (!isOfficeFile) {
+    const textExtensions = [
+      '.txt', '.md', '.markdown', '.tex', '.latex', 
+      '.json', '.xml', '.yaml', '.yml', '.toml',
+      '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs',
+      '.py', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.php', '.rb', '.swift', '.kt',
+      '.sql', '.sh', '.bash', '.zsh', '.ps1', '.bat', '.cmd',
+      '.html', '.htm', '.css', '.scss', '.sass', '.less',
+      '.log', '.ini', '.cfg', '.conf', '.env', '.tsv'
+    ];
+
+    const isTextExtension = textExtensions.some(ext => lowerName.endsWith(ext));
+    const isTextMime = 
+      lowerMime.startsWith('text/') || 
+      lowerMime === 'application/json' || 
+      lowerMime === 'application/xml' || 
+      lowerMime === 'text/xml' || 
+      lowerMime.includes('yaml') || 
+      lowerMime === 'application/javascript';
+
+    if (
+      isTextExtension || 
+      isTextMime || 
+      lowerMime.startsWith('text/plain') || 
+      lowerMime.startsWith('text/markdown') || 
+      lowerName.endsWith('.txt') || 
+      lowerName.endsWith('.md')
+    ) {
+      try {
+        // Chặn tuyệt đối file ZIP/Office binary (PK\x03\x04) hoặc file nhị phân có null-byte bị đọc nhầm thành UTF-8 text
+        if (
+          (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04) ||
+          buffer.subarray(0, Math.min(buffer.length, 512)).includes(0)
+        ) {
+          return null;
+        }
+        const text = buffer.toString('utf-8').trim();
+        return text.length > 0 ? text : null;
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  // 5. Trả về null cho PDF scan hoặc các định dạng hình ảnh/audio/video để Gemini Multimodal xử lý
   return null;
 }
 

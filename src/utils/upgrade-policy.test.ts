@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-const implementation = await import('./upgrade-policy.ts').catch(() => null);
+const implementation = await import('../../shared/subscription-policy.ts').catch(() => null);
 assert.ok(implementation, 'upgrade visibility policy must exist');
 const { getUpgradeVisibility } = implementation;
 assert.deepEqual(getUpgradeVisibility('free'), { sidebar: true, main: true });

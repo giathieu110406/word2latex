@@ -1,7 +1,7 @@
 
 import { authFetch } from "../utils/api-client";
-import React, { useState, useRef } from "react";
-import { Sparkles, ArrowRight, Loader2, Paperclip, Code2, Eye } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { Sparkles, ArrowRight, Loader2, Paperclip, Code2, Eye, ChevronDown, Check, Type } from "lucide-react";
 
 interface LatexConverterProps {
   wordFont: string;
@@ -62,38 +62,239 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
 }) => {
   const [isExtractingText, setIsExtractingText] = useState<boolean>(false);
   const [mobileView, setMobileView] = useState<"edit" | "preview">("edit");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isFontDropdownOpen, setIsFontDropdownOpen] = useState<boolean>(false);
+  const fontDropdownRef = useRef<HTMLDivElement>(null);
 
-  const extractTextFromImage = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      triggerToast("Vui lòng chọn hoặc dán file hình ảnh!", false);
+  // Close font dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (fontDropdownRef.current && !fontDropdownRef.current.contains(e.target as Node)) {
+        setIsFontDropdownOpen(false);
+      }
+    };
+    if (isFontDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isFontDropdownOpen]);
+
+  const fontOptions = [
+    {
+      value: "'Times New Roman', Times, serif",
+      label: "Times New Roman (Chuẩn Quốc gia)",
+      shortLabel: "Times New Roman",
+      fontFamily: "'Times New Roman', Times, serif",
+    },
+    {
+      value: "'Inter', 'Segoe UI', Arial, sans-serif",
+      label: "Inter (Phông mặc định Gemini)",
+      shortLabel: "Inter",
+      fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
+    },
+    {
+      value: "'Arial', sans-serif",
+      label: "Arial",
+      shortLabel: "Arial",
+      fontFamily: "'Arial', sans-serif",
+    },
+    {
+      value: "'Calibri', sans-serif",
+      label: "Calibri",
+      shortLabel: "Calibri",
+      fontFamily: "'Calibri', sans-serif",
+    },
+  ];
+
+  const currentFontOption = fontOptions.find(f => f.value === wordFont) || fontOptions[0];
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isSyncingScroll = useRef<boolean>(false);
+  const lastSyncSource = useRef<'left' | 'right' | null>(null);
+
+  // Synchronized scrolling between textarea and preview panel
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    const preview = previewRef.current;
+    if (!textarea || !preview) return;
+
+    let timeoutId: any = null;
+
+    const handleLeftScroll = () => {
+      if (isSyncingScroll.current && lastSyncSource.current === 'right') return;
+      isSyncingScroll.current = true;
+      lastSyncSource.current = 'left';
+      clearTimeout(timeoutId);
+
+      const maxScrollLeft = textarea.scrollHeight - textarea.clientHeight;
+      const ratio = maxScrollLeft > 0 ? textarea.scrollTop / maxScrollLeft : 0;
+      const maxScrollRight = preview.scrollHeight - preview.clientHeight;
+      preview.scrollTop = ratio * maxScrollRight;
+
+      timeoutId = setTimeout(() => {
+        isSyncingScroll.current = false;
+        lastSyncSource.current = null;
+      }, 50);
+    };
+
+    const handleRightScroll = () => {
+      if (isSyncingScroll.current && lastSyncSource.current === 'left') return;
+      isSyncingScroll.current = true;
+      lastSyncSource.current = 'right';
+      clearTimeout(timeoutId);
+
+      const maxScrollRight = preview.scrollHeight - preview.clientHeight;
+      const ratio = maxScrollRight > 0 ? preview.scrollTop / maxScrollRight : 0;
+      const maxScrollLeft = textarea.scrollHeight - textarea.clientHeight;
+      textarea.scrollTop = ratio * maxScrollLeft;
+
+      timeoutId = setTimeout(() => {
+        isSyncingScroll.current = false;
+        lastSyncSource.current = null;
+      }, 50);
+    };
+
+    textarea.addEventListener('scroll', handleLeftScroll, { passive: true });
+    preview.addEventListener('scroll', handleRightScroll, { passive: true });
+
+    return () => {
+      textarea.removeEventListener('scroll', handleLeftScroll);
+      preview.removeEventListener('scroll', handleRightScroll);
+      clearTimeout(timeoutId);
+    };
+  }, [textareaRef, previewRef, activeTab]);
+
+  // Synchronized text selection from left (input) to right (preview)
+  const syncSelectionToPreview = () => {
+    const textarea = textareaRef.current;
+    const preview = previewRef.current;
+    if (!textarea || !preview || activeTab !== 'word') return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selection = window.getSelection();
+
+    if (start === end || !selection) {
+      if (selection && selection.rangeCount > 0) {
+        for (let i = 0; i < selection.rangeCount; i++) {
+          const range = selection.getRangeAt(i);
+          if (preview.contains(range.commonAncestorContainer)) {
+            selection.removeAllRanges();
+            break;
+          }
+        }
+      }
       return;
     }
-    
+
+    const selectedRawText = textarea.value.substring(start, end).trim();
+    if (!selectedRawText) return;
+
+    const searchTarget = selectedRawText
+      .replace(/\\[a-zA-Z]+/g, '')
+      .replace(/[\$\^\_\{\}\\]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const textToFind = searchTarget.length >= 2 ? searchTarget : selectedRawText;
+
+    try {
+      const walker = document.createTreeWalker(
+        preview,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+
+      let node: Node | null;
+      let matchedNode: Node | null = null;
+      let matchOffset = -1;
+
+      while ((node = walker.nextNode())) {
+        const textContent = node.nodeValue || '';
+        const idx = textContent.toLowerCase().indexOf(textToFind.toLowerCase());
+        if (idx !== -1) {
+          matchedNode = node;
+          matchOffset = idx;
+          break;
+        }
+      }
+
+      if (!matchedNode && textToFind.length > 5) {
+        const partial = textToFind.substring(0, Math.min(textToFind.length, 15)).trim();
+        const walkerPartial = document.createTreeWalker(preview, NodeFilter.SHOW_TEXT, null);
+        while ((node = walkerPartial.nextNode())) {
+          const textContent = node.nodeValue || '';
+          const idx = textContent.toLowerCase().indexOf(partial.toLowerCase());
+          if (idx !== -1) {
+            matchedNode = node;
+            matchOffset = idx;
+            break;
+          }
+        }
+      }
+
+      if (matchedNode) {
+        const range = document.createRange();
+        const matchedLen = Math.min(
+          textToFind.length,
+          (matchedNode.nodeValue?.length || 0) - matchOffset
+        );
+        range.setStart(matchedNode, matchOffset);
+        range.setEnd(matchedNode, matchOffset + Math.max(1, matchedLen));
+
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    } catch (err) {
+      // Ignore DOM selection calculation errors
+    }
+  };
+
+  const extractDocumentFile = async (file: File) => {
     setIsExtractingText(true);
-    triggerToast("Đang trích xuất văn bản từ hình ảnh...", true);
+    triggerToast(`Đang trích xuất văn bản từ tệp "${file.name}"...`, true);
 
     const reader = new FileReader();
     reader.onloadend = async () => {
-      const base64Image = (reader.result as string).split(',')[1];
+      const base64Data = (reader.result as string).split(',')[1];
       try {
-        const res = await authFetch("/api/ai?action=extract-text", {
+        // Ưu tiên chạy ngầm bằng tính năng AnyDoc (fast - không AI) của Markitdown
+        let res = await authFetch("/api/markitdown", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: base64Image, mimeType: file.type }),
+          body: JSON.stringify({
+            type: "file",
+            fileData: base64Data,
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            mode: "fast",
+          }),
         });
-        
-        if (!res.ok) {
-          throw new Error("Lỗi máy chủ khi trích xuất");
+
+        let data = await res.json();
+
+        // Nếu chế độ fast không thể xử lý (ví dụ: ảnh hoặc file scan cần AI nhận diện), tự động fallback sang chế độ AI Math
+        if (!res.ok || !data.success) {
+          res = await authFetch("/api/markitdown", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "file",
+              fileData: base64Data,
+              fileName: file.name,
+              mimeType: file.type || "application/octet-stream",
+              mode: "ai",
+            }),
+          });
+          data = await res.json();
         }
 
-        const data = await res.json();
-        if (data.success && data.text) {
-
-          setAiCanvasPrompt(aiCanvasPrompt + (aiCanvasPrompt ? "\n" : "") + data.text);
-          triggerToast("Trích xuất văn bản thành công!", true);
+        const extractedText = data.markdown || data.text;
+        if (data.success && extractedText) {
+          setInputText((prev) => (prev.trim() ? prev + "\n\n" + extractedText : extractedText));
+          triggerToast("Trích xuất văn bản Markdown thành công!", true);
         } else {
-          triggerToast(data.error || "Không thể trích xuất văn bản từ hình ảnh này", false);
+          triggerToast(data.error || "Không thể trích xuất văn bản từ tệp này", false);
         }
       } catch (err: any) {
         console.error("Lỗi trích xuất văn bản:", err);
@@ -103,7 +304,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
       }
     };
     reader.onerror = () => {
-      triggerToast("Không thể đọc file hình ảnh!", false);
+      triggerToast("Không thể đọc tệp tin!", false);
       setIsExtractingText(false);
     };
     reader.readAsDataURL(file);
@@ -112,7 +313,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      await extractTextFromImage(file);
+      await extractDocumentFile(file);
     }
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -135,7 +336,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
         if (items[i].type.startsWith('image/')) {
           const file = items[i].getAsFile();
           if (file) {
-            await extractTextFromImage(file);
+            await extractDocumentFile(file);
           }
         }
       }
@@ -158,7 +359,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
         if (items[i].type.startsWith('image/')) {
           const file = items[i].getAsFile();
           if (file) {
-            await extractTextFromImage(file);
+            await extractDocumentFile(file);
           }
         }
       }
@@ -168,9 +369,9 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
   };
 
   return (
-    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-0 md:h-[calc(100vh-110px)] md:max-h-[calc(100vh-110px)]">
+    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col w-full h-[calc(100dvh-58px)] max-h-[calc(100dvh-58px)] min-h-[calc(100dvh-58px)] shrink-0">
       {/* Top Control Settings Panel */}
-      <div id="tour-latex-font-controls" className="bg-white px-4 py-4 md:px-6 md:py-5 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 select-none">
+      <div id="tour-latex-font-controls" className="bg-white px-4 py-2 sm:py-2.5 md:px-5 md:py-2.5 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-4 select-none">
         <div className="flex items-center justify-between gap-3 md:gap-4 w-full sm:w-auto flex-1">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-indigo-50 rounded-xl border border-indigo-100/50">
@@ -236,42 +437,83 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
           </div>
         </div>
 
-        {/* Font selector */}
-        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end min-w-0">
+        {/* Custom Font Dropdown */}
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end min-w-0 relative">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
             <span className="hidden xs:inline">Phông chữ Word:</span>
             <span className="xs:hidden">Phông:</span>
           </span>
-          <div className="relative min-w-0 flex-1 sm:flex-none max-w-[210px] xs:max-w-[260px] sm:max-w-none">
-            <select
-              value={wordFont}
-              onChange={(e) => setWordFont(e.target.value)}
-              className="w-full appearance-none bg-white/40 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 py-2 pl-3 pr-8 cursor-pointer outline-none transition-all shadow-3xs truncate"
+          <div ref={fontDropdownRef} className="relative min-w-0 flex-1 sm:flex-none w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsFontDropdownOpen(prev => !prev)}
+              className="w-full sm:w-[260px] flex items-center justify-between gap-2 bg-white hover:bg-slate-50/80 border border-slate-200/90 hover:border-indigo-300 text-slate-800 text-xs font-bold rounded-xl py-2 px-3 shadow-3xs hover:shadow-xs transition-all cursor-pointer group"
+              title="Chọn phông chữ hiển thị khi xuất sang Word"
             >
-              <option value="'Times New Roman', Times, serif">
-                Times New Roman (Chuẩn Quốc gia)
-              </option>
-              <option value="'Inter', 'Segoe UI', Arial, sans-serif">
-                Inter (Phông mặc định Gemini)
-              </option>
-              <option value="'Arial', sans-serif">
-                Arial
-              </option>
-              <option value="'Calibri', sans-serif">
-                Calibri
-              </option>
-            </select>
-            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+              <div className="flex items-center gap-2 truncate min-w-0">
+                <Type className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                <span className="truncate" style={{ fontFamily: currentFontOption.fontFamily }}>
+                  {currentFontOption.label}
+                </span>
+              </div>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 shrink-0 transition-transform duration-200 ${
+                  isFontDropdownOpen ? "rotate-180 text-indigo-600" : ""
+                }`}
+              />
+            </button>
+
+            {/* Dropdown Menu Popover */}
+            {isFontDropdownOpen && (
+              <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-full sm:w-[280px] bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-2xl shadow-xl shadow-slate-900/10 p-1.5 animate-fade-in select-none">
+                <div className="px-2.5 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">
+                  Chọn phông xuất Word
+                </div>
+                <div className="flex flex-col gap-1">
+                  {fontOptions.map((opt) => {
+                    const isSelected = opt.value === wordFont;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setWordFont(opt.value);
+                          setIsFontDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer text-left ${
+                          isSelected
+                            ? "bg-indigo-50 text-indigo-700 font-bold border border-indigo-150 shadow-3xs"
+                            : "text-slate-700 hover:bg-slate-100/80 hover:text-slate-900 border border-transparent"
+                        }`}
+                      >
+                        <div className="flex flex-col min-w-0 pr-2">
+                          <span
+                            className="text-xs truncate font-medium"
+                            style={{ fontFamily: opt.fontFamily }}
+                          >
+                            {opt.label}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            Mẫu chữ: Aa Bb Cc 123
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <div className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Workspace with inner padding and subtle background */}
-      <div className="p-2 sm:p-4 md:p-6 bg-white/30 flex-1 flex flex-col min-h-0">
+      <div className="p-1.5 sm:p-2.5 md:p-3 bg-white/30 flex-1 flex flex-col min-h-0">
         {/* Mobile View Selector */}
         <div className="lg:hidden flex bg-slate-100/90 p-1.5 rounded-2xl mb-3 shrink-0 select-none border border-slate-200/60 shadow-xs">
           <button
@@ -307,8 +549,8 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 flex-1 min-h-0 p-0 sm:p-2 lg:p-0">
           {/* Left panel: Input Area */}
-          <div id="tour-latex-input-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[380px] sm:min-h-[500px] flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
-            <div className="bg-white/40 px-3.5 py-2.5 md:px-5 md:py-3.5 border-b border-slate-200/80 flex items-center justify-between gap-2 select-none">
+          <div id="tour-latex-input-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden h-full max-h-full min-h-0 flex-1 w-full transition-all ${mobileView === "edit" ? "flex" : "hidden lg:flex"}`}>
+            <div className="bg-white/40 px-4 py-3 md:px-5 md:py-3.5 border-b border-slate-200/80 flex items-center justify-between gap-2 select-none min-h-[58px] sm:min-h-[62px]">
               <div className="flex items-center gap-2 shrink-0 min-w-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
                 <span className="text-xs md:text-sm font-bold text-slate-800 whitespace-nowrap truncate">
@@ -368,45 +610,34 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
               </div>
             )}
 
-            <textarea
-              ref={textareaRef}
-              id="input-text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onPaste={handleMainTextAreaPaste}
-              disabled={isProcessingCanvas}
-              className={`flex-1 min-h-0 w-full p-3.5 sm:p-4 md:p-5 resize-none overflow-y-auto border-0 focus:ring-0 focus:outline-none text-slate-800 leading-relaxed text-sm md:text-base font-normal placeholder:text-slate-400 bg-white ${isProcessingCanvas ? "opacity-50 cursor-not-allowed" : "opacity-100"} transition-opacity duration-300`}
-              placeholder="Nhập hoặc sao chép nội dung chứa công thức toán ($x^2$ hoặc $$y = mx+b$$) từ AI hay tài liệu bất kỳ và dán vào đây để chuyển hóa..."
-            />
+            <div className="relative flex-1 min-h-0 flex flex-col">
+              <textarea
+                ref={textareaRef}
+                id="input-text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onPaste={handleMainTextAreaPaste}
+                disabled={isProcessingCanvas}
+                className={`flex-1 min-h-0 w-full p-3.5 sm:p-4 md:p-5 resize-none overflow-y-auto overscroll-contain border-0 focus:ring-0 focus:outline-none text-slate-800 leading-relaxed text-sm md:text-base font-normal bg-white ${isProcessingCanvas ? "opacity-50 cursor-not-allowed" : "opacity-100"} transition-opacity duration-300`}
+              />
+              {!inputText && (
+                <div 
+                  onClick={() => textareaRef.current?.focus()}
+                  className="absolute inset-0 p-3.5 sm:p-4 md:p-5 pointer-events-none select-none text-slate-400 flex flex-col justify-start"
+                >
+                  <p className="text-base sm:text-lg font-bold text-slate-400/90 leading-snug mb-2">
+                    Trích xuất văn bản từ tài liệu bằng cách ấn trợ lý AI và tải tệp lên.
+                  </p>
+                  <p className="text-xs sm:text-sm text-slate-400/70 font-normal leading-relaxed">
+                    Hoặc nhập / dán nội dung chứa công thức toán ($x^2$ hoặc $$y = mx+b$$) từ AI hay tài liệu bất kỳ vào đây để chuyển hóa sang Word...
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* AI Canvas Panel */}
             {showAiCanvas && (
-              <div className="border-t border-slate-100 bg-slate-50/80 backdrop-blur-sm p-3.5 sm:p-4 pb-6 md:pb-4 shrink-0 flex flex-col gap-2.5 animate-fade-in overflow-y-auto max-h-[50%] z-10 shadow-[0_-10px_20px_rgba(0,0,0,0.02)] relative">
-                <div className="flex items-center gap-1.5 text-indigo-950 font-bold text-xs md:text-sm select-none">
-                  <Sparkles className="h-4 w-4 text-indigo-500 animate-pulse" />
-                  <span>Trợ lý AI Canvas</span>
-                </div>
-                
-                {/* Preset quick action tags - horizontally scrollable on mobile */}
-                <div className="flex overflow-x-auto no-scrollbar sm:flex-wrap gap-1.5 select-none pb-1 -mx-1 px-1">
-                  {[
-                    { label: "Dịch sang tiếng Anh", prompt: "Dịch toàn bộ văn bản sang tiếng Anh, giữ nguyên các công thức LaTeX dạng $...$ hoặc $$...$$." },
-                    { label: "Thêm lời giải chi tiết", prompt: "Hãy bổ sung lời giải thích chi tiết từng bước cho các công thức, các bài tập trong văn bản này." },
-                    { label: "In đậm từ khóa", prompt: "Hãy tìm các thuật ngữ chuyên ngành, định lý, định luật hoặc từ khóa chính trong văn bản và in đậm chúng bằng dấu **." },
-                    { label: "Tạo câu hỏi tương tự", prompt: "Dựa trên nội dung hiện tại, hãy tạo thêm một câu hỏi toán học/bài tập tương tự đi kèm đáp án và lời giải chi tiết." }
-                  ].map((tag) => (
-                    <button
-                      key={tag.label}
-                      type="button"
-                      onClick={() => handleCallAiCanvas(tag.prompt)}
-                      disabled={isProcessingCanvas}
-                      className="text-[11px] font-bold text-slate-600 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-750 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap shadow-3xs hover:shadow-2xs active:scale-95 disabled:opacity-50 shrink-0"
-                    >
-                      {tag.label}
-                    </button>
-                  ))}
-                </div>
-
+              <div className="border-t border-slate-100 bg-slate-50/80 backdrop-blur-sm p-3 sm:p-3.5 shrink-0 animate-fade-in z-10 shadow-[0_-10px_20px_rgba(0,0,0,0.02)] relative">
                 {/* Prompt Input Box */}
                 <form
                   onSubmit={(e) => {
@@ -421,17 +652,23 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                     onChange={(e) => setAiCanvasPrompt(e.target.value)}
                     onPaste={handlePaste}
                     disabled={isProcessingCanvas || isExtractingText}
-                    placeholder={isExtractingText ? "Đang trích xuất văn bản từ hình ảnh..." : "Yêu cầu AI chỉnh sửa văn bản này (vd: 'Tìm lỗi sai', 'Thêm ví dụ minh họa'...)"}
+                    placeholder={isExtractingText ? "Đang trích xuất văn bản từ tệp tin..." : "Yêu cầu AI chỉnh sửa văn bản này (vd: 'Tìm lỗi sai', 'Thêm ví dụ minh họa'...)"}
                     className="w-full pl-4 pr-24 py-2.5 text-xs md:text-sm bg-transparent outline-none border-none text-slate-800 placeholder:text-slate-400 focus:ring-0 focus:outline-none"
                   />
-                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.odt,.ods,.odp,.rtf,.epub,.txt,.md,.markdown,.csv,.json,.xml,.html,image/*" 
+                    onChange={handleFileChange} 
+                  />
                   <div className="absolute right-12 flex items-center gap-1">
                     <button 
                       type="button" 
                       disabled={isExtractingText || isProcessingCanvas}
                       onClick={() => fileInputRef.current?.click()} 
                       className="text-slate-400 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed p-1.5 flex items-center justify-center rounded-lg hover:bg-slate-50 transition-colors"
-                      title="Tải ảnh lên"
+                      title="Tải tệp hoặc hình ảnh lên để trích xuất Markdown"
                     >
                       {isExtractingText ? (
                         <span className="w-4 h-4 block border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
@@ -466,9 +703,9 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
           </div>
 
           {/* Right panel: Preview & Advanced Copy Area */}
-          <div id="tour-latex-preview-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden lg:h-full lg:max-h-full lg:min-h-0 min-h-[380px] sm:min-h-[500px] flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
+          <div id="tour-latex-preview-panel" className={`flex flex-col bg-white/50 rounded-2xl shadow-sm border border-white/50 overflow-hidden h-full max-h-full min-h-0 flex-1 w-full transition-all ${mobileView === "preview" ? "flex" : "hidden lg:flex"}`}>
             {/* Header with Switch output tabs */}
-            <div className="bg-white/40 px-4 py-3 md:px-5 md:py-4 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-4 select-none">
+            <div className="bg-white/40 px-4 py-3 md:px-5 md:py-3.5 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-3 sm:gap-4 select-none min-h-[58px] sm:min-h-[62px]">
               {/* Left Group: Tab selector with visual divider */}
               <div className="flex items-center gap-4 w-full sm:w-auto">
                 <div className="flex bg-slate-200/60 p-1 rounded-xl text-xs font-bold gap-1 w-full sm:w-auto flex-1 sm:flex-none">
@@ -499,7 +736,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
               </div>
 
               {/* Dynamic copy and download actions with responsive texts */}
-              <div className="flex flex-row flex-wrap items-center gap-1.5 sm:gap-2.5 w-full sm:w-auto justify-stretch sm:justify-end mt-2 sm:mt-0">
+              <div className="flex flex-row flex-wrap items-center gap-1.5 sm:gap-2.5 w-full sm:w-auto justify-stretch sm:justify-end">
                 {activeTab === "word" ? (
                   <>
                     <button
@@ -574,7 +811,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                 onDragStart={(e) => {
                   e.preventDefault();
                 }}
-                className={`preview-content flex-1 w-full p-5 md:p-6 overflow-auto leading-relaxed text-sm md:text-base text-slate-850 select-none bg-white rounded-b-2xl border-0 ${
+                className={`preview-content flex-1 w-full p-5 md:p-6 overflow-auto overscroll-contain leading-relaxed text-sm md:text-base text-slate-850 select-none bg-white rounded-b-2xl border-0 ${
                   activeTab === "word" ? "block" : "hidden"
                 }`}
                 dangerouslySetInnerHTML={{ __html: processedHtml }}

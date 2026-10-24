@@ -3,7 +3,7 @@ import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils
 import { authFetch } from "./utils/api-client";
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { HelpCircle, FileText, Check, X, Loader2, AlertTriangle, ShieldAlert, Sparkles, CheckCircle2, Bell, MessageSquare, Settings, Image, Trash2, ZoomIn, ArrowRight, Home, Users, Diamond, Search, Mail, Phone, Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserCog, User, Info, Save, Layout, Laptop, Wifi, Lock, Vote, BarChart3, MessageSquarePlus, PauseCircle, PlayCircle, BookOpen } from "lucide-react";
+import { HelpCircle, FileText, Check, X, Loader2, AlertTriangle, ShieldAlert, Sparkles, CheckCircle2, Bell, MessageSquare, Settings, Image, Trash2, ZoomIn, ArrowRight, Home, Users, Diamond, Search, Mail, Phone, Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserCog, User, Info, Save, Layout, Laptop, Wifi, Lock, Vote, BarChart3, MessageSquarePlus, PauseCircle, PlayCircle, BookOpen, ChevronsUpDown, LogOut, CreditCard, Clock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
 import { prepareWordEquations, buildWordClipboard, copyWordContent, downloadWordDocument } from "./utils/word-export";
@@ -20,11 +20,12 @@ import { EmailVerificationGate } from "./components/EmailVerificationGate";
 import { MandatoryPhoneGate } from "./components/MandatoryPhoneGate";
 import { hasPhoneConfirmation, isEmailOtpVerified } from "./utils/email-verification";
 import { normalizeVietnamPhone } from "../shared/phone-confirmation";
-import { getUpgradeVisibility } from "./utils/upgrade-policy";
-import { canRegisterPlan, getActivePlan } from "../shared/subscription-policy";
+import { canRegisterPlan, getActivePlan, getUpgradeVisibility } from "../shared/subscription-policy";
 import { getAiUsageDay } from "../shared/ai-usage-policy";
 import { PhoneConfirmationHistory } from "./components/PhoneConfirmationHistory";
 import { DrawingWorkspace } from "./components/DrawingWorkspace";
+import { UserPaymentHistoryModal } from "./components/UserPaymentHistoryModal";
+import { ImagePreviewModal } from "./components/modals/ImagePreviewModal";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -158,6 +159,23 @@ export default function App() {
   const [sidebarView, setSidebarView] = useState<string>("overview");
   const [drawingOpened, setDrawingOpened] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
+  const [isPaymentHistoryModalOpen, setIsPaymentHistoryModalOpen] = useState<boolean>(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    if (isUserMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isUserMenuOpen]);
 
   const handleSidebarNav = (view: string) => {
     const views: Record<string,string> = {overview:'Tổng quan',drawing:'Vẽ hình',analytics:'Phân tích',members:'Quản trị thành viên',payments:'Lịch sử thanh toán'};
@@ -166,6 +184,14 @@ export default function App() {
     setSidebarView(view);
     setIsMenuOpen(false);
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('view');
+    if (viewParam) {
+      setSidebarView(viewParam);
+    }
+  }, []);
 
   // Tự động ghi nhận thời lượng thực tế người dùng thao tác trên từng tính năng
   useEffect(() => {
@@ -318,7 +344,8 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [userDoc?.planExpiresAt, planClock]);
   const currentMultiplier = getLimitMultiplier(activePlan);
-  const canRegister = (plan: string) => canRegisterPlan(plan, userDoc?.planType, userDoc?.planExpiresAt);
+  const hasUsedTrial = Boolean(userDoc?.hasUsedTrial || userDoc?.planType === 'trial' || userDoc?.pricingPlan === 'trial');
+  const canRegister = (plan: string) => canRegisterPlan(plan, userDoc?.planType, userDoc?.planExpiresAt, Date.now(), hasUsedTrial);
   const reachedLimits = useRef<string[]>([]);
   useEffect(() => {
     if (!userDoc || !user || isAdminUser(user, userDoc) || !hasPhoneConfirmation(userDoc)) return;
@@ -733,7 +760,7 @@ export default function App() {
     "Thời gian làm bài: 90 phút (Không kể thời gian phát đề) - Đề số 1",
   );
   const [docHeaderStyle, setDocHeaderStyle] = useState<"centered" | "split">(
-    "centered",
+    "split",
   );
   const [docStudentInfoFormat, setDocStudentInfoFormat] = useState<string>(
     `Họ và tên: ....................................................\nLớp: ................... STT: .........`,
@@ -2491,7 +2518,7 @@ export default function App() {
         rating: feedbackRating,
         feedbackImage: feedbackImage || "",
         createdAt: new Date().toISOString(),
-        version: "v4.3",
+        version: "v4.4",
       });
       triggerToast("Cám ơn bạn đã gửi ý kiến đóng góp!", true);
       setFeedbackText("");
@@ -4121,37 +4148,6 @@ ${bodyHtml}
     );
   }
 
-  if (user && !userDoc) {
-    return (
-      <>
-        <div
-          className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center font-sans"
-          id="userdoc-loading-screen"
-        >
-          <div className="flex flex-col items-center gap-4 text-center">
-            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-slate-400 font-medium text-sm animate-pulse">
-              Đang đồng bộ cấu hình bảo mật tài khoản...
-            </p>
-          </div>
-        </div>
-        <ZaloContactWidget />
-      </>
-    );
-  }
-
-  if (!user) {
-    return (
-      <>
-        <LoginScreen
-          onGoogleLogin={handleGoogleLogin}
-          authError={authError}
-        />
-        <ZaloContactWidget />
-      </>
-    );
-  }
-
   // Determine user constraints
   const isOwner = checkIsOwnerEmail(user);
   const isApproved = isOwner || userDoc?.status === "approved";
@@ -4180,9 +4176,34 @@ ${bodyHtml}
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=f1f5f9&color=4f46e5&bold=true&size=128`;
   };
 
-  if (isRejected) {
-    return (
-      <>
+  const renderGate = () => {
+    if (user && !userDoc) {
+      return (
+        <div
+          className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center font-sans"
+          id="userdoc-loading-screen"
+        >
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-slate-400 font-medium text-sm animate-pulse">
+              Đang đồng bộ cấu hình bảo mật tài khoản...
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!user) {
+      return (
+        <LoginScreen
+          onGoogleLogin={handleGoogleLogin}
+          authError={authError}
+        />
+      );
+    }
+
+    if (isRejected) {
+      return (
         <div className="min-h-screen bg-linear-to-tr from-slate-900 via-slate-950 to-blue-950 text-slate-100 flex items-center justify-center p-4 py-6 sm:py-10 overflow-y-auto antialiased font-sans">
           <div
             className="max-w-md w-full bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-800 p-6 md:p-8 shadow-2xl text-center relative overflow-hidden my-auto"
@@ -4209,49 +4230,54 @@ ${bodyHtml}
             </button>
           </div>
         </div>
+      );
+    }
+
+    if (!isEmailVerified) {
+      return (
+        <EmailVerificationGate
+          key={user.uid}
+          email={user.email || user.providerData?.[0]?.email || ""}
+          lockedPhone={normalizeVietnamPhone(String(userDoc?.confirmedPhoneNumber || "")) || undefined}
+          onVerified={async (profile) => {
+            setUserDoc((currentDoc) => ({ ...(currentDoc || {}), ...profile }));
+            await user.getIdToken(true).catch(() => console.warn('Số liên hệ đã xác nhận; token sẽ được làm mới ở lần đăng nhập tiếp theo.'));
+          }}
+        />
+      );
+    }
+
+    if (!hasValidPhone) {
+      return (
+        <MandatoryPhoneGate
+          key={user.uid}
+          user={user}
+          userDoc={userDoc}
+          onPhoneUpdated={(newPhone) => {
+            setUserDoc((currentDoc) => ({
+              ...(currentDoc || {}),
+              phoneNumber: newPhone,
+              confirmedPhoneNumber: '+84' + newPhone.slice(1),
+              phoneConfirmedAt: new Date().toISOString()
+            }));
+            triggerToast("Đã lưu số điện thoại vào cài đặt cá nhân thành công!", true);
+          }}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
+    return null;
+  };
+
+  const gateContent = renderGate();
+  if (gateContent) {
+    return (
+      <>
+        {gateContent}
         <ZaloContactWidget />
       </>
     );
-  }
-
-  // --- USER WORKSPACE ---
-
-  // 1. Nếu chưa xác thực email -> bắt buộc xác thực email OTP
-  if (!isEmailVerified) {
-    return <>
-      <EmailVerificationGate
-        key={user.uid}
-        email={user.email || user.providerData?.[0]?.email || ""}
-        lockedPhone={normalizeVietnamPhone(String(userDoc?.confirmedPhoneNumber || "")) || undefined}
-        onVerified={async (profile) => {
-          setUserDoc((currentDoc) => ({ ...(currentDoc || {}), ...profile }));
-          await user.getIdToken(true).catch(() => console.warn('Số liên hệ đã xác nhận; token sẽ được làm mới ở lần đăng nhập tiếp theo.'));
-        }}
-      />
-      <ZaloContactWidget />
-    </>;
-  }
-
-  // 2. Nếu đã xác thực email nhưng chưa có sđt hoặc sđt không đúng/rỗng -> Bắt buộc nhập sđt mới cho dùng tiếp
-  if (!hasValidPhone) {
-    return <>
-      <MandatoryPhoneGate
-        key={user.uid}
-        user={user}
-        userDoc={userDoc}
-        onPhoneUpdated={(newPhone) => {
-          setUserDoc((currentDoc) => ({
-            ...(currentDoc || {}),
-            phoneNumber: newPhone,
-            confirmedPhoneNumber: '+84' + newPhone.slice(1),
-            phoneConfirmedAt: new Date().toISOString()
-          }));
-          triggerToast("Đã lưu số điện thoại vào cài đặt cá nhân thành công!", true);
-        }}
-        onLogout={handleLogout}
-      />
-      <ZaloContactWidget />
-    </>;
   }
 
   return (
@@ -4310,7 +4336,7 @@ ${bodyHtml}
       {/* LEFT SIDEBAR WRAPPER */}
       <div className={`fixed top-0 left-0 h-full z-[70] shrink-0 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} w-64`}>
         <aside 
-            className={`bg-white/90 backdrop-blur-md border-r border-white/60 flex-col flex h-full absolute left-0 top-0 transition-all duration-300 overflow-hidden w-64 shadow-[0_0_30px_rgba(120,120,180,.08)]`}
+            className={`bg-white/90 backdrop-blur-md border-r border-white/60 flex-col flex h-full absolute left-0 top-0 transition-all duration-300 overflow-visible w-64 shadow-[0_0_30px_rgba(120,120,180,.08)]`}
         >
           <div className={`p-6 flex items-center shrink-0 group gap-3 justify-between`}>
              <div className="flex items-center gap-3">
@@ -4319,7 +4345,7 @@ ${bodyHtml}
                  </div>
                  <div>
                     <div className="font-bold text-slate-800 text-[15px] leading-tight">Word2LaTeX.io.vn</div>
-                    <div className="text-[10px] text-slate-500 leading-tight">Chuyển đổi soạn đề thi LaTeX sang Word</div>
+                    <div className="text-[10px] text-slate-500 leading-tight">© 2026 WordToLaTeX.io.vn</div>
                  </div>
              </div>
 
@@ -4355,12 +4381,6 @@ ${bodyHtml}
                   </button>
               </div>
 
-              <div className="w-full shrink-0 flex flex-col gap-1">
-                  <div className="text-[10px] font-bold text-slate-400 tracking-wider mb-1 mt-2 px-3 uppercase truncate">Cài đặt</div>
-                  <button onClick={() => handleSidebarNav('settings')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'settings' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
-                      <Settings className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Cài đặt cá nhân</span>
-                  </button>
-              </div>
 
               {isAdminUser(user, userDoc) && (
                 <div className="w-full shrink-0 flex flex-col gap-1">
@@ -4405,80 +4425,161 @@ ${bodyHtml}
                 </div>
             </div>
           )}
-          <div className="text-[10px] text-slate-400 font-medium px-6 pb-6 pt-2 whitespace-nowrap truncate w-full shrink-0">© 2026 Word2LaTeX.io.vn</div>
+          {/* User Profile Widget at the bottom */}
+          <div className="p-2 border-t border-slate-100/60 relative shrink-0 mt-auto" ref={userMenuRef}>
+            {/* Popover Dropdown (Flyout outside sidebar on desktop, upwards on mobile) */}
+            {isUserMenuOpen && (
+              <div 
+                className="absolute md:left-[calc(100%+8px)] md:bottom-3 bottom-full left-2 right-2 md:right-auto md:w-64 mb-2 md:mb-0 bg-white/95 rounded-2xl shadow-2xl border border-slate-100 p-1.5 z-[80] flex flex-col gap-0.5 backdrop-blur-md"
+              >
+                {/* User Header */}
+                <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50/90 mb-0.5">
+                  <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-200 shrink-0 border border-slate-200">
+                    <img src={getUserAvatar()} alt="User avatar" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <div className="font-bold text-xs text-slate-800 truncate">
+                      {userDoc?.displayName || user?.displayName || user?.email?.split("@")[0] || "Tài khoản"}
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate">
+                      {user?.email || userDoc?.email || ""}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-px bg-slate-100 my-0.5 mx-1" />
+
+                {/* Upgrade to Pro */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    setSidebarView('pricing');
+                    setIsMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-700 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                >
+                  <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="truncate">Nâng cấp gói đăng ký</span>
+                </button>
+
+                <div className="h-px bg-slate-100 my-0.5 mx-1" />
+
+                {/* Account / Settings item */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    handleSidebarNav('settings');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                >
+                  <Settings className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span className="truncate">Cài đặt cá nhân</span>
+                </button>
+
+                {/* Billing / Lịch sử mua hàng item */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    setIsPaymentHistoryModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                >
+                  <CreditCard className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span className="truncate">Lịch sử mua hàng</span>
+                </button>
+
+                {/* Notifications & Feedbacks item */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    setIsNotificationsOpen(true);
+                    if (!isAdminUser(user, userDoc) && unreadCount > 0) {
+                      setNoticeCountdown(10);
+                    } else {
+                      setNoticeCountdown(0);
+                    }
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Bell className="w-4 h-4 text-slate-500 shrink-0" />
+                    <span className="truncate">Thông báo & Góp ý</span>
+                  </div>
+                  {unreadCount > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                  )}
+                </button>
+
+                <div className="h-px bg-slate-100 my-0.5 mx-1" />
+
+                {/* Log out item */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    handleLogout();
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-all cursor-pointer text-left"
+                >
+                  <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
+                  <span className="truncate">Đăng xuất</span>
+                </button>
+              </div>
+            )}
+
+            {/* User Profile trigger button */}
+            <button
+              type="button"
+              onClick={() => setIsUserMenuOpen(prev => !prev)}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-slate-100/80 transition-all text-left cursor-pointer group ${isUserMenuOpen ? 'bg-slate-100/80 shadow-xs' : ''}`}
+            >
+              <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 shrink-0 border border-slate-200">
+                <img src={getUserAvatar()} alt="User avatar" className="w-full h-full object-cover" />
+              </div>
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="font-bold text-xs text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
+                  {userDoc?.displayName || user?.displayName || user?.email?.split("@")[0] || "Tài khoản"}
+                </div>
+                <div className="text-[10px] text-slate-400 truncate">
+                  {user?.email || userDoc?.email || ""}
+                </div>
+              </div>
+              <ChevronsUpDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 shrink-0" />
+            </button>
+          </div>
       </aside>
       </div>
 
       {/* MAIN CONTENT WRAPPER */}
       <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] ${sidebarView === 'drawing' ? `overflow-hidden ${isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto'}`}>
-          {/* TOPBAR */}
-          <div className={sidebarView === 'drawing' ? "absolute top-0 left-0 z-30 pointer-events-none p-3 sm:p-4 flex items-center gap-3" : "sticky top-0 z-30 w-full bg-[#F8F9FD]/80 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 shrink-0"}>
-              <div className="flex items-center gap-3 flex-1 pointer-events-auto">
-                  <button 
-                    onClick={() => setIsMenuOpen(open => !open)}
-                    className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-xs shrink-0 cursor-pointer pointer-events-auto"
-                    title="Mở thanh điều hướng Menu"
-                  >
-                    <Menu className="w-5 h-5" />
-                  </button>
+          {/* 2 NÚT NỔI ĐỘC LẬP HOÀN TOÀN TRÊN NỀN (KHÔNG CÒN THANH DIV DOCK) */}
+          <button 
+            onClick={() => setIsMenuOpen(open => !open)}
+            className="fixed top-2.5 sm:top-3 left-2.5 sm:left-4 z-40 p-2 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/90 transition-all shadow-sm hover:shadow-md shrink-0 cursor-pointer"
+            title="Mở thanh điều hướng Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
 
-                  {/* Nút Hướng dẫn sử dụng cho các trang chức năng chính */}
-                  {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (
-                    <button
-                      id="guide-tour-topbar-btn"
-                      onClick={() => setIsGuideTourOpen(true)}
-                      className="px-2.5 sm:px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 border border-slate-200 hover:border-indigo-200/80 font-bold text-xs flex items-center gap-1.5 sm:gap-2 transition-all shadow-3xs hover:shadow-xs active:scale-95 cursor-pointer group shrink-0 pointer-events-auto"
-                      title="Xem hướng dẫn từng bước trực quan cho trang này"
-                    >
-                      <BookOpen className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-                      <span className="font-extrabold hidden sm:inline">Hướng dẫn sử dụng</span>
-                      <span className="font-extrabold sm:hidden text-[11px]">HDSD</span>
-                    </button>
-                  )}
-              </div>
-              {sidebarView !== 'drawing' && (
-              <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                  {(activePlan === 'pro' || upgradeVisibility.main) && !isAdminUser(user, userDoc) && (
-                    <button 
-                      onClick={() => setSidebarView('pricing')}
-                      className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs flex items-center justify-center gap-1.5 sm:gap-2 transition-colors border border-indigo-100 shadow-xs cursor-pointer shrink-0"
-                    >
-                        <Diamond className="w-3.5 h-3.5 shrink-0" />
-                        <span className="hidden sm:inline">{activePlan === 'pro' ? 'Gói đăng ký' : 'Nâng cấp PRO'}</span>
-                        <span className="sm:hidden">{activePlan === 'pro' ? 'Gói đăng ký' : 'PRO'}</span>
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => {
-                      setIsNotificationsOpen(true);
-                      if (!isAdminUser(user, userDoc) && unreadCount > 0) {
-                        setNoticeCountdown(10);
-                      } else {
-                        setNoticeCountdown(0);
-                      }
-                    }} 
-                    className="relative p-2.5 rounded-full bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shadow-xs"
-                  >
-                      <Bell className="w-4 h-4" />
-                      {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>}
-                  </button>
-
-                  <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 bg-white border border-slate-200 rounded-full shadow-xs cursor-pointer hover:bg-slate-50 transition-colors shrink-0" onClick={handleLogout}>
-                      <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 shrink-0">
-                          <img src={getUserAvatar()} alt="User avatar" className="w-full h-full object-cover" />
-                      </div>
-                      <span className="font-bold text-xs text-slate-700 hidden sm:block truncate max-w-[100px]">{userDoc?.displayName || user?.displayName || user?.email?.split("@")[0]}</span>
-                      {isAdminUser(user, userDoc) || isApproved ? (
-                          <span className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase hidden sm:inline-block">PRO</span>
-                      ) : null}
-                  </div>
-              </div>
-              )}
-          </div>
-
+          {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (
+            <button
+              id="guide-tour-topbar-btn"
+              onClick={() => setIsGuideTourOpen(true)}
+              className="fixed top-2.5 sm:top-3 left-13 sm:left-16 z-40 px-3 py-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-indigo-50/90 text-indigo-700 hover:text-indigo-800 border border-slate-200/90 hover:border-indigo-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer group shrink-0"
+              title="Xem hướng dẫn từng bước trực quan cho trang này"
+            >
+              <BookOpen className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+              <span className="font-extrabold hidden sm:inline">Hướng dẫn sử dụng</span>
+              <span className="font-extrabold sm:hidden text-[11px]">HDSD</span>
+            </button>
+          )}
 
       <div className={`flex-1 flex flex-col ${sidebarView === 'drawing' ? 'min-h-0 h-full' : ''}`}>
-      <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : 'max-w-full w-full px-4 sm:px-6 md:px-8 lg:px-10 py-2 md:py-4 flex-1 flex flex-col gap-4 md:gap-6 overflow-x-hidden'}>
+      <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : 'max-w-full w-full px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-2 flex flex-col gap-2 overflow-x-hidden shrink-0'}>
         {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics" || sidebarView === "payments") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 
@@ -6255,16 +6356,7 @@ ${bodyHtml}
             transition={{ duration: 0.3 }}
             className="space-y-6 flex-1 flex flex-col"
           >
-            {/* Header */}
-            <div className="flex items-center gap-3.5 pb-2">
-              <div className="w-11 h-11 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0 border border-indigo-100 shadow-sm">
-                <Settings className="w-5 h-5 text-indigo-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-extrabold tracking-tight text-slate-800 font-sans">Cài đặt cá nhân</h2>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">Quản lý hồ sơ cá nhân và theo dõi thông tin tài khoản của bạn.</p>
-              </div>
-            </div>
+
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
               {/* Left Column: Avatar and Account Summary Card */}
@@ -6291,7 +6383,6 @@ ${bodyHtml}
                 <h3 className="font-extrabold text-slate-800 text-lg leading-tight">
                   {userDoc?.displayName || user?.displayName || user?.email?.split("@")[0]}
                 </h3>
-                <p className="text-xs text-slate-400 font-mono mt-1 font-medium select-all">{user?.uid}</p>
 
                 {/* Badge Role */}
                 <div className="mt-3.5 flex items-center gap-1.5 justify-center">
@@ -6403,33 +6494,7 @@ ${bodyHtml}
                         placeholder="Nhập tên hiển thị"
                         value={settingsDisplayName}
                         onChange={(e) => setSettingsDisplayName(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
-                      />
-                    </div>
-
-                    {/* Email (Read only) */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 flex items-center gap-1">
-                        Địa chỉ Email (Định danh)
-                      </label>
-                      <input
-                        type="email"
-                        disabled
-                        value={user?.email || ""}
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-400 rounded-xl px-4 py-2.5 text-xs font-semibold outline-none cursor-not-allowed"
-                      />
-                    </div>
-
-                    {/* Gói Đăng Ký */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 flex items-center gap-1">
-                        Gói Tài Khoản Đang Dùng
-                      </label>
-                      <input
-                        type="text"
-                        disabled
-                        value={userDoc?.planType && userDoc.planType !== 'free' ? `GÓI ${userDoc.planType.toUpperCase()}` : "Tài khoản Miễn phí"}
-                        className="w-full bg-slate-50 border border-slate-200 text-indigo-600 rounded-xl px-4 py-2.5 text-xs font-bold outline-none cursor-not-allowed"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all shadow-3xs"
                       />
                     </div>
 
@@ -6444,32 +6509,21 @@ ${bodyHtml}
                         placeholder="Nhập số điện thoại (VD: 0912345678)"
                         value={settingsPhoneNumber}
                         onChange={(e) => setSettingsPhoneNumber(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all shadow-3xs"
                       />
                     </div>
 
-                    {/* Ngày sinh */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
-                        Ngày sinh
+                    {/* Gói Đăng Ký */}
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="text-xs font-bold text-slate-500 flex items-center gap-1">
+                        Gói Tài Khoản Đang Dùng
                       </label>
                       <input
-                        type="date"
-                        value={settingsBirthDate}
-                        onChange={(e) => setSettingsBirthDate(e.target.value)}
-                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all focus:border-[#6B5CFF] focus:ring-4 focus:ring-[#6B5CFF]/10"
+                        type="text"
+                        disabled
+                        value={userDoc?.planType && userDoc.planType !== 'free' ? `GÓI ${userDoc.planType.toUpperCase()}` : "Tài khoản Miễn phí"}
+                        className="w-full bg-slate-50 border border-slate-200 text-indigo-600 rounded-xl px-4 py-2.5 text-xs font-bold outline-none cursor-not-allowed shadow-3xs"
                       />
-                    </div>
-                  </div>
-
-                  {/* Gmail Integration Note */}
-                  <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-100/50 flex items-start gap-3 mt-4">
-                    <Info className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-bold text-indigo-900">Liên kết thông tin cá nhân & Gmail</p>
-                      <p className="text-[11px] text-indigo-700/80 leading-relaxed mt-0.5">
-                        Hệ thống tự động sử dụng Tên và Ảnh đại diện từ tài khoản Google/Gmail của bạn làm ảnh đại diện mặc định để cá nhân hoá trải nghiệm. Bạn có thể tự do sửa đổi Tên hiển thị và Ngày sinh ở biểu mẫu trên bất cứ lúc nào.
-                      </p>
                     </div>
                   </div>
 
@@ -6511,34 +6565,41 @@ ${bodyHtml}
                  <p className="text-sm text-gray-500 text-center mb-4">Gói {activePlan.toUpperCase()} đã đăng ký đến {new Date(userDoc.planExpiresAt).toLocaleDateString('vi-VN')}. Bạn có thể nâng cấp lên gói cao hơn.</p>
                )}
 
-               {/* Grid 3 cột */}
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+               {/* Pricing Cards Grid (Tự động ẩn gói Trial khi tài khoản đã từng đăng ký dùng thử) */}
+               <div className={`${hasUsedTrial ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto w-full" : "grid grid-cols-1 md:grid-cols-3 gap-4 w-full"}`}>
 
-                 {/* Card Trial */}
-                 <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300">
-                    <h3 className="text-xl font-medium text-gray-900 mb-2">Trial</h3>
-                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Dành cho người mới làm quen với hệ thống AI số hóa văn bản.</p>
-                    <button disabled={!canRegister('trial')} onClick={() => setSelectedPricingPlan('trial')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">{activePlan === 'trial' ? 'Đã đăng ký' : !canRegister('trial') ? 'Đã có gói cao hơn' : 'Đăng ký dùng thử'}</button>
-                    <div className="flex items-end gap-1 mb-5">
-                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ</span>
-                       <span className="text-3xl font-semibold text-gray-900 leading-none">9.000</span>
-                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ 7 ngày</span>
-                    </div>
-                    <div className="space-y-3 flex-1 overflow-y-auto">
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Sử dụng trong 7 ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Nhân đôi (x2) hạn mức chuyển đổi</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Tối đa 60 LaTeX / ngày</span></div>
-                    </div>
-                 </div>
+                 {/* Card Trial (Chỉ hiển thị cho người dùng chưa từng dùng gói Trial) */}
+                 {!hasUsedTrial && (
+                   <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300 relative">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-xl font-medium text-gray-900">Trial</h3>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200/80 px-2.5 py-0.5 rounded-full select-none shadow-3xs">
+                          <Clock className="w-3 h-3 text-blue-500" /> THỜI GIAN CÓ HẠN
+                        </span>
+                      </div>
+                      <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Dành cho người mới làm quen với hệ thống AI số hóa văn bản.</p>
+                      <button disabled={!canRegister('trial')} onClick={() => setSelectedPricingPlan('trial')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'trial' ? 'Đã đăng ký' : !canRegister('trial') ? 'Đã có gói cao hơn' : 'Đăng ký dùng thử'}</button>
+                      <div className="flex items-baseline gap-2 mb-5 select-none">
+                         <span className="text-xl font-semibold text-gray-400 line-through">đ 9.000</span>
+                         <span className="text-3xl font-semibold text-gray-900 leading-none">đ 5.000</span>
+                         <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ 7 ngày</span>
+                      </div>
+                      <div className="space-y-3 flex-1 overflow-y-auto">
+                        <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Sử dụng trong 7 ngày</span></div>
+                        <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Nhân đôi (x2) hạn mức chuyển đổi</span></div>
+                        <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Tối đa 60 LaTeX / ngày</span></div>
+                      </div>
+                   </div>
+                 )}
 
                  {/* Card Plus */}
                  <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 relative hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300">
                     <h3 className="text-xl font-medium text-gray-900 mb-2">Plus</h3>
                     <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Không chỉ công thức, hãy để AI cùng bạn thao tác toàn bộ văn bản.</p>
-                    <button disabled={!canRegister('plus')} onClick={() => setSelectedPricingPlan('plus')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">{activePlan === 'plus' ? 'Đã đăng ký' : !canRegister('plus') ? 'Đã có gói cao hơn' : 'Nâng cấp gói Plus'}</button>
-                    <div className="flex items-end gap-1 mb-5">
-                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ</span>
-                       <span className="text-3xl font-semibold text-gray-900 leading-none">19.000</span>
+                    <button disabled={!canRegister('plus')} onClick={() => setSelectedPricingPlan('plus')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'plus' ? 'Đã đăng ký' : !canRegister('plus') ? 'Đã có gói cao hơn' : 'Nâng cấp gói Plus'}</button>
+                    <div className="flex items-baseline gap-2 mb-5 select-none">
+                       <span className="text-xl font-semibold text-gray-400 line-through">đ 19.000</span>
+                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ 12.000</span>
                        <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng (đã bao gồm thuế)</span>
                     </div>
                     <div className="space-y-3 flex-1 overflow-y-auto">
@@ -6553,10 +6614,10 @@ ${bodyHtml}
                  <div className="bg-[#f8faff] lg:bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-[#3b82f6] shadow-sm relative z-10 hover:border-blue-600 hover:shadow-[0_8px_30px_rgba(59,130,246,0.18)] transition-all duration-300">
                     <h3 className="text-xl font-medium text-gray-900 mb-2">Pro</h3>
                     <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Mức sử dụng tiêu chuẩn dành cho những ai dựa vào AI số hóa mạnh mẽ nhất.</p>
-                    <button disabled={!canRegister('pro')} onClick={() => setSelectedPricingPlan('pro')} className="w-full py-2.5 rounded-full bg-[#3b82f6] text-white font-medium hover:bg-blue-600 transition-colors mb-4 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">{activePlan === 'pro' ? 'Đã đăng ký' : 'Nâng cấp gói Pro'}</button>
-                    <div className="flex items-end gap-1 mb-5">
-                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ</span>
-                       <span className="text-3xl font-semibold text-gray-900 leading-none">29.000</span>
+                    <button disabled={!canRegister('pro')} onClick={() => setSelectedPricingPlan('pro')} className="w-full py-2.5 rounded-full bg-[#3b82f6] text-white font-medium hover:bg-blue-600 transition-colors mb-4 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'pro' ? 'Đã đăng ký' : 'Nâng cấp gói Pro'}</button>
+                    <div className="flex items-baseline gap-2 mb-5 select-none">
+                       <span className="text-xl font-semibold text-gray-400 line-through">đ 29.000</span>
+                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ 19.000</span>
                        <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng (đã bao gồm thuế)</span>
                     </div>
                     <div className="space-y-3 flex-1 overflow-y-auto pr-1">
@@ -7843,36 +7904,10 @@ ${bodyHtml}
         </AnimatePresence>
 
         {/* Image Preview Lightbox Overlay */}
-        <AnimatePresence>
-          {previewImageSrc && (
-            <div
-              className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 select-none cursor-zoom-out"
-              onClick={() => setPreviewImageSrc(null)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="relative max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => setPreviewImageSrc(null)}
-                  className="absolute top-4 right-4 z-50 p-2 bg-slate-950/80 hover:bg-slate-900 text-white rounded-full transition-colors cursor-pointer border border-slate-800 font-bold text-sm w-9 h-9 flex items-center justify-center"
-                  title="Đóng xem ảnh"
-                >
-                  ✕
-                </button>
-                <img
-                  src={previewImageSrc}
-                  alt="Xem thử hình ảnh"
-                  className="max-w-full max-h-[85vh] object-contain select-text"
-                />
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+        <ImagePreviewModal
+          src={previewImageSrc}
+          onClose={() => setPreviewImageSrc(null)}
+        />
 
 
         {/* Pro Upgrade Contact Modal */}
@@ -8007,7 +8042,7 @@ ${bodyHtml}
       </div> {/* This closes max-w-[1600px] or inner container maybe? */}
 
       {/* Footer */}
-      <footer hidden={sidebarView === 'drawing'} className="w-full text-center py-2.5 sm:py-3.5 bg-white/60 backdrop-blur-xs border-t border-slate-200/60 mt-auto shrink-0 select-none px-3 sm:px-4">
+      <footer hidden={sidebarView === 'drawing'} className="w-full text-center py-2.5 sm:py-3.5 bg-white/60 backdrop-blur-xs border-t border-slate-200/60 mt-6 select-none px-3 sm:px-4">
         <div className="max-w-[1600px] mx-auto">
           {/* Mobile View: Exactly 2 lines, no wrapping */}
           <div className="sm:hidden space-y-0.5 text-[11px] leading-snug">
@@ -8015,7 +8050,7 @@ ${bodyHtml}
               Trần Gia Thiều - <a href="mailto:Giathieu110406@gmail.com" className="text-slate-800 hover:text-indigo-600">Giathieu110406@gmail.com</a>
             </p>
             <p className="text-slate-500 font-medium whitespace-nowrap">
-              © Word2LaTeX · Phiên bản v4.3
+              © Word2LaTeX · Phiên bản v4.4
             </p>
           </div>
 
@@ -8027,7 +8062,7 @@ ${bodyHtml}
                 Trần Gia Thiều - <a href="mailto:Giathieu110406@gmail.com" className="hover:text-indigo-600">Giathieu110406@gmail.com</a>
               </strong>
               <span> · </span>
-              <span>Phiên bản v4.3</span>
+              <span>Phiên bản v4.4</span>
             </p>
             <p className="text-[11px] text-slate-400 font-medium px-2">
               © Word2LaTeX · Số hóa công thức LaTeX · Tự động hóa xây dựng đề thi · Chính xác & Tốc độ.
@@ -8047,6 +8082,13 @@ ${bodyHtml}
           pageId={sidebarView as any}
         />
       )}
+
+      {/* User Payment History Modal */}
+      <UserPaymentHistoryModal
+        isOpen={isPaymentHistoryModalOpen}
+        onClose={() => setIsPaymentHistoryModalOpen(false)}
+        triggerToast={triggerToast}
+      />
 
       {/* Payment Modal */}
       {createPortal(
@@ -8085,3 +8127,4 @@ ${bodyHtml}
   </div>
   );
 }
+

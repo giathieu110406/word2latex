@@ -4,6 +4,7 @@ import { verifyAuthAndApproval } from '../server/auth-guard.js';
 import * as mammoth from "mammoth";
 import { withActivity, AI_ACTIONS } from '../server/activity.js';
 import { getFirebaseAdmin } from '../server/firebase-admin.js';
+import { loadGenAISDK, Type, getAiClient, cleanApiKey, generateContentWithRetry } from '../server/gemini-client.js';
 
 
 
@@ -14,42 +15,7 @@ try {
   console.warn('Backend Firestore logging will be disabled.', error);
 }
 
-// Khởi tạo dynamic import để tránh crash runtime (Lỗi 500) trên Vercel
-let GoogleGenAISDK: any = null;
-let Type: any = null;
-let aiClient: any = null;
 
-async function loadGenAISDK() {
-  if (!GoogleGenAISDK) {
-    const sdk = await import('@google/genai');
-    GoogleGenAISDK = sdk.GoogleGenAI;
-    Type = sdk.Type;
-  }
-}
-
-function cleanApiKey(key: string | undefined): string {
-  if (!key) return "";
-  let cleaned = key.trim();
-  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
-    cleaned = cleaned.slice(1, -1).trim();
-  }
-  return cleaned;
-}
-
-function getAiClient(): any {
-  const primaryKey = cleanApiKey(process.env.GEMINI_API_KEY);
-
-  if (!primaryKey) {
-    throw new Error("Không thể kết nối đến Trợ lý AI. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
-  }
-
-  if (!aiClient) {
-    aiClient = new GoogleGenAISDK({
-      apiKey: primaryKey,
-    });
-  }
-  return aiClient;
-}
 
 async function logAIInteraction(userId: string, service: 'latex' | 'qbuilder', inputPrompt: string, aiResponseText: string, metadata: any) {
   if (!db) return;
@@ -104,105 +70,7 @@ async function getDynamicSystemPrompt(service: string, actionName: string, defau
   return defaultPrompt;
 }
 
-// Chuỗi fallback cố định theo thứ tự ưu tiên (đã xác thực khả dụng 100% với Google GenAI)
-// 3.7-flash (mặc định) → 3.6-flash → 3.5-flash-lite
-const DEFAULT_FALLBACK_CHAIN = [
-  "gemini-3.8-flash",
-  "gemini-3.5-flash-lite",
-  "gemini-3.1-pro-preview",
-];
 
-// Các lỗi hạ tầng — được phép fallback sang model tiếp theo
-function isInfraError(error: any): boolean {
-  if (error.status === 429 || error.status === 503) return true;
-  if (error.message && (
-    error.message.includes("quota") ||
-    error.message.includes("Quota") ||
-    error.message.includes("high demand") ||
-    error.message.includes("overloaded") ||
-    error.message.includes("UNAVAILABLE")
-  )) return true;
-  return false;
-}
-
-// Các lỗi xác thực — không retry, báo lỗi ngay
-function isAuthError(error: any): boolean {
-  return (
-    error.status === 401 ||
-    error.status === 403 ||
-    error.message?.includes("API_KEY_INVALID") ||
-    error.message?.includes("cấu hình GEMINI_API_KEY")
-  );
-}
-
-async function generateContentWithRetry(
-  params: any,
-  retries = 2,
-  delay = 1500,
-  generationConfig?: { temperature?: number; topK?: number; topP?: number }
-) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("Không thể kết nối đến Trợ lý AI. Vui lòng cấu hình GEMINI_API_KEY trong biến môi trường.");
-  }
-
-  // Merge generationConfig vào params.config nếu có
-  const mergedParams = { ...params };
-  if (generationConfig) {
-    mergedParams.config = {
-      ...params.config,
-      ...generationConfig,
-    };
-  }
-
-  let lastError: any = null;
-
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    for (const model of DEFAULT_FALLBACK_CHAIN) {
-      try {
-        console.log(`[Gemini API] Model: ${model} | Lần thử: ${attempt}/${retries} | Temp: ${mergedParams.config?.temperature ?? 'default'}`);
-        const aiInstance = getAiClient();
-        const response = await aiInstance.models.generateContent({
-          ...mergedParams,
-          model,
-        });
-        return response;
-      } catch (error: any) {
-        lastError = error;
-        console.warn(`[Gemini API] Model ${model} thất bại:`, error.message || error);
-
-        // Lỗi xác thực → dừng ngay, không thử tiếp
-        if (isAuthError(error)) {
-          throw error;
-        }
-
-        // Chỉ fallback khi là lỗi hạ tầng (429/503)
-        // Các lỗi khác (400, 404...) → dừng vòng model hiện tại, thử lại toàn chuỗi ở vòng sau
-        if (!isInfraError(error)) {
-          break;
-        }
-        // Là lỗi hạ tầng → tiếp tục thử model tiếp theo trong chuỗi
-        continue;
-      }
-    }
-
-    if (attempt < retries) {
-      const waitTime = delay * Math.pow(2, attempt - 1);
-      console.log(`[Gemini API] Tất cả model đều bận (vòng ${attempt}). Chờ ${waitTime}ms...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-  }
-
-  // Xây dựng thông báo lỗi cuối cùng
-  const err = lastError || new Error("Tất cả model đều thất bại sau nhiều lần thử.");
-  if (err.status === 429 || (err.message && (err.message.includes("quota") || err.message.includes("Quota")))) {
-    err.message = "Đã hết hạn mức sử dụng API Gemini (Quota Exceeded). Vui lòng kiểm tra lại tài khoản Google AI Studio.";
-  } else if (err.status === 503 || (err.message && (err.message.includes("high demand") || err.message.includes("overloaded") || err.message.includes("UNAVAILABLE")))) {
-    err.message = "Hệ thống AI đang quá tải (503). Vui lòng thử lại sau ít phút.";
-  } else if (err.status === 404 || (err.message && err.message.includes("not found"))) {
-    err.message = "Model AI không được hỗ trợ bởi API Key này (404 Not Found). Vui lòng kiểm tra lại cấu hình.";
-  }
-  throw err;
-}
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   const { action } = req.query;

@@ -1,11 +1,12 @@
 
 import { authFetch } from "../utils/api-client";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { 
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
   FileType, FileText, Image as ImageIcon, Layout, 
   Layers, Clock, AlertCircle, RotateCcw, XCircle, CheckCircle2, Sliders,
-  Trash2, Plus, X, Zap, FileSpreadsheet, Presentation, Activity
+  Trash2, Plus, X, Zap, FileSpreadsheet, Presentation, Activity,
+  FileCode, FileAudio, FileVideo, FileArchive, BookOpen
 } from "lucide-react";
 import Markdown from 'react-markdown';
 import remarkMath from "remark-math";
@@ -14,6 +15,9 @@ import remarkGfm from "remark-gfm";
 import { PDFDocument } from "pdf-lib";
 import { beginCodexPetActivity, type CodexPetResult } from "../utils/codex-pet-activity";
 import { normalizeMarkdownMath } from "../utils/markdown-math";
+
+const REMARK_PLUGINS = [remarkMath, remarkGfm];
+const REHYPE_PLUGINS: any[] = [[rehypeKatex, { throwOnError: false, strict: false }]];
 
 interface MarkItDownProps {
   triggerToast: (msg: string, success?: boolean) => void;
@@ -52,6 +56,10 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [conversionMode, setConversionMode] = useState<"fast" | "ai">("fast");
+
+  const normalizedMarkdown = useMemo(() => {
+    return normalizeMarkdownMath(outputMarkdown);
+  }, [outputMarkdown]);
   const [isCopied, setIsCopied] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
   const [hasChargedCurrentFile, setHasChargedCurrentFile] = useState(false);
@@ -122,7 +130,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Helper hiển thị icon đại diện theo định dạng tệp
+  // Helper hiển thị icon đại diện theo định dạng tệp (Hỗ trợ toàn diện định dạng Anytype)
   const getFileIcon = (name: string) => {
     const ext = name.split(".").pop()?.toLowerCase();
     switch (ext) {
@@ -132,14 +140,26 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       case "docx":
       case "odt":
       case "rtf":
-      case "txt":
+      case "pages":
         return <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
+      case "txt":
+      case "md":
+      case "markdown":
+        return <FileText className="w-3.5 h-3.5 text-slate-600 shrink-0" />;
+      case "epub":
+      case "mobi":
+        return <BookOpen className="w-3.5 h-3.5 text-amber-600 shrink-0" />;
       case "xls":
       case "xlsx":
       case "csv":
+      case "tsv":
+      case "ods":
+      case "numbers":
         return <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500 shrink-0" />;
       case "ppt":
       case "pptx":
+      case "odp":
+      case "key":
         return <Presentation className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
       case "png":
       case "jpg":
@@ -147,16 +167,69 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       case "webp":
       case "gif":
       case "svg":
+      case "bmp":
+      case "ico":
+      case "tiff":
+      case "tif":
+      case "heic":
         return <ImageIcon className="w-3.5 h-3.5 text-purple-500 shrink-0" />;
+      case "mp3":
+      case "wav":
+      case "m4a":
+      case "aac":
+      case "ogg":
+      case "flac":
+      case "wma":
+      case "opus":
+        return <FileAudio className="w-3.5 h-3.5 text-pink-500 shrink-0" />;
+      case "mp4":
+      case "mov":
+      case "avi":
+      case "mkv":
+      case "webm":
+      case "wmv":
+      case "flv":
+      case "m4v":
+        return <FileVideo className="w-3.5 h-3.5 text-violet-500 shrink-0" />;
+      case "js":
+      case "jsx":
+      case "ts":
+      case "tsx":
+      case "py":
+      case "java":
+      case "c":
+      case "cpp":
+      case "cs":
+      case "html":
+      case "htm":
+      case "css":
+      case "scss":
+      case "json":
+      case "xml":
+      case "yaml":
+      case "yml":
+      case "sql":
+      case "sh":
+      case "bash":
+      case "tex":
+      case "latex":
+        return <FileCode className="w-3.5 h-3.5 text-cyan-600 shrink-0" />;
+      case "zip":
+      case "rar":
+      case "7z":
+      case "tar":
+      case "gz":
+        return <FileArchive className="w-3.5 h-3.5 text-orange-500 shrink-0" />;
       default:
         return <FileText className="w-3.5 h-3.5 text-slate-500 shrink-0" />;
     }
   };
 
-  // Helper MIME type dự phòng khi trình duyệt trả về rỗng
+  // Helper MIME type dự phòng khi trình duyệt trả về rỗng (Đầy đủ mọi loại tệp)
   const getFallbackMimeType = (filename: string): string => {
     const ext = filename.split(".").pop()?.toLowerCase();
     switch (ext) {
+      // Tài liệu & Sách
       case "pdf": return "application/pdf";
       case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       case "doc": return "application/msword";
@@ -164,12 +237,69 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       case "xls": return "application/vnd.ms-excel";
       case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
       case "ppt": return "application/vnd.ms-powerpoint";
+      case "odt": return "application/vnd.oasis.opendocument.text";
+      case "ods": return "application/vnd.oasis.opendocument.spreadsheet";
+      case "odp": return "application/vnd.oasis.opendocument.presentation";
+      case "rtf": return "application/rtf";
+      case "epub": return "application/epub+zip";
+      // Văn bản & Mã nguồn
+      case "txt": return "text/plain";
+      case "md":
+      case "markdown": return "text/markdown";
+      case "tex":
+      case "latex": return "text/x-tex";
+      case "html":
+      case "htm": return "text/html";
+      case "css": return "text/css";
+      case "csv": return "text/csv";
+      case "tsv": return "text/tab-separated-values";
+      case "json": return "application/json";
+      case "xml": return "application/xml";
+      case "yaml":
+      case "yml": return "text/yaml";
+      case "js":
+      case "mjs":
+      case "cjs": return "text/javascript";
+      case "ts":
+      case "tsx":
+      case "jsx": return "text/typescript";
+      case "py": return "text/x-python";
+      case "java": return "text/x-java-source";
+      case "c":
+      case "cpp":
+      case "h": return "text/x-c";
+      case "sql": return "application/sql";
+      // Hình ảnh
       case "png": return "image/png";
       case "jpg":
       case "jpeg": return "image/jpeg";
       case "webp": return "image/webp";
-      case "txt": return "text/plain";
-      case "csv": return "text/csv";
+      case "gif": return "image/gif";
+      case "svg": return "image/svg+xml";
+      case "bmp": return "image/bmp";
+      case "ico": return "image/x-icon";
+      case "tiff":
+      case "tif": return "image/tiff";
+      case "heic": return "image/heic";
+      // Âm thanh
+      case "mp3": return "audio/mp3";
+      case "wav": return "audio/wav";
+      case "m4a": return "audio/m4a";
+      case "aac": return "audio/aac";
+      case "ogg": return "audio/ogg";
+      case "flac": return "audio/flac";
+      // Video
+      case "mp4": return "video/mp4";
+      case "webm": return "video/webm";
+      case "mov": return "video/quicktime";
+      case "avi": return "video/x-msvideo";
+      case "mkv": return "video/x-matroska";
+      // Nén & Khác
+      case "zip": return "application/zip";
+      case "rar": return "application/vnd.rar";
+      case "7z": return "application/x-7z-compressed";
+      case "tar": return "application/x-tar";
+      case "gz": return "application/gzip";
       default: return "application/octet-stream";
     }
   };
@@ -668,7 +798,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   const progressPercent = chunks.length > 0 ? Math.round((completedChunksCount / chunks.length) * 100) : 0;
 
   return (
-    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-[620px] md:h-[calc(100vh-120px)] md:max-h-[calc(100vh-120px)]">
+    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-[620px] h-[calc(100vh-62px)] min-h-[calc(100vh-62px)]">
       {/* Header */}
       <div className="p-4 sm:p-6 border-b border-white/50 bg-white/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 shrink-0">
         <div>
@@ -770,13 +900,13 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                   {isDragging ? "Thả các tệp vào đây..." : "Kéo thả hoặc nhấn để tải tệp lên"}
                 </p>
                 <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-                  Hỗ trợ nhiều tệp: PDF, Word, Excel, PPTX, Văn bản &amp; Ảnh (PNG, JPG, WebP...)
+                  Hỗ trợ mọi loại tệp: Tài liệu (PDF, Word, Excel, PPT, EPUB), Văn bản, Mã nguồn, Ảnh, Âm thanh &amp; Video
                 </p>
                 <input
                   type="file"
                   ref={fileInputRef}
                   multiple
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.rtf,.txt,.csv,image/*"
+                  accept="*/*"
                   disabled={isProcessing}
                   className="hidden"
                   onChange={(e) => {
@@ -1154,7 +1284,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
           {/* Markdown Content Area */}
           <div className="flex-1 min-h-0 bg-slate-50/70 rounded-2xl border border-slate-200 overflow-y-auto p-6 custom-scrollbar h-full max-h-full">
-            {isProcessing && chunks.length === 0 ? (
+            {isProcessing && chunks.length === 0 && !outputMarkdown ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
                 <Loader2 className="w-9 h-9 animate-spin text-indigo-600" />
                 <p className="text-sm font-medium text-slate-600">Đang đọc tài liệu & khởi tạo phân đoạn...</p>
@@ -1162,10 +1292,10 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
             ) : outputMarkdown ? (
               <div className="markdown-body prose prose-sm max-w-none prose-indigo">
                 <Markdown
-                  remarkPlugins={[remarkMath, remarkGfm]}
-                  rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+                  remarkPlugins={REMARK_PLUGINS}
+                  rehypePlugins={REHYPE_PLUGINS}
                 >
-                  {normalizeMarkdownMath(outputMarkdown)}
+                  {normalizedMarkdown}
                 </Markdown>
               </div>
             ) : (

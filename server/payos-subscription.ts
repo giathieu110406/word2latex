@@ -13,7 +13,7 @@ export async function findPaymentUser(db: Firestore, description: string) {
 }
 
 export async function activatePaidPlan(db: Firestore, uid: string, orderCode: number, amount: number, source: ActivitySource='web') {
-  const plan = amount === 9000 ? 'trial' : amount === 19000 ? 'plus' : amount === 29000 ? 'pro' : null;
+  const plan = (amount === 5000 || amount === 9000) ? 'trial' : amount === 12000 ? 'plus' : (amount === 19000 || amount === 29000) ? 'pro' : null;
   if (!plan || !Number.isSafeInteger(orderCode)) throw new Error('Invalid paid order');
   const userRef = db.collection('users').doc(uid);
   const paymentRef = db.collection('payosPayments').doc(String(orderCode));
@@ -30,6 +30,7 @@ export async function activatePaidPlan(db: Firestore, uid: string, orderCode: nu
       planType: plan, pricingPlan: plan,
       planExpiresAt: now + (plan === 'trial' ? 7 : 30) * 86400000,
       updatedAt: new Date(now).toISOString(),
+      ...(plan === 'trial' ? { hasUsedTrial: true } : {}),
     });
     transaction.set(paymentRef, { uid, amount, plan, activatedAt: now });
     // Audit and payment commit together; duplicate webhook/check cannot create a second activation event.
