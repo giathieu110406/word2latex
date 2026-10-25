@@ -74,7 +74,8 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
   useEffect(() => {
     setData(null);
     void refresh();
-    const interval = setInterval(() => void refresh(), 30000);
+    // Giảm tần suất tự động thăm dò từ 30 giây xuống 5 phút để bảo toàn hạn mức đọc Firebase
+    const interval = setInterval(() => void refresh(), 5 * 60 * 1000);
     return () => {
       ++readVersion.current;
       clearInterval(interval);
@@ -171,6 +172,19 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
         <p role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm">
           {error}. {data ? 'Đang giữ bản đọc trước đó.' : 'Chưa có số liệu.'}
         </p>
+      )}
+      {data?.warning && (
+        <div role="status" className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-2xl text-xs flex items-center justify-between gap-3 shadow-2xs">
+          <span className="flex items-center gap-2">
+            <span className="text-sm">⚠️</span>
+            <span>{data.warning}</span>
+          </span>
+          {data.isStale && (
+            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full shrink-0">
+              Bản lưu đệm
+            </span>
+          )}
+        </div>
       )}
       {data?.truncated && (
         <p role="alert" className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-2xl text-xs">

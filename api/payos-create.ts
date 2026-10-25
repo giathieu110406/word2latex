@@ -29,11 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const uid = decoded.uid;
     const profile = (await db.collection('users').doc(uid).get()).data();
     if (!profile) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
-    const hasUsedTrial = Boolean(profile.hasUsedTrial || profile.planType === 'trial' || profile.pricingPlan === 'trial');
-    if (plan === 'trial' && hasUsedTrial) {
-      return res.status(409).json({ error: 'Mỗi tài khoản chỉ được đăng ký gói Trial dùng thử một lần duy nhất.' });
-    }
-    if (!canRegisterPlan(plan, profile.planType, profile.planExpiresAt, Date.now(), hasUsedTrial)) {
+    if (!canRegisterPlan(plan, profile.planType, profile.planExpiresAt, Date.now())) {
       return res.status(409).json({ error: 'Bạn đã đăng ký gói này hoặc gói cao hơn. Vui lòng chờ gói hiện tại hết hạn.' });
     }
     

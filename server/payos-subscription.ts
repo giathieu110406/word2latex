@@ -30,7 +30,6 @@ export async function activatePaidPlan(db: Firestore, uid: string, orderCode: nu
       planType: plan, pricingPlan: plan,
       planExpiresAt: now + (plan === 'trial' ? 7 : 30) * 86400000,
       updatedAt: new Date(now).toISOString(),
-      ...(plan === 'trial' ? { hasUsedTrial: true } : {}),
     });
     transaction.set(paymentRef, { uid, amount, plan, activatedAt: now });
     // Audit and payment commit together; duplicate webhook/check cannot create a second activation event.

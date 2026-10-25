@@ -3,7 +3,7 @@ import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils
 import { authFetch } from "./utils/api-client";
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { HelpCircle, FileText, Check, X, Loader2, AlertTriangle, ShieldAlert, Sparkles, CheckCircle2, Bell, MessageSquare, Settings, Image, Trash2, ZoomIn, ArrowRight, Home, Users, Diamond, Search, Mail, Phone, Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserCog, User, Info, Save, Layout, Laptop, Wifi, Lock, Vote, BarChart3, MessageSquarePlus, PauseCircle, PlayCircle, BookOpen, ChevronsUpDown, LogOut, CreditCard, Clock } from "lucide-react";
+import { HelpCircle, FileText, Check, X, Loader2, AlertTriangle, ShieldAlert, Sparkles, CheckCircle2, Bell, MessageSquare, Settings, Image, Trash2, ZoomIn, ArrowRight, Home, Users, Diamond, Search, Mail, Phone, Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserCog, User, Info, Save, Layout, Laptop, Wifi, Lock, Vote, BarChart3, MessageSquarePlus, PauseCircle, PlayCircle, BookOpen, ChevronsUpDown, LogOut, CreditCard, Clock, Square } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
 import { prepareWordEquations, buildWordClipboard, copyWordContent, downloadWordDocument } from "./utils/word-export";
@@ -15,6 +15,9 @@ import { Banknote } from "lucide-react";
 import { AdminPayments } from "./components/AdminPayments";
 import { GuideTour } from "./components/GuideTour";
 import { LoginScreen } from "./components/LoginScreen";
+import { HeroStudio } from "./components/HeroStudio";
+import { SlidingNumber } from "./components/ui/SlidingNumber";
+import { SpotlightCard } from "./components/ui/SpotlightCard";
 import { ZaloContactWidget } from "./components/ZaloContactWidget";
 import { EmailVerificationGate } from "./components/EmailVerificationGate";
 import { MandatoryPhoneGate } from "./components/MandatoryPhoneGate";
@@ -26,6 +29,8 @@ import { PhoneConfirmationHistory } from "./components/PhoneConfirmationHistory"
 import { DrawingWorkspace } from "./components/DrawingWorkspace";
 import { UserPaymentHistoryModal } from "./components/UserPaymentHistoryModal";
 import { ImagePreviewModal } from "./components/modals/ImagePreviewModal";
+import { CommandPaletteModal } from "./components/CommandPaletteModal";
+import { ScreenAnnotator } from "./components/ScreenAnnotator";
 
 // Firebase integrations
 import { auth, db } from "./firebase";
@@ -344,16 +349,19 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [userDoc?.planExpiresAt, planClock]);
   const currentMultiplier = getLimitMultiplier(activePlan);
-  const hasUsedTrial = Boolean(userDoc?.hasUsedTrial || userDoc?.planType === 'trial' || userDoc?.pricingPlan === 'trial');
-  const canRegister = (plan: string) => canRegisterPlan(plan, userDoc?.planType, userDoc?.planExpiresAt, Date.now(), hasUsedTrial);
+  const canRegister = (plan: string) => canRegisterPlan(plan, userDoc?.planType, userDoc?.planExpiresAt, Date.now());
   const reachedLimits = useRef<string[]>([]);
   useEffect(() => {
     if (!userDoc || !user || isAdminUser(user, userDoc) || !hasPhoneConfirmation(userDoc)) return;
     const today = getTodayStr();
+    // Với gói Pro: latexCount và examCount là không giới hạn, chỉ kiểm tra promptCount (tối đa 15 * 4 = 60 lượt)
     const reached = userDoc.lastLatexResetDate === today
-      ? (['latexCount', 'examCount', 'promptCount'] as const)
-          .filter((field, index) => Number(userDoc[field] || 0) >= [30, 10, 15][index] * currentMultiplier)
-          .map(field => `${user.uid}:${today}:${activePlan}:${field}`)
+      ? (activePlan === 'pro'
+          ? (Number(userDoc.promptCount || 0) >= 15 * currentMultiplier ? [`${user.uid}:${today}:${activePlan}:promptCount`] : [])
+          : (['latexCount', 'examCount', 'promptCount'] as const)
+              .filter((field, index) => Number(userDoc[field] || 0) >= [30, 10, 15][index] * currentMultiplier)
+              .map(field => `${user.uid}:${today}:${activePlan}:${field}`)
+        )
       : [];
     if (reached.some(key => !reachedLimits.current.includes(key))) setSidebarView('pricing');
     reachedLimits.current = reached;
@@ -411,6 +419,7 @@ export default function App() {
 
   // --- FEEDBACK STATE ---
   const [isFeedbackOpen, setIsFeedbackOpen] = useState<boolean>(false);
+  const [isAnnotatingScreen, setIsAnnotatingScreen] = useState<boolean>(false);
   const [feedbackText, setFeedbackText] = useState<string>("");
   const [feedbackType, setFeedbackType] = useState<
     "bug" | "request" | "suggestion" | "other"
@@ -446,6 +455,21 @@ export default function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] =
     useState<boolean>(false);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+
+  // Global Command Palette (Ctrl + K) State
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
   const [noticeCountdown, setNoticeCountdown] = useState<number>(0);
   const [poppedNoticeIds, setPoppedNoticeIds] = useState<string[]>([]);
@@ -560,42 +584,44 @@ export default function App() {
     );
   }, [notifications, user, userDoc]);
 
-  // Auto-popup modal when a new notification arrives that hasn't been popped yet OR if there is a mandatory poll pending
+  // Rule thông báo: Tự động hiện popup đúng 1 lần duy nhất cho mỗi thông báo.
+  // Khi người dùng đã đóng lại thì thông báo đó sẽ KHÔNG BAO GIỜ tự động xuất hiện nữa.
+  // Chỉ mở lại khi người dùng chủ động bấm vào icon / mục thông báo.
   useEffect(() => {
     if (!user || visibleNotifications.length === 0) return;
 
-    // If there is ANY mandatory poll pending for this user, force open the notification modal
-    if (!isAdminUser(user, userDoc)) {
-      const hasMandatoryPending = visibleNotifications.some(isNotificationMandatoryPending);
-      if (hasMandatoryPending) {
-        setIsNotificationsOpen(true);
-        return;
-      }
-    }
-
-    const unreadNotifs = visibleNotifications.filter(
-      (n) => !readNotificationIds.includes(n.id)
-    );
-    const unpopped = unreadNotifs.filter((n) => !poppedNoticeIds.includes(n.id));
+    // Lọc ra các thông báo chưa từng được hiển thị popup lần nào
+    const unpopped = visibleNotifications.filter((n) => !poppedNoticeIds.includes(n.id));
 
     if (unpopped.length > 0) {
       const newlyPoppedIds = unpopped.map((n) => n.id);
       setPoppedNoticeIds((prev) => {
         const updated = [...new Set([...prev, ...newlyPoppedIds])];
-        localStorage.setItem(`popped_notifs_${user.uid}`, JSON.stringify(updated));
+        try {
+          localStorage.setItem(`popped_notifs_${user.uid}`, JSON.stringify(updated));
+        } catch (e) {}
         return updated;
       });
 
       setIsNotificationsOpen(true);
-
-      // Unless user is admin, enforce mandatory 10s countdown!
-      if (!isAdminUser(user, userDoc)) {
-        setNoticeCountdown(10);
-      } else {
-        setNoticeCountdown(0);
-      }
+      setNoticeCountdown(0);
     }
-  }, [visibleNotifications, user, userDoc, readNotificationIds, poppedNoticeIds]);
+  }, [visibleNotifications, user, poppedNoticeIds]);
+
+  const handleCloseNotifications = () => {
+    setIsNotificationsOpen(false);
+    setNoticeCountdown(0);
+    if (user && visibleNotifications.length > 0) {
+      const allCurrentIds = visibleNotifications.map((n) => n.id);
+      setPoppedNoticeIds((prev) => {
+        const updated = [...new Set([...prev, ...allCurrentIds])];
+        try {
+          localStorage.setItem(`popped_notifs_${user.uid}`, JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+    }
+  };
 
   // Countdown timer effect for closing notification modal
   useEffect(() => {
@@ -1360,9 +1386,10 @@ export default function App() {
     }
 
     const currentExamCount = userDoc?.examCount || 0;
-    if (!isApproved && currentExamCount >= 10 * currentMultiplier) {
+    const isProOrAdmin = isApproved || activePlan === 'pro' || isAdminUser(user, userDoc);
+    if (!isProOrAdmin && currentExamCount >= 10 * currentMultiplier) {
       triggerToast(
-        `Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa ${10 * currentMultiplier} lượt/ngày). Vui lòng liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
+        `Bạn đã đạt giới hạn tính năng tạo tài liệu đề thi trong ngày (tối đa ${10 * currentMultiplier} lượt/ngày). Nâng cấp gói Pro để không giới hạn lượt tạo đề thi!`,
         false,
       );
       return;
@@ -3155,9 +3182,10 @@ ${cleanedBody}
     }
 
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
+    const isProOrAdmin = isApproved || activePlan === 'pro' || isAdminUser(user, userDoc);
+    if (!isProOrAdmin && currentLatexCount >= 30 * currentMultiplier) {
       triggerToast(
-        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
+        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Nâng cấp gói Pro để không giới hạn lượt chuyển đổi!`,
         false,
       );
       return;
@@ -3905,9 +3933,10 @@ ${bodyHtml}
     }
 
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
+    const isProOrAdmin = isApproved || activePlan === 'pro' || isAdminUser(user, userDoc);
+    if (!isProOrAdmin && currentLatexCount >= 30 * currentMultiplier) {
       triggerToast(
-        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
+        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Nâng cấp gói Pro để không giới hạn lượt chuyển đổi!`,
         false,
       );
       return;
@@ -3935,9 +3964,10 @@ ${bodyHtml}
     }
 
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
+    const isProOrAdmin = isApproved || activePlan === 'pro' || isAdminUser(user, userDoc);
+    if (!isProOrAdmin && currentLatexCount >= 30 * currentMultiplier) {
       triggerToast(
-        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
+        `Bạn đã đạt giới hạn tính năng chuyển đổi LaTeX trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Nâng cấp gói Pro để không giới hạn lượt chuyển đổi!`,
         false,
       );
       return;
@@ -4280,6 +4310,8 @@ ${bodyHtml}
     );
   }
 
+  const isWorkspaceFullscreen = sidebarView === 'latex' || sidebarView === 'drawing' || sidebarView === 'markitdown';
+
   return (
     <div 
       className="h-[100dvh] w-full text-slate-800 antialiased font-sans flex flex-row overflow-hidden relative"
@@ -4357,26 +4389,41 @@ ${bodyHtml}
 
           <div className="flex-1 overflow-y-auto py-2 flex flex-col gap-3 px-3 overflow-x-hidden w-full select-none">
               <div className="w-full shrink-0">
-                  <button onClick={() => handleSidebarNav('overview')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'overview' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('overview')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'overview' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'overview' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <Home className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Tổng quan</span>
                   </button>
               </div>
 
               <div className="w-full shrink-0 flex flex-col gap-1">
                   <div className="text-[10px] font-bold text-slate-400 tracking-wider mb-1 px-3 uppercase truncate">Workspace</div>
-                  <button onClick={() => handleSidebarNav('latex')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'latex' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('latex')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'latex' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'latex' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <Sparkles className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Chuyển đổi LaTeX</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('qbuilder')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'qbuilder' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('qbuilder')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'qbuilder' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'qbuilder' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <FileText className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Soạn đề thi (AI)</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('drawing')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'drawing' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('drawing')} className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'drawing' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'drawing' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <div className="flex items-center gap-3 truncate">
                           <Pencil className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Vẽ hình</span>
                       </div>
                       <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-md shrink-0">BETA</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('markitdown')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'markitdown' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('markitdown')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'markitdown' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'markitdown' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <Layout className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">MarkItDown AI</span>
                   </button>
               </div>
@@ -4385,22 +4432,40 @@ ${bodyHtml}
               {isAdminUser(user, userDoc) && (
                 <div className="w-full shrink-0 flex flex-col gap-1">
                   <div className="text-[10px] font-bold text-slate-400 tracking-wider mb-1 mt-2 px-3 uppercase truncate">Quản trị</div>
-                  <button onClick={() => handleSidebarNav('payments')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'payments' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('payments')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'payments' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'payments' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <Banknote className="w-4 h-4 shrink-0 text-emerald-600" /> <span className="truncate whitespace-nowrap">Thanh toán</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('members')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'members' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('members')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'members' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'members' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <Users className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Thành viên</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('tracking')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'tracking' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('tracking')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'tracking' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'tracking' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500" /> <span className="truncate whitespace-nowrap">Theo dõi</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('analytics')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'analytics' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('analytics')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'analytics' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'analytics' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <BarChart3 className="w-4 h-4 shrink-0 text-indigo-600" /> <span className="truncate whitespace-nowrap">Phân tích sử dụng</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('feedbacks')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'feedbacks' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('feedbacks')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'feedbacks' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'feedbacks' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <MessageSquare className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Góp ý & Phản hồi</span>
                   </button>
-                  <button onClick={() => handleSidebarNav('notify')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all ${sidebarView === 'notify' ? 'bg-indigo-50/80 text-indigo-700' : 'text-slate-600 hover:bg-white/50'}`}>
+                  <button onClick={() => handleSidebarNav('notify')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'notify' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'notify' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
                       <Bell className="w-4 h-4 shrink-0" /> <span className="truncate whitespace-nowrap">Thông báo</span>
                   </button>
                 </div>
@@ -4491,17 +4556,31 @@ ${bodyHtml}
                   <span className="truncate">Lịch sử mua hàng</span>
                 </button>
 
+                {/* Submit Feedback Item */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    setIsFeedbackOpen(true);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <MessageSquarePlus className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span className="truncate">Gửi góp ý &amp; Báo lỗi</span>
+                  </div>
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">
+                    Mới
+                  </span>
+                </button>
+
                 {/* Notifications & Feedbacks item */}
                 <button
                   type="button"
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     setIsNotificationsOpen(true);
-                    if (!isAdminUser(user, userDoc) && unreadCount > 0) {
-                      setNoticeCountdown(10);
-                    } else {
-                      setNoticeCountdown(0);
-                    }
+                    setNoticeCountdown(0);
                   }}
                   className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
                 >
@@ -4555,31 +4634,63 @@ ${bodyHtml}
       </div>
 
       {/* MAIN CONTENT WRAPPER */}
-      <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] ${sidebarView === 'drawing' ? `overflow-hidden ${isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto'}`}>
-          {/* 2 NÚT NỔI ĐỘC LẬP HOÀN TOÀN TRÊN NỀN (KHÔNG CÒN THANH DIV DOCK) */}
-          <button 
-            onClick={() => setIsMenuOpen(open => !open)}
-            className="fixed top-2.5 sm:top-3 left-2.5 sm:left-4 z-40 p-2 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/90 transition-all shadow-sm hover:shadow-md shrink-0 cursor-pointer"
-            title="Mở thanh điều hướng Menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+      <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] max-h-[100dvh] ${isWorkspaceFullscreen ? `overflow-hidden ${sidebarView === 'drawing' && isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto'}`}>
+            {/* 2 NÚT NỔI ĐỘC LẬP HOÀN TOÀN TRÊN NỀN (KHÔNG CÒN THANH DIV DOCK) */}
+            {/* NÚT TRUY CẬP NHANH GÓP Ý & THÔNG BÁO Ở GÓC TRÊN BÊN PHẢI */}
+            <div className="fixed top-2.5 sm:top-3 right-3 sm:right-5 z-40 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsFeedbackOpen(true)}
+                className="px-3 py-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-indigo-50/90 text-indigo-700 hover:text-indigo-800 border border-slate-200/90 hover:border-indigo-300 font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer shrink-0 group"
+                title="Gửi góp ý, báo lỗi hoặc vẽ khoanh vùng màn hình"
+              >
+                <MessageSquarePlus className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                <span className="hidden sm:inline">Góp ý &amp; Báo lỗi</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-2xs">
+                  MỚI
+                </span>
+              </button>
 
-          {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (
-            <button
-              id="guide-tour-topbar-btn"
-              onClick={() => setIsGuideTourOpen(true)}
-              className="fixed top-2.5 sm:top-3 left-13 sm:left-16 z-40 px-3 py-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-indigo-50/90 text-indigo-700 hover:text-indigo-800 border border-slate-200/90 hover:border-indigo-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer group shrink-0"
-              title="Xem hướng dẫn từng bước trực quan cho trang này"
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNotificationsOpen(true);
+                  setNoticeCountdown(0);
+                }}
+                className="relative p-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-purple-50/90 text-slate-700 hover:text-purple-700 border border-slate-200/90 hover:border-purple-300 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer shrink-0 group"
+                title="Xem thông báo hệ thống và khảo sát"
+              >
+                <Bell className="w-4.5 h-4.5 text-purple-600 group-hover:scale-110 transition-transform" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white shadow-sm ring-2 ring-white">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+            <button 
+              onClick={() => setIsMenuOpen(open => !open)}
+              className="fixed top-2.5 sm:top-3 left-2.5 sm:left-4 z-40 p-2 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/90 transition-all shadow-sm hover:shadow-md shrink-0 cursor-pointer"
+              title="Mở thanh điều hướng Menu"
             >
-              <BookOpen className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-              <span className="font-extrabold hidden sm:inline">Hướng dẫn sử dụng</span>
-              <span className="font-extrabold sm:hidden text-[11px]">HDSD</span>
+              <Menu className="w-5 h-5" />
             </button>
-          )}
 
-      <div className={`flex-1 flex flex-col ${sidebarView === 'drawing' ? 'min-h-0 h-full' : ''}`}>
-      <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : 'max-w-full w-full px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-2 flex flex-col gap-2 overflow-x-hidden shrink-0'}>
+            {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (
+              <button
+                id="guide-tour-topbar-btn"
+                onClick={() => setIsGuideTourOpen(true)}
+                className="fixed top-2.5 sm:top-3 left-13 sm:left-16 z-40 px-3 py-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-indigo-50/90 text-indigo-700 hover:text-indigo-800 border border-slate-200/90 hover:border-indigo-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer group shrink-0"
+                title="Xem hướng dẫn từng bước trực quan cho trang này"
+              >
+                <BookOpen className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                <span className="font-extrabold hidden sm:inline">Hướng dẫn sử dụng</span>
+                <span className="font-extrabold sm:hidden text-[11px]">HDSD</span>
+              </button>
+            )}
+
+            <div className={`flex-1 flex flex-col ${isWorkspaceFullscreen ? 'min-h-0 h-full overflow-hidden' : ''}`}>
+              <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : isWorkspaceFullscreen ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-2' : 'max-w-full w-full px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-6 flex flex-col gap-2 overflow-x-hidden shrink-0'}>
         {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics" || sidebarView === "payments") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 
@@ -4588,17 +4699,24 @@ ${bodyHtml}
             {/* Sub-tab 1: Members Management */}
             {sidebarView === "members" && (() => {
               const totalMembers = allUsers.length;
+              const todayStr = getTodayStr();
               const activeMembers = allUsers.filter(u => u.status === "approved").length;
               const pendingMembers = allUsers.filter(u => u.status === "pending" || !u.status).length;
 
-              const totalLatexCount = allUsers.reduce((sum, u) => sum + (Number(u.latexCount) || 0), 0);
-              const totalPromptCount = allUsers.reduce((sum, u) => sum + (Number(u.promptCount) || 0), 0);
+              // Lấy số lượt sử dụng chuẩn xác trong ngày hôm nay (người chưa dùng hôm nay sẽ là 0)
+              const getUserTodayUsage = (u: any) => {
+                const isToday = u.lastLatexResetDate === todayStr;
+                const l = isToday ? (Number(u.latexCount) || 0) : 0;
+                const e = isToday ? (Number(u.examCount) || 0) : 0;
+                const p = isToday ? (Number(u.promptCount) || 0) : 0;
+                return { latex: l, exam: e, prompt: p, total: l + e + p };
+              };
+
+              const totalLatexCount = allUsers.reduce((sum, u) => sum + getUserTodayUsage(u).latex, 0);
+              const totalPromptCount = allUsers.reduce((sum, u) => sum + getUserTodayUsage(u).prompt, 0);
 
               const getUserDailyUsage = (u: any) => {
-                const l = Number(u.latexCount) || 0;
-                const e = Number(u.examCount) || 0;
-                const p = Number(u.promptCount) || 0;
-                return l + e + p;
+                return getUserTodayUsage(u).total;
               };
 
               const filteredUsers = allUsers
@@ -4639,53 +4757,63 @@ ${bodyHtml}
                     </div>
                   </div>
 
-                  {/* Stats Cards */}
+                  {/* Stats Cards with Spotlight & Sliding Numbers */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-                    <div className="bg-white/50 border border-white/50 rounded-xl p-4 flex items-center gap-3 shadow-2xs hover:shadow-xs transition-all duration-200">
-                      <div className="w-10 h-10 rounded-lg bg-indigo-50/50 flex items-center justify-center shrink-0">
-                        <Users className="w-4 h-4 text-indigo-600" />
+                    <SpotlightCard spotlightColor="rgba(99, 102, 241, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50/70 flex items-center justify-center shrink-0">
+                          <Users className="w-4 h-4 text-indigo-600" />
+                        </div>
+                        <div>
+                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalMembers} /></div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tổng thành viên</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-lg font-black text-slate-800">{totalMembers}</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tổng thành viên</div>
+                    </SpotlightCard>
+                    <SpotlightCard spotlightColor="rgba(16, 185, 129, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-50/70 flex items-center justify-center shrink-0">
+                          <Check className="w-4 h-4 text-emerald-600" strokeWidth={3} />
+                        </div>
+                        <div>
+                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={activeMembers} /></div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Đang hoạt động</div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="bg-white/50 border border-white/50 rounded-xl p-4 flex items-center gap-3 shadow-2xs hover:shadow-xs transition-all duration-200">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-50/50 flex items-center justify-center shrink-0">
-                        <Check className="w-4 h-4 text-emerald-600" strokeWidth={3} />
+                    </SpotlightCard>
+                    <SpotlightCard spotlightColor="rgba(245, 158, 11, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-50/70 flex items-center justify-center shrink-0">
+                          <UserCog className="w-4 h-4 text-amber-600" />
+                        </div>
+                        <div>
+                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={pendingMembers} /></div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Chờ duyệt</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-lg font-black text-slate-800">{activeMembers}</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Đang hoạt động</div>
+                    </SpotlightCard>
+                    <SpotlightCard spotlightColor="rgba(37, 99, 235, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-50/70 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalLatexCount} /></div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">LaTeX hôm nay</div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="bg-white/50 border border-white/50 rounded-xl p-4 flex items-center gap-3 shadow-2xs hover:shadow-xs transition-all duration-200">
-                      <div className="w-10 h-10 rounded-lg bg-amber-50/50 flex items-center justify-center shrink-0">
-                        <UserCog className="w-4 h-4 text-amber-600" />
+                    </SpotlightCard>
+                    <SpotlightCard spotlightColor="rgba(225, 29, 72, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200 col-span-2 sm:col-span-1">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-rose-50/70 flex items-center justify-center shrink-0">
+                          <span className="font-black text-rose-600 text-xs tracking-tight">AI</span>
+                        </div>
+                        <div>
+                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalPromptCount} /></div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">AI hôm nay</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-lg font-black text-slate-800">{pendingMembers}</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Chờ duyệt</div>
-                      </div>
-                    </div>
-                    <div className="bg-white/50 border border-white/50 rounded-xl p-4 flex items-center gap-3 shadow-2xs hover:shadow-xs transition-all duration-200">
-                      <div className="w-10 h-10 rounded-lg bg-blue-50/50 flex items-center justify-center shrink-0">
-                        <FileText className="w-4 h-4 text-blue-600" />
-                      </div>
-                      <div>
-                        <div className="text-lg font-black text-slate-800">{totalLatexCount}</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">LaTeX đã dùng</div>
-                      </div>
-                    </div>
-                    <div className="bg-white/50 border border-white/50 rounded-xl p-4 flex items-center gap-3 shadow-2xs hover:shadow-xs transition-all duration-200 col-span-2 sm:col-span-1">
-                      <div className="w-10 h-10 rounded-lg bg-rose-50/50 flex items-center justify-center shrink-0">
-                        <span className="font-black text-rose-600 text-xs tracking-tight">AI</span>
-                      </div>
-                      <div>
-                        <div className="text-lg font-black text-slate-800">{totalPromptCount}</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Dàn AI đã dùng</div>
-                      </div>
-                    </div>
+                    </SpotlightCard>
                   </div>
 
                   {/* Table Card */}
@@ -4815,11 +4943,16 @@ ${bodyHtml}
                                   </div>
                                 </td>
                                 <td className="py-4 px-6">
-                                  <div className="flex flex-col gap-1 text-[11px] text-slate-500 font-medium">
-                                    <div>LaTeX: <span className="text-[#1E2432] font-bold">{u.latexCount || 0}</span>/{u.planType === 'pro' ? 120 : u.planType === 'plus' || u.planType === 'trial' ? 60 : 30}</div>
-                                    <div>AI: <span className="text-[#1E2432] font-bold">{u.promptCount || 0}</span>/{u.planType === 'pro' ? 60 : u.planType === 'plus' || u.planType === 'trial' ? 30 : 15}</div>
-                                    <div>Đề thi: <span className="text-[#1E2432] font-bold">{u.examCount || 0}</span>/{u.planType === 'pro' ? 40 : u.planType === 'plus' || u.planType === 'trial' ? 20 : 10}</div>
-                                  </div>
+                                  {(() => {
+                                    const usage = getUserTodayUsage(u);
+                                    return (
+                                      <div className="flex flex-col gap-1 text-[11px] text-slate-500 font-medium">
+                                        <div>LaTeX: <span className="text-[#1E2432] font-bold">{usage.latex}</span>/{u.planType === 'pro' ? '∞' : u.planType === 'plus' || u.planType === 'trial' ? 60 : 30}</div>
+                                        <div>AI: <span className="text-[#1E2432] font-bold">{usage.prompt}</span>/{u.planType === 'pro' ? 60 : u.planType === 'plus' || u.planType === 'trial' ? 30 : 15}</div>
+                                        <div>Đề thi: <span className="text-[#1E2432] font-bold">{usage.exam}</span>/{u.planType === 'pro' ? '∞' : u.planType === 'plus' || u.planType === 'trial' ? 20 : 10}</div>
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="py-4 px-6 text-right">
                                   <div className="flex items-center justify-end gap-1.5 flex-wrap">
@@ -5042,20 +5175,28 @@ ${bodyHtml}
                             </div>
 
                             <PhoneConfirmationHistory uid={selectedUserDetails.uid} />
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">LaTeX</span>
-                                <span className="text-lg font-black text-slate-800">{selectedUserDetails.latexCount || 0}</span>
-                              </div>
-                              <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Đề thi</span>
-                                <span className="text-lg font-black text-slate-800">{selectedUserDetails.examCount || 0}</span>
-                              </div>
-                              <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dàn AI</span>
-                                <span className="text-lg font-black text-slate-800">{selectedUserDetails.promptCount || 0}</span>
-                              </div>
-                            </div>
+                            {(() => {
+                              const isToday = selectedUserDetails.lastLatexResetDate === todayStr;
+                              const l = isToday ? (selectedUserDetails.latexCount || 0) : 0;
+                              const e = isToday ? (selectedUserDetails.examCount || 0) : 0;
+                              const p = isToday ? (selectedUserDetails.promptCount || 0) : 0;
+                              return (
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">LaTeX (Hôm nay)</span>
+                                    <span className="text-lg font-black text-slate-800">{l}</span>
+                                  </div>
+                                  <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Đề thi (Hôm nay)</span>
+                                    <span className="text-lg font-black text-slate-800">{e}</span>
+                                  </div>
+                                  <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dàn AI (Hôm nay)</span>
+                                    <span className="text-lg font-black text-slate-800">{p}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </motion.div>
                         </div>
                       )}
@@ -6404,8 +6545,9 @@ ${bodyHtml}
                   <div>
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Số lần dùng LaTeX</span>
+                      {activePlan === 'pro' && <span className="text-indigo-600 font-bold">Không giới hạn</span>}
                     </div>
-                    {!(isApproved || isAdminUser(user, userDoc)) && (
+                    {!(isApproved || activePlan === 'pro' || isAdminUser(user, userDoc)) && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div
                           className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
@@ -6418,8 +6560,9 @@ ${bodyHtml}
                   <div>
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Số lần soạn đề thi</span>
+                      {activePlan === 'pro' && <span className="text-violet-600 font-bold">Không giới hạn</span>}
                     </div>
-                    {!(isApproved || isAdminUser(user, userDoc)) && (
+                    {!(isApproved || activePlan === 'pro' || isAdminUser(user, userDoc)) && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div
                           className="bg-violet-600 h-1.5 rounded-full transition-all duration-300"
@@ -6432,6 +6575,7 @@ ${bodyHtml}
                   <div>
                     <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1">
                       <span>Lượt dán thông minh AI</span>
+                      <span className="text-slate-500 font-medium">{userDoc?.promptCount || 0}/{15 * currentMultiplier}</span>
                     </div>
                     {!(isApproved || isAdminUser(user, userDoc)) && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
@@ -6554,324 +6698,151 @@ ${bodyHtml}
         )}
 
         {sidebarView === 'pricing' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] bg-[#F9F9F9] flex flex-col items-center justify-start md:justify-center font-sans overflow-x-hidden overflow-y-auto overscroll-y-contain md:overflow-hidden">
-            <div className="w-full min-w-0 max-w-6xl mx-auto p-4 pt-16 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-4 md:px-8 relative flex flex-col items-center justify-start md:justify-center shrink-0 h-auto md:h-full max-h-none md:max-h-[900px]">
-               <button aria-label="Đóng bảng nâng cấp" onClick={() => setSidebarView('overview')} className="fixed md:absolute top-4 right-4 p-2 bg-[#F9F9F9] md:bg-transparent rounded-full text-slate-400 hover:text-slate-800 transition-colors z-20 md:z-10">
-                 <X className="w-6 h-6 stroke-[1.5]" />
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex flex-col items-center justify-start md:justify-center font-sans overflow-x-hidden overflow-y-auto overscroll-y-contain md:overflow-hidden p-3 sm:p-4"
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full min-w-0 max-w-6xl mx-auto p-4 sm:p-6 md:p-8 bg-[#F9F9F9] rounded-[32px] border border-white/80 shadow-2xl relative flex flex-col items-center justify-start md:justify-center shrink-0 h-auto md:h-full max-h-none md:max-h-[900px]"
+            >
+               <button 
+                 aria-label="Đóng bảng nâng cấp" 
+                 onClick={() => setSidebarView('overview')} 
+                 className="fixed md:absolute top-4 right-4 p-2 bg-white md:bg-white/80 border border-slate-200/80 rounded-full text-slate-400 hover:text-slate-800 hover:rotate-90 transition-all duration-300 z-20 md:z-10 shadow-3xs cursor-pointer"
+               >
+                 <X className="w-5 h-5 stroke-[2]" />
                </button>
 
-               <h2 className="text-2xl md:text-3xl font-semibold text-center mb-6 text-[#0D0D0D]">Nâng cấp gói của bạn</h2>
+               <motion.h2 
+                 initial={{ opacity: 0, y: -6 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 transition={{ delay: 0.08, duration: 0.35 }}
+                 className="text-2xl md:text-3xl font-black text-center mb-2 text-[#0D0D0D] tracking-tight"
+               >
+                 Nâng cấp gói của bạn
+               </motion.h2>
                {activePlan !== 'free' && userDoc?.planExpiresAt && (
-                 <p className="text-sm text-gray-500 text-center mb-4">Gói {activePlan.toUpperCase()} đã đăng ký đến {new Date(userDoc.planExpiresAt).toLocaleDateString('vi-VN')}. Bạn có thể nâng cấp lên gói cao hơn.</p>
+                 <motion.p 
+                   initial={{ opacity: 0 }}
+                   animate={{ opacity: 1 }}
+                   transition={{ delay: 0.12, duration: 0.35 }}
+                   className="text-xs sm:text-sm text-gray-500 text-center mb-6"
+                 >
+                   Gói {activePlan.toUpperCase()} đã đăng ký đến {new Date(userDoc.planExpiresAt).toLocaleDateString('vi-VN')}. Bạn có thể nâng cấp lên gói cao hơn.
+                 </motion.p>
                )}
 
-               {/* Pricing Cards Grid (Tự động ẩn gói Trial khi tài khoản đã từng đăng ký dùng thử) */}
-               <div className={`${hasUsedTrial ? "grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto w-full" : "grid grid-cols-1 md:grid-cols-3 gap-4 w-full"}`}>
+               {/* Pricing Cards Grid (Hiển thị đầy đủ cả 3 gói cho mọi người dùng) */}
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full mt-2">
 
-                 {/* Card Trial (Chỉ hiển thị cho người dùng chưa từng dùng gói Trial) */}
-                 {!hasUsedTrial && (
-                   <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300 relative">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-xl font-medium text-gray-900">Trial</h3>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200/80 px-2.5 py-0.5 rounded-full select-none shadow-3xs">
-                          <Clock className="w-3 h-3 text-blue-500" /> THỜI GIAN CÓ HẠN
-                        </span>
-                      </div>
-                      <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Dành cho người mới làm quen với hệ thống AI số hóa văn bản.</p>
-                      <button disabled={!canRegister('trial')} onClick={() => setSelectedPricingPlan('trial')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'trial' ? 'Đã đăng ký' : !canRegister('trial') ? 'Đã có gói cao hơn' : 'Đăng ký dùng thử'}</button>
-                      <div className="flex items-baseline gap-2 mb-5 select-none">
-                         <span className="text-xl font-semibold text-gray-400 line-through">đ 9.000</span>
-                         <span className="text-3xl font-semibold text-gray-900 leading-none">đ 5.000</span>
-                         <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ 7 ngày</span>
-                      </div>
-                      <div className="space-y-3 flex-1 overflow-y-auto">
-                        <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Sử dụng trong 7 ngày</span></div>
-                        <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Nhân đôi (x2) hạn mức chuyển đổi</span></div>
-                        <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-400 shrink-0" /><span className="text-[13px] text-gray-600">Tối đa 60 LaTeX / ngày</span></div>
-                      </div>
-                   </div>
-                 )}
-
-                 {/* Card Plus */}
-                 <div className="bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-gray-200 relative hover:border-[#3b82f6] hover:shadow-[0_8px_30px_rgba(59,130,246,0.12)] transition-all duration-300">
-                    <h3 className="text-xl font-medium text-gray-900 mb-2">Plus</h3>
-                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Không chỉ công thức, hãy để AI cùng bạn thao tác toàn bộ văn bản.</p>
-                    <button disabled={!canRegister('plus')} onClick={() => setSelectedPricingPlan('plus')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-medium hover:bg-gray-50 transition-colors mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'plus' ? 'Đã đăng ký' : !canRegister('plus') ? 'Đã có gói cao hơn' : 'Nâng cấp gói Plus'}</button>
+                 {/* Card Trial (Cho phép đăng ký không giới hạn số lần) */}
+                 <motion.div 
+                   initial={{ opacity: 0, y: 16 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ duration: 0.4, delay: 0.14, ease: "easeOut" }}
+                   whileHover={{ y: -6, scale: 1.015 }}
+                   className="bg-white rounded-[26px] p-5 md:p-6 flex flex-col border border-gray-200/90 hover:border-blue-400 hover:shadow-[0_16px_36px_rgba(59,130,246,0.14)] transition-all duration-300 relative group cursor-default"
+                 >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Trial</h3>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200/80 px-2.5 py-0.5 rounded-full select-none shadow-3xs">
+                        <Clock className="w-3 h-3 text-blue-500" /> THỜI GIAN CÓ HẠN
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Dành cho người mới làm quen với hệ thống AI số hóa văn bản.</p>
+                    <button disabled={!canRegister('trial')} onClick={() => setSelectedPricingPlan('trial')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-bold hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'trial' ? 'Đã đăng ký' : !canRegister('trial') ? 'Đã có gói cao hơn' : 'Đăng ký dùng thử'}</button>
                     <div className="flex items-baseline gap-2 mb-5 select-none">
-                       <span className="text-xl font-semibold text-gray-400 line-through">đ 19.000</span>
-                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ 12.000</span>
-                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng (đã bao gồm thuế)</span>
+                       <span className="text-xl font-semibold text-gray-400 line-through">đ 9.000</span>
+                       <span className="text-3xl font-black text-gray-900 leading-none">đ 5.000</span>
+                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ 7 ngày</span>
                     </div>
                     <div className="space-y-3 flex-1 overflow-y-auto">
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-600 shrink-0" /><span className="text-[13px] text-gray-800">Trí thông minh tiên tiến cho công việc phức tạp</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-600 shrink-0" /><span className="text-[13px] text-gray-800">Nhân đôi (x2) hạn mức hệ thống</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-600 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 60 LaTeX / ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-gray-600 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 20 Đề thi / ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Sử dụng trong 7 ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Không có quảng cáo</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Nhân đôi (x2) hạn mức hệ thống</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 60 LaTeX / ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 20 Đề thi / ngày</span></div>
                     </div>
-                 </div>
+                 </motion.div>
+
+                 {/* Card Plus */}
+                 <motion.div 
+                   initial={{ opacity: 0, y: 16 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ duration: 0.4, delay: 0.22, ease: "easeOut" }}
+                   whileHover={{ y: -6, scale: 1.015 }}
+                   className="bg-white rounded-[26px] p-5 md:p-6 flex flex-col border border-gray-200/90 relative hover:border-purple-400 hover:shadow-[0_16px_36px_rgba(168,85,247,0.14)] transition-all duration-300 group cursor-default"
+                 >
+                    <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">Plus</h3>
+                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Không chỉ công thức, hãy để AI cùng bạn thao tác toàn bộ văn bản.</p>
+                    <button disabled={!canRegister('plus')} onClick={() => setSelectedPricingPlan('plus')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-bold hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-all mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'plus' ? 'Đã đăng ký' : !canRegister('plus') ? 'Đã có gói cao hơn' : 'Nâng cấp gói Plus'}</button>
+                    <div className="flex items-baseline gap-2 mb-5 select-none">
+                       <span className="text-xl font-semibold text-gray-400 line-through">đ 19.000</span>
+                       <span className="text-3xl font-black text-gray-900 leading-none">đ 12.000</span>
+                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng</span>
+                    </div>
+                    <div className="space-y-3 flex-1 overflow-y-auto">
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Sử dụng trong 30 ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Không có quảng cáo</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Nhân đôi (x2) hạn mức hệ thống</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 60 LaTeX / ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 20 Đề thi / ngày</span></div>
+                    </div>
+                 </motion.div>
 
                  {/* Card Pro */}
-                 <div className="bg-[#f8faff] lg:bg-white rounded-[24px] p-5 md:p-6 flex flex-col border border-[#3b82f6] shadow-sm relative z-10 hover:border-blue-600 hover:shadow-[0_8px_30px_rgba(59,130,246,0.18)] transition-all duration-300">
-                    <h3 className="text-xl font-medium text-gray-900 mb-2">Pro</h3>
-                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Mức sử dụng tiêu chuẩn dành cho những ai dựa vào AI số hóa mạnh mẽ nhất.</p>
-                    <button disabled={!canRegister('pro')} onClick={() => setSelectedPricingPlan('pro')} className="w-full py-2.5 rounded-full bg-[#3b82f6] text-white font-medium hover:bg-blue-600 transition-colors mb-4 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'pro' ? 'Đã đăng ký' : 'Nâng cấp gói Pro'}</button>
+                 <motion.div 
+                   initial={{ opacity: 0, y: 16 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ duration: 0.4, delay: 0.30, ease: "easeOut" }}
+                   whileHover={{ y: -7, scale: 1.02 }}
+                   className="bg-[#f8faff] lg:bg-white rounded-[26px] p-5 md:p-6 flex flex-col border-2 border-[#3b82f6] shadow-md relative z-10 hover:border-indigo-600 hover:shadow-[0_20px_45px_rgba(79,70,229,0.22)] transition-all duration-300 group cursor-default"
+                 >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xl font-black text-gray-900 group-hover:text-indigo-600 transition-colors">Pro</h3>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-full">Khuyên Dùng</span>
+                    </div>
+                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Trải nghiệm không giới hạn.</p>
+                    <button disabled={!canRegister('pro')} onClick={() => setSelectedPricingPlan('pro')} className="w-full py-2.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold transition-all shadow-md shadow-blue-500/25 mb-4 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'pro' ? 'Đã đăng ký' : 'Nâng cấp gói Pro'}</button>
                     <div className="flex items-baseline gap-2 mb-5 select-none">
                        <span className="text-xl font-semibold text-gray-400 line-through">đ 29.000</span>
-                       <span className="text-3xl font-semibold text-gray-900 leading-none">đ 19.000</span>
-                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng (đã bao gồm thuế)</span>
+                       <span className="text-3xl font-black text-indigo-600 leading-none">đ 19.000</span>
+                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng</span>
                     </div>
                     <div className="space-y-3 flex-1 overflow-y-auto pr-1">
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Mô hình Pro mạnh mẽ nhất của chúng tôi</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Nhân 4 (x4) hạn mức lưu trữ & xử lý</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 120 LaTeX / ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-[#3b82f6] shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 40 Đề thi / ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Sử dụng trong 30 ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Không có quảng cáo</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Ưu tiên tốc độ hệ thống</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Hạn mức AI cao nhất</span></div>
+                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Chuyển đổi LaTeX, tạo đề thi, vẽ hình, MarkItDown không giới hạn</span></div>
                     </div>
-                 </div>
+                 </motion.div>
 
                </div>
-            </div>
+            </motion.div>
           </motion.div>
         )}
 
         {sidebarView === 'overview' && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            transition={{ duration: 0.3 }}
-            className="space-y-5 flex-1 flex flex-col"
-          >
-            {/* Header Greeting */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] py-4 px-5 rounded-[28px]">
-              <div>
-                <h1 className="text-base sm:text-lg font-extrabold text-slate-800 tracking-tight leading-snug">
-                  <span className="block sm:inline">Chào mừng quay trở lại, </span>
-                  <span className="text-indigo-600 font-black break-words">{userDoc?.displayName || user?.displayName || user?.email?.split("@")[0]}</span>{" "}
-                  <span className="whitespace-nowrap">! 👋</span>
-                </h1>
-                <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
-                  Hệ thống số hóa công thức LaTeX và hỗ trợ soạn thảo đề thi thông minh.
-                </p>
-              </div>
-              <div className="flex items-center gap-4 shrink-0">
-                <div className="text-right hidden md:block">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Trạng thái hệ thống</div>
-                  <div className="text-[11px] text-emerald-600 font-bold flex items-center gap-1.5 justify-end mt-0.5">
-                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span> Hoạt động tốt
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSidebarView('latex')}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-lg transition-all shadow-xs flex items-center gap-1.5 hover:shadow-md cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" /> Bắt đầu ngay <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-
-
-            {/* Quick Stats Grid based on Live User Doc Limits */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-              {/* Stat 1: LaTeX conversions */}
-              <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] p-5 rounded-[28px] hover:shadow-xs transition-all flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức LaTeX đã dùng</span>
-                  <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 shrink-0">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-1">
-                  <div className="w-full bg-slate-100 rounded-full h-1.5">
-                    <div
-                      className="bg-indigo-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.latexCount || 0) / (30 * currentMultiplier)) * 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <span className="text-[10px] text-slate-400 font-semibold">Tự động reset về 0 sau 5h sáng hằng ngày.</span>
-              </div>
-
-              {/* Stat 2: Exam builders */}
-              <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] p-5 rounded-[28px] hover:shadow-xs transition-all flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Lượt soạn đề bằng AI</span>
-                  <div className="p-2 rounded-xl bg-violet-50 text-violet-600 shrink-0">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-1">
-                  <div className="w-full bg-slate-100 rounded-full h-1.5">
-                    <div
-                      className="bg-violet-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.examCount || 0) / (10 * currentMultiplier)) * 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <span className="text-[10px] text-slate-400 font-semibold">Tự động reset về 0 sau 5h sáng hằng ngày.</span>
-              </div>
-
-              {/* Stat 3: Prompt tokens */}
-              <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] p-5 rounded-[28px] hover:shadow-xs transition-all flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức tinh chỉnh AI</span>
-                  <div className="p-2 rounded-xl bg-pink-50 text-pink-600 shrink-0">
-                    <HelpCircle className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-1">
-                  <div className="w-full bg-slate-100 rounded-full h-1.5">
-                    <div
-                      className="bg-pink-600 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, ((userDoc?.promptCount || 0) / (15 * currentMultiplier)) * 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <span className="text-[10px] text-slate-400 font-semibold">Tự động reset về 0 sau 5h sáng hằng ngày.</span>
-              </div>
-
-              {/* Stat 4: Account Type */}
-              <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] p-5 rounded-[28px] hover:shadow-xs transition-all flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gói tài khoản của bạn</span>
-                  <div className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
-                    <Diamond className="w-4 h-4 animate-pulse" />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-2xl font-black text-slate-800 flex items-center gap-1.5 uppercase">
-                    {isAdminUser(user, userDoc) ? "QUẢN TRỊ VIÊN" : userDoc?.planType && userDoc.planType !== 'free' ? `TÀI KHOẢN ${userDoc.planType}` : isApproved ? "THÀNH VIÊN PRO" : "TÀI KHOẢN FREE"}
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-semibold mt-2.5 leading-relaxed">
-                    {isAdminUser(user, userDoc) || (userDoc?.planType && userDoc.planType !== 'free') || isApproved 
-                      ? "Bạn đang sở hữu đặc quyền của hệ thống" 
-                      : "Nâng cấp lên gói PRO để nhận thêm lượt chuyển đổi."}
-                  </div>
-                </div>
-                {upgradeVisibility.main && !isAdminUser(user, userDoc) && (
-                  <button
-                    type="button"
-                    onClick={() => setSidebarView('pricing')}
-                    className="mt-1 text-left text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
-                  >
-                    Nâng cấp ngay <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Bento Grid: Core Modules & Quick Launch */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 xl:gap-6">
-              {/* Module 1: Word to LaTeX Converter */}
-              <div className="bg-white p-5 xl:p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-indigo-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
-                <div className="space-y-4">
-                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
-                    <Sparkles className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-slate-800 font-sans">
-                      Chuyển đổi Word sang LaTeX
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium mt-1.5 leading-relaxed">
-                      Chuyển mã nhanh các tài liệu, bài báo khoa học chứa công thức toán hoặc bảng biểu phức tạp. Hỗ trợ hiển thị trực quan cấu trúc LaTeX trực tiếp trước khi sao chép.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSidebarView('latex')}
-                  className="mt-6 w-full py-2.5 border border-indigo-100 hover:bg-indigo-50/50 text-indigo-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer group-hover:border-indigo-300 animate-none"
-                >
-                  Mở công cụ <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-
-              {/* Module 2: AI Exam Builder */}
-              <div className="bg-white p-5 xl:p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-violet-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
-                <div className="space-y-4">
-                  <div className="p-3 bg-violet-50 text-violet-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
-                    <FileText className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-slate-800 font-sans">
-                      Soạn đề thi Trắc nghiệm AI
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium mt-1.5 leading-relaxed">
-                      Sử dụng Trí tuệ Nhân tạo để phân tích, tự động bóc tách danh sách câu hỏi trắc nghiệm, trích xuất tùy chọn A, B, C, D và sinh lời giải bằng LaTeX cực kỳ thông minh.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSidebarView('qbuilder')}
-                  className="mt-6 w-full py-2.5 border border-violet-100 hover:bg-violet-50/50 text-violet-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer group-hover:border-violet-300 animate-none"
-                >
-                  Mở trình soạn đề <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-
-              {/* Module 3: Drawing Workspace / Vẽ hình */}
-              <div className="bg-white p-5 xl:p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-amber-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
-                      <Pencil className="w-6 h-6" />
-                    </div>
-                    <a
-                      href="/ve-hinh/huong-dan.html"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] font-semibold text-slate-400 hover:text-amber-600 flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-amber-50/60"
-                      title="Xem hướng dẫn sử dụng vẽ hình"
-                    >
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span>Hướng dẫn</span>
-                    </a>
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-slate-800 font-sans">
-                      Workspace · Vẽ hình
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium mt-1.5 leading-relaxed">
-                      Dựng hình học, khám phá đồ thị và không gian tương tác. Kéo thả trực quan, AI hỗ trợ tạo bản dựng và xuất hình ảnh chất lượng cao cho bài giảng.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleSidebarNav('drawing')}
-                  className="mt-6 w-full py-2.5 border border-amber-100 hover:bg-amber-50/50 text-amber-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer group-hover:border-amber-300 animate-none"
-                >
-                  Mở bảng vẽ <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-
-              {/* Module 4: MarkItDown AI */}
-              <div className="bg-white p-5 xl:p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:border-emerald-200 hover:shadow-sm transition-all duration-200 flex flex-col justify-between group">
-                <div className="space-y-4">
-                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl w-12 h-12 flex items-center justify-center font-bold">
-                    <Layout className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-slate-800 font-sans">
-                      MarkItDown AI
-                    </h3>
-                    <p className="text-xs text-slate-500 font-medium mt-1.5 leading-relaxed">
-                      Chuyển đổi mọi loại tài liệu (PDF, Word, Excel, PowerPoint, HTML, Audio, Hình ảnh, YouTube) sang định dạng Markdown chuẩn xác bằng trí tuệ nhân tạo.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSidebarView('markitdown')}
-                  className="mt-6 w-full py-2.5 border border-emerald-100 hover:bg-emerald-50/50 text-emerald-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer group-hover:border-emerald-300 animate-none"
-                >
-                  Bắt đầu chuyển đổi <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-            </div>
-          </motion.div>
+          <div className="flex-1 flex flex-col">
+            <HeroStudio
+              user={user}
+              userDoc={userDoc}
+              onNavigate={(view) => handleSidebarNav(view)}
+              onOpenPricing={() => setSidebarView('pricing')}
+              onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+              isAdmin={isAdminUser(user, userDoc)}
+              isApproved={isApproved}
+              currentMultiplier={currentMultiplier}
+            />
+          </div>
         )}
 
         {sidebarView === 'latex' && (
@@ -6909,7 +6880,7 @@ ${bodyHtml}
         {sidebarView === 'markitdown' && (
           <MarkItDown 
             triggerToast={triggerToast} 
-            isPro={isApproved || isAdminUser(user, userDoc)}
+            isPro={isApproved || activePlan === 'pro' || isAdminUser(user, userDoc)}
             userDoc={userDoc}
             onMarkItDownUsage={handleMarkItDownUsage}
           />
@@ -7049,134 +7020,122 @@ ${bodyHtml}
           )}
         </AnimatePresence>
 
-        {/* Feedback Modal Popup */}
+        {/* Screen Annotation Canvas Overlay */}
+        <ScreenAnnotator
+          isOpen={isAnnotatingScreen}
+          onCapture={(dataUrl) => {
+            setIsAnnotatingScreen(false);
+            setFeedbackImage(dataUrl);
+            setIsFeedbackOpen(true);
+            triggerToast("Đã chụp và gắn ảnh khoanh vùng thành công!", true);
+          }}
+          onCancel={() => {
+            setIsAnnotatingScreen(false);
+            setIsFeedbackOpen(true);
+          }}
+        />
+
+        {/* Feedback Modal Popup (Pure Pristine Light Mode - No Scrollbar, Perfectly Compact) */}
         <AnimatePresence>
           {isFeedbackOpen && (
             <div
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-60 overflow-y-auto"
+              className="fixed inset-0 z-[120] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
               id="feedback-rating-overlay"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setIsFeedbackOpen(false);
+              }}
             >
               <motion.div
-                initial={{ scale: 0.98, opacity: 0, y: 10 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.98, opacity: 0, y: 10 }}
-                className="bg-white rounded-2xl shadow-xl border border-slate-200/80 max-w-lg w-full overflow-hidden flex flex-col my-8 max-h-[90vh]"
+                initial={{ opacity: 0, scale: 0.95, y: 16 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 16 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className="bg-white rounded-[28px] shadow-2xl border border-slate-200/90 max-w-lg w-full overflow-hidden flex flex-col my-auto relative text-slate-800"
               >
                 {/* Header */}
-                <div className="bg-white px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-extrabold text-sm md:text-base text-slate-800">
-                      Gửi Phản Hồi & Ý Kiến Đóng Góp
-                    </h3>
-                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                      Bảo mật & Giúp cải tiến sản phẩm tốt hơn
-                    </p>
+                <div className="bg-gradient-to-r from-slate-50 via-white to-indigo-50/50 px-5 sm:px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                      <MessageSquarePlus className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-sm sm:text-base text-slate-900 tracking-tight flex items-center gap-2">
+                        <span>Đóng Góp Ý Kiến &amp; Góp Ý Mới</span>
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-black rounded-full uppercase tracking-wider">
+                          2.0
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Mọi ý kiến của bạn trực tiếp định hình các bản cập nhật tiếp theo
+                      </p>
+                    </div>
                   </div>
                   <button
                     type="button"
+                    aria-label="Đóng cửa sổ góp ý"
                     onClick={() => setIsFeedbackOpen(false)}
-                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer text-xs font-bold"
+                    className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 hover:rotate-90 transition-all duration-200 cursor-pointer"
                   >
-                    ✕
+                    <X className="w-4 h-4 stroke-[2]" />
                   </button>
                 </div>
 
-                {/* Form container */}
-                <form onSubmit={handleSubmitFeedback} className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-80px)] flex-1">
-                  {/* Email */}
+                {/* Form container - 3 MỤC DUY NHẤT, GỌN GÀNG, KHÔNG THANH TRƯỢT */}
+                <form onSubmit={handleSubmitFeedback} className="p-5 sm:p-6 space-y-3.5 overflow-hidden flex-1">
+                  {/* Mục 1: Khoanh vùng trực tiếp trên màn hình */}
+                  <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 p-3 rounded-2xl border border-indigo-200/90 flex items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-2.5 text-left min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-rose-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-md shadow-rose-500/25">
+                        <Square className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-black text-slate-900 flex items-center gap-1.5 truncate">
+                          <span>Khoanh vùng trực tiếp trên màn hình</span>
+                          <span className="px-1.5 py-0.2 bg-gradient-to-r from-amber-500 to-rose-500 text-white text-[9px] font-black rounded-full shadow-2xs">
+                            MỚI
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium truncate">
+                          Khoanh hộp hoặc ghim điểm lỗi trực tiếp lên giao diện
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsFeedbackOpen(false);
+                        setIsAnnotatingScreen(true);
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:from-rose-700 hover:to-indigo-700 text-white font-extrabold text-xs shadow-md shadow-rose-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                      <span>Khoanh vùng ngay</span>
+                    </button>
+                  </div>
+
+                  {/* Mục 2: Nhập nội dung chi tiết */}
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block">
-                      Người gửi
-                    </label>
-                    <p className="text-xs font-semibold text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
-                      {user?.email}
-                    </p>
-                  </div>
-
-                  {/* Rating selection (Interactive stars) */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block">
-                      Đánh giá hệ thống
-                    </label>
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <button
-                          type="button"
-                          key={star}
-                          onClick={() => setFeedbackRating(star)}
-                          className={`p-0.5 text-xl transition-all cursor-pointer ${
-                            star <= feedbackRating
-                              ? "text-amber-500"
-                              : "text-slate-300 hover:text-slate-400"
-                          }`}
-                        >
-                          ★
-                        </button>
-                      ))}
-                      <span className="text-[11px] font-bold text-slate-500 block ml-2">
-                        {feedbackRating === 5
-                          ? "Tuyệt vời, 5 sao"
-                          : feedbackRating === 4
-                            ? "Tốt, 4 sao"
-                            : feedbackRating === 3
-                              ? "Bình thường, 3 sao"
-                              : feedbackRating === 2
-                                ? "Kém, 2 sao"
-                                : "Rất tệ, 1 sao"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Feedback Type Tabs */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block">
-                      Phân loại ý kiến
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {(["suggestion", "bug", "request", "other"] as const).map(
-                        (type) => (
-                          <button
-                            type="button"
-                            key={type}
-                            onClick={() => setFeedbackType(type)}
-                            className={`py-2 px-1 text-[11px] font-bold rounded-xl border text-center transition-all cursor-pointer ${
-                              feedbackType === type
-                                ? "bg-indigo-50 border-indigo-500 text-indigo-600 shadow-2xs"
-                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
-                            }`}
-                          >
-                            {type === "suggestion" && "Đóng góp"}
-                            {type === "bug" && "Báo lỗi"}
-                            {type === "request" && "Yêu cầu"}
-                            {type === "other" && "Khác"}
-                          </button>
-                        ),
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Feedback Textarea Input */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block">
-                      Nội dung góp ý
+                    <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                      <span>Nội dung chi tiết</span>
+                      <span className="text-[10px] font-normal text-slate-400">Tối thiểu vài ký tự</span>
                     </label>
                     <textarea
                       value={feedbackText}
                       onChange={(e) => setFeedbackText(e.target.value)}
-                      rows={4}
-                      className="w-full p-3 border border-slate-250 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:outline-none focus:border-indigo-500 text-xs font-semibold text-slate-700 placeholder:text-slate-400 bg-white"
-                      placeholder="Hãy ghi chi tiết trải nghiệm của bạn, các tính năng mong muốn, góp ý giao diện hoặc mô tả lỗi nếu có..."
+                      rows={3}
+                      className="w-full p-2.5 border border-slate-200/90 rounded-xl focus:ring-3 focus:ring-indigo-100 focus:outline-none focus:border-indigo-600 text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 bg-white transition-all shadow-2xs resize-none"
+                      placeholder="Hãy chia sẻ chi tiết trải nghiệm, tính năng mong muốn hoặc lỗi bạn gặp phải..."
                     />
                   </div>
 
-                  {/* Image Attachment (Góp ý bằng hình) */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block">
-                      Đính kèm hình ảnh minh họa (nếu có)
+                  {/* Mục 3: Ảnh chụp màn hình minh họa */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      Ảnh chụp màn hình minh họa (nếu có)
                     </label>
 
                     {!feedbackImage ? (
-                      <div className="relative group border-2 border-dashed border-slate-200 hover:border-indigo-500/50 rounded-xl p-4 transition-all bg-slate-50/50 hover:bg-indigo-50/10 flex flex-col items-center justify-center cursor-pointer min-h-[90px]">
+                      <div className="relative group border border-dashed border-indigo-200 hover:border-indigo-400 rounded-xl p-2.5 transition-all duration-200 bg-slate-50/70 hover:bg-indigo-50/20 flex items-center justify-center gap-2 cursor-pointer">
                         <input
                           type="file"
                           accept="image/*"
@@ -7190,7 +7149,7 @@ ${bodyHtml}
                               }
                               const reader = new FileReader();
                               reader.onload = (event) => {
-                                  if (event.target?.result) {
+                                if (event.target?.result) {
                                   setFeedbackImage(event.target.result as string);
                                 }
                               };
@@ -7198,35 +7157,37 @@ ${bodyHtml}
                             }
                           }}
                         />
-                        <Image className="w-5 h-5 text-slate-400 group-hover:text-indigo-500 mb-1 transition-colors" />
-                        <span className="text-xs font-semibold text-slate-600 group-hover:text-indigo-600 transition-colors">
-                          Kéo thả hoặc nhấp để chọn ảnh
+                        <Image className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform shrink-0" />
+                        <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">
+                          Kéo thả hoặc nhấp để tải ảnh lên
                         </span>
                         <span className="text-[10px] text-slate-400">
-                          Hỗ trợ PNG, JPG, JPEG (tối đa 2MB)
+                          (Tối đa 2MB)
                         </span>
                       </div>
                     ) : (
-                      <div className="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-between p-3">
-                        <div className="flex items-center gap-3">
+                      <div className="relative rounded-xl border border-indigo-200 overflow-hidden bg-indigo-50/30 flex items-center justify-between p-2 shadow-2xs">
+                        <div className="flex items-center gap-2.5">
                           <img
                             src={feedbackImage}
                             alt="Ảnh đính kèm"
-                            className="w-14 h-14 object-cover rounded-lg border border-slate-150"
+                            className="w-11 h-11 object-cover rounded-lg border border-indigo-100 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => setPreviewImageSrc(feedbackImage)}
+                            title="Bấm để xem ảnh lớn"
                           />
                           <div>
-                            <span className="text-xs font-bold text-slate-700 block">
-                              Hình ảnh đã chọn
+                            <span className="text-xs font-bold text-slate-800 block">
+                              Hình ảnh minh họa đã đính kèm
                             </span>
-                            <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-                              <Check className="w-3 h-3" /> Đã đính kèm thành công
+                            <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-0.5">
+                              <CheckCircle2 className="w-3 h-3" /> Bấm vào ảnh để xem lại
                             </span>
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => setFeedbackImage("")}
-                          className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title="Gỡ ảnh này"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -7236,27 +7197,28 @@ ${bodyHtml}
                   </div>
 
                   {/* Submit button */}
-                  <div className="pt-2 flex justify-end gap-3">
+                  <div className="pt-2 flex justify-end gap-2.5 border-t border-slate-100">
                     <button
                       type="button"
                       onClick={() => setIsFeedbackOpen(false)}
-                      className="px-5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-all cursor-pointer"
+                      className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all cursor-pointer"
                     >
                       Hủy bỏ
                     </button>
                     <button
                       type="submit"
                       disabled={isSubmittingFeedback || !feedbackText.trim()}
-                      className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:opacity-60 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                      className="px-5 py-2 bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:from-rose-700 hover:to-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-md shadow-rose-500/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
                     >
                       {isSubmittingFeedback ? (
                         <>
-                          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0"></span>
-                          Đang gửi...
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang gửi...</span>
                         </>
                       ) : (
                         <>
-                          <span>Gửi ý kiến đóng góp</span>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Gửi đóng góp ngay</span>
                         </>
                       )}
                     </button>
@@ -7267,128 +7229,128 @@ ${bodyHtml}
           )}
         </AnimatePresence>
 
-        {/* Notifications Modal Popup */}
+        {/* Notifications Modal Popup (Pure Pristine Light Mode) */}
         <AnimatePresence>
           {isNotificationsOpen && (() => {
             const hasPendingMandatoryPoll = visibleNotifications.some(isNotificationMandatoryPending);
-            const cannotCloseNotice = !isAdminUser(user, userDoc) && (noticeCountdown > 0 || hasPendingMandatoryPoll);
 
             return (
               <div
-                className="fixed inset-0 bg-white z-50 overflow-hidden flex flex-col"
+                className="fixed inset-0 z-[110] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 md:p-6 overflow-y-auto"
                 id="notifications-list-overlay"
                 onClick={(e) => {
                   if (e.target === e.currentTarget) {
-                    if (noticeCountdown > 0 && !isAdminUser(user, userDoc)) {
-                      triggerToast(`Vui lòng xem thông báo trong ${noticeCountdown} giây nữa trước khi đóng.`, false);
-                      return;
-                    }
-                    if (hasPendingMandatoryPoll && !isAdminUser(user, userDoc)) {
-                      triggerToast("Vui lòng hoàn thành bình chọn / đóng góp ý kiến bắt buộc trước khi đóng thông báo.", false);
-                      return;
-                    }
-                    setIsNotificationsOpen(false);
+                    handleCloseNotifications();
                   }
                 }}
               >
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="bg-white w-full h-full flex flex-col relative"
+                  initial={{ opacity: 0, scale: 0.95, y: 16 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 16 }}
+                  transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  className="bg-white rounded-[32px] shadow-2xl border border-slate-200/90 max-w-3xl w-full h-auto max-h-[90vh] flex flex-col relative overflow-hidden my-auto text-slate-800"
                 >
                   {/* Header */}
-                  <div className="bg-white px-6 md:px-10 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
-                    <div>
-                      <h3 className="font-extrabold text-sm md:text-base text-slate-800 flex items-center gap-2 flex-wrap">
-                        <span>Thông Báo Hệ Thống & Khảo Sát</span>
-                        {noticeCountdown > 0 && !isAdminUser(user, userDoc) && (
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-extrabold text-[10px] rounded-full animate-pulse border border-amber-300">
-                            Bắt buộc đọc ({noticeCountdown}s)
-                          </span>
-                        )}
-                        {hasPendingMandatoryPoll && !isAdminUser(user, userDoc) && (
-                          <span className="px-2 py-0.5 bg-rose-100 text-rose-800 font-extrabold text-[10px] rounded-full border border-rose-300 flex items-center gap-1">
-                            <Vote className="w-2.5 h-2.5" />
-                            Cần bình chọn
-                          </span>
-                        )}
-                      </h3>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                        Cập nhật quan trọng và ý kiến đóng góp từ Ban Quản trị
-                      </p>
-                    </div>
-                    {cannotCloseNotice ? (
-                      <div className="px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-2xs">
-                        {noticeCountdown > 0 ? (
-                          <>
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
-                            <span>{noticeCountdown}s</span>
-                          </>
-                        ) : (
-                          <>
-                            <Lock className="w-3 h-3 text-rose-600" />
-                            <span className="text-rose-700">Khảo sát</span>
-                          </>
-                        )}
+                  <div className="bg-gradient-to-r from-slate-50 via-white to-purple-50/40 px-6 sm:px-8 py-5 border-b border-slate-100 flex justify-between items-center shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shadow-xs">
+                        <Bell className="w-5 h-5" />
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setIsNotificationsOpen(false)}
-                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer text-xs font-bold"
-                      >
-                        ✕
-                      </button>
-                    )}
+                      <div>
+                        <h3 className="font-black text-base sm:text-lg text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                          <span>Thông Báo Hệ Thống &amp; Khảo Sát</span>
+                          {noticeCountdown > 0 && !isAdminUser(user, userDoc) && (
+                            <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 font-extrabold text-[10px] rounded-full animate-pulse border border-amber-300">
+                              Bắt buộc đọc ({noticeCountdown}s)
+                            </span>
+                          )}
+                          {hasPendingMandatoryPoll && !isAdminUser(user, userDoc) && (
+                            <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 font-extrabold text-[10px] rounded-full border border-rose-300 flex items-center gap-1 shadow-xs">
+                              <Vote className="w-3 h-3" />
+                              Cần bình chọn
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                          Thông tin cập nhật mới nhất và khảo sát ý kiến cộng đồng
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Đóng cửa sổ thông báo"
+                      onClick={handleCloseNotifications}
+                      className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 hover:rotate-90 transition-all duration-200 cursor-pointer"
+                    >
+                      <X className="w-5 h-5 stroke-[2]" />
+                    </button>
                   </div>
 
                   {noticeCountdown > 0 && !isAdminUser(user, userDoc) && (
-                    <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-2.5 flex items-center justify-between text-xs font-bold shadow-xs shrink-0">
+                    <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white px-6 sm:px-8 py-2.5 flex items-center justify-between text-xs font-bold shadow-inner shrink-0">
                       <span className="flex items-center gap-2">
-                        ⚠️ Thông báo mới từ Ban Quản trị! Bạn không thể đóng màn hình này trong 10 giây.
+                        <span>⚠️</span>
+                        <span>Thông báo quan trọng từ Ban Quản trị. Vui lòng đọc kỹ trước khi đóng.</span>
                       </span>
-                      <span className="bg-black/20 px-2 py-0.5 rounded text-[11px] font-black shrink-0">
-                        Còn {noticeCountdown}s
+                      <span className="bg-black/25 px-2.5 py-0.5 rounded-full text-[11px] font-black shrink-0 tracking-wide">
+                        {noticeCountdown}s
                       </span>
                     </div>
                   )}
 
                   {unreadCount > 0 && (
-                    <div className="bg-indigo-50/50 border-b border-indigo-100/50 px-6 py-2.5 flex justify-between items-center text-xs">
-                      <span className="text-indigo-800 font-bold">
-                        Bạn có {unreadCount} thông báo chưa đọc
+                    <div className="bg-indigo-50/80 border-b border-indigo-100 px-6 sm:px-8 py-2 flex justify-between items-center text-xs">
+                      <span className="text-indigo-900 font-bold flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                        <span>Bạn có <b>{unreadCount}</b> thông báo chưa đọc</span>
                       </span>
                       <button
                         type="button"
                         onClick={markAllNotificationsAsRead}
-                        className="text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer text-[11px]"
+                        className="text-indigo-700 hover:text-indigo-900 font-extrabold hover:underline cursor-pointer text-[11px]"
                       >
-                        Đã đọc tất cả
+                        Đánh dấu đã đọc tất cả
                       </button>
                     </div>
                   )}
 
-                  {!isAdminUser(user, userDoc) && (
-                    <div className="px-6 md:px-10 py-3 border-b border-slate-100 bg-white">
-                      <button
-                        type="button"
-                        onClick={() => setIsFeedbackOpen(true)}
-                        className="w-full flex items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-left transition-colors hover:bg-indigo-50 cursor-pointer"
-                      >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
-                          <MessageSquarePlus className="w-4 h-4" />
+                  {/* PROMINENT GÓP Ý BANNER (HIỂN THỊ CHO TẤT CẢ NGƯỜI DÙNG KỂ CẢ ADMIN) */}
+                  <div className="px-6 sm:px-8 py-3.5 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-purple-50/50 to-pink-50/40">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCloseNotifications();
+                        setIsFeedbackOpen(true);
+                      }}
+                      className="w-full flex items-center justify-between gap-3.5 rounded-2xl border border-indigo-200/90 bg-white hover:bg-indigo-50/80 p-3.5 text-left transition-all duration-200 cursor-pointer shadow-xs hover:shadow-md hover:border-indigo-300 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
+                          <MessageSquarePlus className="w-5 h-5" />
                         </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-xs font-extrabold text-indigo-900">Đánh giá & góp ý</span>
-                          <span className="mt-0.5 block text-[11px] font-medium text-indigo-700">Chia sẻ trải nghiệm hoặc đề xuất cải tiến Word2LaTeX.</span>
-                        </span>
-                        <ArrowRight className="w-4 h-4 shrink-0 text-indigo-500" />
-                      </button>
-                    </div>
-                  )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
+                              Gửi Góp Ý, Báo Lỗi &amp; Đóng Góp Tính Năng
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-2xs">
+                              MỚI: KHOANH VÙNG VẼ MÀN HÌNH
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                            Nhấp vào đây để mở bảng góp ý hoặc vẽ khoanh vùng trực tiếp lên màn hình
+                          </p>
+                        </div>
+                      </div>
+                      <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 font-extrabold text-xs group-hover:bg-indigo-600 group-hover:text-white transition-all shrink-0">
+                        <span>Mở góp ý</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </button>
+                  </div>
 
-                  <div className="flex-1 overflow-y-auto bg-slate-50/30 p-4 md:p-8 w-full">
+                  <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 sm:p-6 md:p-8 w-full">
                     <div className="w-full space-y-4">
                       {visibleNotifications.length === 0 ? (
                         <div className="py-20 text-center text-slate-400 italic text-sm font-medium">
@@ -7404,16 +7366,16 @@ ${bodyHtml}
                         return (
                           <div
                             key={notif.id}
-                            className={`bg-white hover:bg-slate-50/40 border rounded-xl p-4 flex flex-col justify-between transition-all shadow-2xs ${
-                              isMandatoryPending ? "border-purple-300 ring-2 ring-purple-100" : "border-slate-200/60"
+                            className={`bg-white hover:bg-slate-50/70 border rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-200 shadow-xs hover:shadow-md ${
+                              isMandatoryPending ? "border-purple-300 ring-4 ring-purple-100" : "border-slate-200/90"
                             }`}
                           >
                             <div>
-                              <div className="flex justify-between items-start gap-1.5">
+                              <div className="flex justify-between items-start gap-2">
                                 <div>
-                                  <h4 className="font-bold text-slate-800 text-xs md:text-sm flex items-center gap-1.5 leading-snug">
+                                  <h4 className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-2 leading-snug">
                                     <span
-                                      className={`h-2 w-2 rounded-full shrink-0 ${!readNotificationIds.includes(notif.id) ? "bg-indigo-600 animate-pulse" : "bg-slate-300"}`}
+                                      className={`h-2.5 w-2.5 rounded-full shrink-0 ${!readNotificationIds.includes(notif.id) ? "bg-indigo-600 animate-pulse" : "bg-slate-300"}`}
                                     />
                                     {notif.title}
                                   </h4>
@@ -7434,12 +7396,12 @@ ${bodyHtml}
                                 </div>
                                 <div className="shrink-0 flex flex-col items-end gap-1.5">
                                   <span
-                                    className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                                    className={`inline-flex px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
                                       notif.type === "system"
-                                        ? "bg-indigo-50 text-indigo-700 border-indigo-200/50"
+                                        ? "bg-indigo-50 text-indigo-700 border-indigo-200"
                                         : notif.type === "user"
-                                          ? "bg-emerald-50 text-emerald-700 border-emerald-250/50"
-                                          : "bg-blue-50 text-blue-750 border-blue-200/50"
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-250"
+                                          : "bg-blue-50 text-blue-700 border-blue-200"
                                     }`}
                                   >
                                     {notif.type === "system"
@@ -7451,96 +7413,68 @@ ${bodyHtml}
                                 </div>
                               </div>
 
-                              <p className="text-xs text-slate-600 bg-slate-50/50 p-3 rounded-xl border border-slate-200/60 leading-relaxed font-medium whitespace-pre-wrap mt-3 select-all">
+                              <p className="text-xs sm:text-sm text-slate-700 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/80 leading-relaxed font-medium whitespace-pre-wrap mt-3.5 select-all">
                                 {notif.content}
                               </p>
 
                               {/* Interactive Poll / Survey Component */}
                               {notif.hasPoll && (
-                                <div className="mt-3.5 p-3.5 bg-purple-50/70 border border-purple-200/80 rounded-xl space-y-3">
+                                <div className="mt-4 p-4.5 bg-purple-50/60 border border-purple-200/80 rounded-2xl space-y-3 shadow-xs">
                                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <h5 className="text-xs font-black text-purple-950 flex items-center gap-1.5">
-                                      <Vote className="w-4 h-4 text-purple-600 shrink-0" />
-                                      <span>{notif.pollQuestion || notif.title}</span>
-                                    </h5>
-                                    <div className="flex items-center gap-1">
-                                      {(notif.isPollClosed || notif.pollClosed || notif.pollStatus === "closed") && (
-                                        <span className="px-2 py-0.5 bg-rose-100 text-rose-800 font-extrabold text-[9px] rounded-md shrink-0 border border-rose-200">
-                                          Đã ngưng bình chọn
-                                        </span>
-                                      )}
-                                      {notif.requireResponse && !hasVoted && !(notif.isPollClosed || notif.pollClosed || notif.pollStatus === "closed") && (
-                                        <span className="px-2 py-0.5 bg-rose-100 text-rose-700 font-extrabold text-[9px] rounded-md shrink-0 border border-rose-200">
-                                          Bắt buộc phản hồi
-                                        </span>
-                                      )}
-                                    </div>
+                                    <span className="text-xs font-black text-purple-900 flex items-center gap-1.5">
+                                      <Vote className="w-4 h-4 text-purple-600" />
+                                      {notif.pollQuestion || "Khảo sát ý kiến"}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                                      {Object.keys(allNotifVotes).length} lượt bình chọn
+                                    </span>
                                   </div>
 
-                                  {/* If User has voted: Show vote status + breakdown */}
-                                  {hasVoted && myVote ? (
-                                    <div className="space-y-2.5 pt-1">
-                                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
-                                        <Check className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
-                                        <span>
-                                          Bạn đã bình chọn: <strong className="font-black text-emerald-900">{myVote.optionText || "Đã ghi nhận"}</strong>
-                                        </span>
+                                  {hasVoted ? (
+                                    <div className="space-y-2 pt-1">
+                                      <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1 bg-emerald-50 p-2 rounded-xl border border-emerald-200">
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>Bạn đã bình chọn: <b>{myVote.optionText || (notif.pollOptions && notif.pollOptions[myVote.optionIndex])}</b></span>
                                       </div>
+                                      <div className="space-y-2 pt-1">
+                                        {Array.isArray(notif.pollOptions) &&
+                                          notif.pollOptions.map((opt: string, optIdx: number) => {
+                                            const totalVotes = Object.keys(allNotifVotes).length;
+                                            const count = Object.values(allNotifVotes).filter(
+                                              (v: any) => v.optionIndex === optIdx || v.optionText === opt
+                                            ).length;
+                                            const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                                            const isMyChoice =
+                                              myVote.optionIndex === optIdx ||
+                                              myVote.optionText === opt;
 
-                                      {myVote.comment && (
-                                        <p className="text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200 font-medium italic">
-                                          💬 Ý kiến của bạn: "{myVote.comment}"
-                                        </p>
-                                      )}
-
-                                      {/* Poll Results Bars */}
-                                      <div className="space-y-2 pt-1 border-t border-purple-100">
-                                        <div className="flex items-center justify-between text-[11px] font-bold text-purple-900">
-                                          <span>📊 Kết quả khảo sát</span>
-                                          <span>{Object.keys(allNotifVotes).length} lượt phản hồi</span>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                          {Array.isArray(notif.pollOptions) &&
-                                            notif.pollOptions.map((opt: string, optIdx: number) => {
-                                              const totalVotes = Object.keys(allNotifVotes).length;
-                                              const count = Object.values(allNotifVotes).filter(
-                                                (v: any) => v.optionIndex === optIdx || v.optionText === opt
-                                              ).length;
-                                              const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                                              const isMyChoice =
-                                                myVote.optionIndex === optIdx ||
-                                                myVote.optionText === opt;
-
-                                              return (
-                                                <div key={optIdx} className="space-y-1">
-                                                  <div className="flex justify-between items-center text-[11px] font-semibold text-slate-700">
-                                                    <span className="flex items-center gap-1">
-                                                      {isMyChoice && <Check className="w-3 h-3 text-purple-600" />}
-                                                      <span className={isMyChoice ? "font-black text-purple-900" : ""}>
-                                                        {opt}
-                                                      </span>
+                                            return (
+                                              <div key={optIdx} className="space-y-1">
+                                                <div className="flex justify-between items-center text-[11px] font-semibold text-slate-700">
+                                                  <span className="flex items-center gap-1">
+                                                    {isMyChoice && <Check className="w-3 h-3 text-purple-600" />}
+                                                    <span className={isMyChoice ? "font-black text-purple-900" : ""}>
+                                                      {opt}
                                                     </span>
-                                                    <span className="font-mono text-[10px] text-purple-800 font-bold">
-                                                      {count} ({pct}%)
-                                                    </span>
-                                                  </div>
-                                                  <div className="h-2 w-full bg-purple-100/80 rounded-full overflow-hidden">
-                                                    <div
-                                                      className={`h-full rounded-full transition-all duration-500 ${
-                                                        isMyChoice ? "bg-purple-600" : "bg-purple-400"
-                                                      }`}
-                                                      style={{ width: `${pct}%` }}
-                                                    />
-                                                  </div>
+                                                  </span>
+                                                  <span className="font-mono text-[10px] text-purple-800 font-bold">
+                                                    {count} ({pct}%)
+                                                  </span>
                                                 </div>
-                                              );
-                                            })}
-                                        </div>
+                                                <div className="h-2 w-full bg-purple-100 rounded-full overflow-hidden">
+                                                  <div
+                                                    className={`h-full rounded-full transition-all duration-500 ${
+                                                      isMyChoice ? "bg-purple-600" : "bg-purple-400"
+                                                    }`}
+                                                    style={{ width: `${pct}%` }}
+                                                  />
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
                                       </div>
                                     </div>
                                   ) : (
-                                    /* User Voting Options */
                                     <div className="space-y-3 pt-1">
                                       <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold text-slate-600 uppercase block">
@@ -7552,50 +7486,42 @@ ${bodyHtml}
                                               const isSelected = userSelectedPollOptions[notif.id] === optIdx;
                                               return (
                                                 <button
-                                                  type="button"
                                                   key={optIdx}
-                                                  onClick={() => {
+                                                  type="button"
+                                                  onClick={() =>
                                                     setUserSelectedPollOptions((prev) => ({
                                                       ...prev,
                                                       [notif.id]: optIdx,
-                                                    }));
-                                                  }}
-                                                  className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                                                    }))
+                                                  }
+                                                  className={`w-full p-2.5 rounded-xl border text-left text-xs font-bold transition-all duration-150 flex items-center justify-between cursor-pointer ${
                                                     isSelected
-                                                      ? "bg-purple-600 text-white border-purple-600 shadow-xs"
-                                                      : "bg-white hover:bg-purple-50/50 text-slate-700 border-purple-200/80"
+                                                      ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                                                      : "bg-white text-slate-700 border-purple-200 hover:bg-purple-50"
                                                   }`}
                                                 >
-                                                  <span
-                                                    className={`w-4 h-4 rounded-full border flex items-center justify-center text-[10px] shrink-0 ${
-                                                      isSelected
-                                                        ? "border-white bg-white text-purple-600 font-black"
-                                                        : "border-slate-300 bg-slate-50"
-                                                    }`}
-                                                  >
-                                                    {isSelected ? "✓" : optIdx + 1}
-                                                  </span>
                                                   <span>{opt}</span>
+                                                  {isSelected && <Check className="w-4 h-4 shrink-0 text-white" />}
                                                 </button>
                                               );
                                             })}
                                         </div>
                                       </div>
 
+                                      {/* Ý kiến phản hồi bổ sung nếu được phép */}
                                       {notif.allowComment && (
                                         <div className="space-y-1">
-                                          <label className="text-[10px] font-bold text-slate-600 uppercase block">
-                                            Ý kiến đóng góp thêm (tùy chọn):
-                                          </label>
-                                          <textarea
-                                            rows={2}
+                                          <input
+                                            type="text"
                                             value={userPollComments[notif.id] || ""}
-                                            onChange={(e) => {
-                                              const val = e.target.value;
-                                              setUserPollComments((prev) => ({ ...prev, [notif.id]: val }));
-                                            }}
-                                            placeholder="Nhập suy nghĩ, đề xuất hoặc phản hồi của bạn..."
-                                            className="w-full bg-white border border-purple-200 focus:border-purple-500 rounded-xl p-2 text-xs outline-none font-semibold text-slate-700 placeholder:text-slate-400"
+                                            onChange={(e) =>
+                                              setUserPollComments((prev) => ({
+                                                ...prev,
+                                                [notif.id]: e.target.value,
+                                              }))
+                                            }
+                                            placeholder="Ghi thêm ý kiến hoặc góp ý của bạn (không bắt buộc)..."
+                                            className="w-full px-3 py-2 text-xs rounded-xl border border-purple-200 bg-white focus:outline-none focus:ring-2 focus:ring-purple-300 font-medium placeholder:text-slate-400"
                                           />
                                         </div>
                                       )}
@@ -7608,12 +7534,12 @@ ${bodyHtml}
                                           ((!Array.isArray(notif.pollOptions) || notif.pollOptions.length === 0) && notif.allowComment && !(userPollComments[notif.id] || "").trim())
                                         }
                                         onClick={() => handleSubmitPollResponse(notif.id, notif)}
-                                        className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                                        className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-extrabold text-xs shadow-md shadow-purple-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
                                       >
                                         {isSubmittingPollVote[notif.id] ? (
                                           <>
                                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            <span>Đang gửi bình chọn...</span>
+                                            <span>Đang ghi nhận...</span>
                                           </>
                                         ) : (
                                           <>
@@ -7632,7 +7558,7 @@ ${bodyHtml}
                             <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
                               <div className="flex items-center gap-2">
                                 {!readNotificationIds.includes(notif.id) && (
-                                  <span className="px-1.5 py-0.5 bg-rose-50 border border-rose-200 text-rose-700 text-[8px] font-black rounded tracking-wide shrink-0">
+                                  <span className="px-2 py-0.5 bg-rose-50 border border-rose-200 text-rose-700 text-[9px] font-black rounded-full tracking-wide shrink-0">
                                     MỚI
                                   </span>
                                 )}
@@ -7678,47 +7604,17 @@ ${bodyHtml}
                     </div>
                   </div>
 
-                  <div className="bg-slate-50 px-6 md:px-10 py-4 border-t border-slate-100 flex items-center justify-between shrink-0">
-                    {noticeCountdown > 0 && !isAdminUser(user, userDoc) ? (
-                      <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1">
-                        🔒 Vui lòng xem thông báo trước khi tiếp tục (Còn {noticeCountdown}s)
-                      </span>
-                    ) : hasPendingMandatoryPoll && !isAdminUser(user, userDoc) ? (
-                      <span className="text-[11px] font-bold text-rose-700 flex items-center gap-1">
-                        🔒 Vui lòng hoàn thành bình chọn bắt buộc để tiếp tục
-                      </span>
-                    ) : (
-                      <span className="text-[11px] font-semibold text-slate-400">
-                        {unreadCount === 0 ? "Đã đọc tất cả thông báo" : `${unreadCount} thông báo chưa đọc`}
-                      </span>
-                    )}
+                  <div className="bg-slate-50 px-6 sm:px-8 py-4 border-t border-slate-100 flex items-center justify-between shrink-0">
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      {unreadCount === 0 ? "Đã đọc tất cả thông báo" : `${unreadCount} thông báo chưa đọc`}
+                    </span>
 
                     <button
                       type="button"
-                      disabled={cannotCloseNotice}
-                      onClick={() => {
-                        if (cannotCloseNotice) return;
-                        setIsNotificationsOpen(false);
-                      }}
-                      className={`px-5 py-2 rounded-xl text-xs font-extrabold transition-all duration-200 shadow-sm flex items-center gap-2 ${
-                        cannotCloseNotice
-                          ? "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
-                          : "bg-slate-800 text-white hover:bg-slate-700 cursor-pointer active:scale-95"
-                      }`}
+                      onClick={handleCloseNotifications}
+                      className="px-6 py-2.5 rounded-xl text-xs font-extrabold transition-all duration-200 shadow-sm flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white cursor-pointer active:scale-95 shadow-md hover:shadow-lg"
                     >
-                      {noticeCountdown > 0 && !isAdminUser(user, userDoc) ? (
-                        <>
-                          <span className="w-3.5 h-3.5 border-2 border-slate-400 border-t-amber-600 rounded-full animate-spin shrink-0"></span>
-                          <span>Chờ {noticeCountdown}s để đóng</span>
-                        </>
-                      ) : hasPendingMandatoryPoll && !isAdminUser(user, userDoc) ? (
-                        <>
-                          <Lock className="w-3.5 h-3.5 text-rose-500" />
-                          <span>Chưa thể đóng</span>
-                        </>
-                      ) : (
-                        <span>Đã hiểu & Đóng lại</span>
-                      )}
+                      <span>Đã hiểu &amp; Đóng lại</span>
                     </button>
                   </div>
                 </motion.div>
@@ -8042,7 +7938,7 @@ ${bodyHtml}
       </div> {/* This closes max-w-[1600px] or inner container maybe? */}
 
       {/* Footer */}
-      <footer hidden={sidebarView === 'drawing'} className="w-full text-center py-2.5 sm:py-3.5 bg-white/60 backdrop-blur-xs border-t border-slate-200/60 mt-6 select-none px-3 sm:px-4">
+      <footer hidden={isWorkspaceFullscreen} className="w-full text-center py-2.5 sm:py-3.5 bg-white/60 backdrop-blur-xs border-t border-slate-200/60 mt-5 select-none px-3 sm:px-4">
         <div className="max-w-[1600px] mx-auto">
           {/* Mobile View: Exactly 2 lines, no wrapping */}
           <div className="sm:hidden space-y-0.5 text-[11px] leading-snug">
@@ -8070,6 +7966,16 @@ ${bodyHtml}
           </div>
         </div>
       </footer>
+
+      {/* Global Command Palette Modal (Ctrl + K) */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNavigate={(view) => handleSidebarNav(view)}
+        onOpenPricing={() => setSidebarView('pricing')}
+        onOpenFeedback={() => setIsFeedbackOpen(true)}
+        onOpenNotifications={() => setIsNotificationsOpen(true)}
+      />
 
       {/* Floating Zalo Contact Widget */}
       <ZaloContactWidget isDrawingMode={sidebarView === 'drawing'} />

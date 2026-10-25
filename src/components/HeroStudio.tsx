@@ -1,0 +1,461 @@
+import React, { useState, useEffect } from "react";
+import { 
+  Sparkles, 
+  FileText, 
+  Pencil, 
+  Layout, 
+  ArrowRight, 
+  Search, 
+  Command, 
+  CheckCircle2, 
+  Zap, 
+  ChevronRight,
+  BookOpen,
+  TrendingUp,
+  Layers,
+  Compass,
+  FileSpreadsheet
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { SpotlightCard } from "./ui/SpotlightCard";
+import { ParticleField, HeroVisual } from "./HeroVisual";
+import { 
+  LatexMiniDemo, 
+  ExamMiniDemo, 
+  GeometryMiniDemo, 
+  MarkItDownMiniDemo 
+} from "./HeroDemos";
+
+interface HeroStudioProps {
+  user: any;
+  userDoc: any;
+  onNavigate: (view: string) => void;
+  onOpenPricing: () => void;
+  onOpenCommandPalette?: () => void;
+  isAdmin: boolean;
+  isApproved: boolean;
+  currentMultiplier: number;
+}
+
+export const HeroStudio: React.FC<HeroStudioProps> = ({
+  user,
+  userDoc,
+  onNavigate,
+  onOpenPricing,
+  onOpenCommandPalette,
+  isAdmin,
+  isApproved,
+  currentMultiplier
+}) => {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+
+  const handleOpenSearch = () => {
+    if (onOpenCommandPalette) {
+      onOpenCommandPalette();
+    } else {
+      setIsSearchOpen(true);
+    }
+  };
+
+  const displayName = 
+    userDoc?.displayName || 
+    user?.displayName || 
+    user?.email?.split("@")[0] || 
+    "Thầy Cô & Bạn";
+
+  const quickActions = [
+    {
+      id: "latex",
+      title: "Chuyển Đổi LaTeX",
+      desc: "Word, Ảnh công thức, PDF sang mã LaTeX chuẩn xác cao",
+      icon: FileText,
+      color: "from-blue-500 to-indigo-600",
+      textColor: "text-blue-600",
+      bgLight: "bg-blue-50",
+      hoverBorder: "hover:border-blue-400",
+      hoverText: "group-hover:text-blue-600",
+      spotlightColor: "rgba(59, 130, 246, 0.16)", // Màu xanh biển
+      badge: "Phổ biến",
+      action: () => onNavigate("latex")
+    },
+    {
+      id: "exam",
+      title: "Soạn Đề Thi Trắc Nghiệm",
+      desc: "Phân loại câu hỏi, trộn đề, trích xuất đáp án và lời giải",
+      icon: Pencil,
+      color: "from-purple-500 to-indigo-600",
+      textColor: "text-purple-600",
+      bgLight: "bg-purple-50",
+      hoverBorder: "hover:border-purple-400",
+      hoverText: "group-hover:text-purple-600",
+      spotlightColor: "rgba(168, 85, 247, 0.16)", // Màu hơi tím
+      badge: "Khảo thí",
+      action: () => onNavigate("exam")
+    },
+    {
+      id: "workspace",
+      title: "Workspace & Hình Vẽ AI",
+      desc: "Vẽ hình học động TikZ/SVG, giải bài tập & sơ đồ tư duy",
+      icon: Compass,
+      color: "from-amber-500 to-orange-500",
+      textColor: "text-amber-600",
+      bgLight: "bg-amber-50",
+      hoverBorder: "hover:border-amber-400",
+      hoverText: "group-hover:text-amber-600",
+      spotlightColor: "rgba(245, 158, 11, 0.18)", // Màu cam / vàng
+      badge: "Sáng tạo",
+      action: () => onNavigate("workspace")
+    },
+    {
+      id: "markitdown",
+      title: "MarkItDown Studio",
+      desc: "Chuyển PDF, DOCX, PPTX, Video sang Markdown sạch",
+      icon: FileSpreadsheet,
+      color: "from-emerald-500 to-teal-600",
+      textColor: "text-emerald-600",
+      bgLight: "bg-emerald-50",
+      hoverBorder: "hover:border-emerald-400",
+      hoverText: "group-hover:text-emerald-600",
+      spotlightColor: "rgba(16, 185, 129, 0.16)", // Màu xanh lá
+      badge: "Đa năng",
+      action: () => onNavigate("markitdown")
+    }
+  ];
+
+  const filteredActions = quickActions.filter(a => 
+    a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    a.desc.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Xử lý bàn phím trong Modal tìm kiếm (Tab, Mũi tên lên/xuống, Enter, ESC)
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setIsSearchOpen(false);
+      return;
+    }
+
+    if (filteredActions.length === 0) return;
+
+    if (e.key === "Tab" || e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev + 1 >= filteredActions.length ? 0 : prev + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev <= 0 ? filteredActions.length - 1 : prev - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const target = selectedIndex >= 0 && selectedIndex < filteredActions.length
+        ? filteredActions[selectedIndex]
+        : filteredActions[0];
+      if (target) {
+        target.action();
+        setIsSearchOpen(false);
+      }
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col pb-0 select-none pt-0">
+      {/* =====================================================================
+          MÀN HÌNH ĐẦU TIÊN (FIRST VIEWPORT):
+          TOÀN BỘ HERO BANNER (BAO GỒM 4 THẺ WORKSPACE BÊN TRONG)
+          CHIẾM TRỌN 1 MÀN HÌNH, ĐÁY CÁCH TRÌNH DUYỆT VÀI PIXELS
+          ===================================================================== */}
+      <div className="relative overflow-hidden rounded-[28px] sm:rounded-[32px] border border-white/80 bg-gradient-to-b from-white/95 via-white/85 to-indigo-50/30 backdrop-blur-md shadow-[0_12px_40px_rgba(99,102,241,0.06)] p-3.5 sm:p-5 lg:p-6 min-h-[calc(100dvh-4.5rem)] lg:h-[calc(100dvh-4.5rem)] flex flex-col justify-between mb-4 sm:mb-5">
+        {/* Nền hạt toán học tương tác */}
+        <ParticleField className="opacity-40" />
+
+        {/* Ambient lighting glows nhẹ không tốn GPU */}
+        <div className="pointer-events-none absolute -top-24 -left-24 w-80 h-80 bg-indigo-300/15 rounded-full blur-xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 w-80 h-80 bg-purple-300/12 rounded-full blur-xl" />
+
+        {/* CỤM NỘI DUNG CHÍNH (RELATIVE Z-10 ĐỂ NỔI TRÊN NỀN PARTICLE) */}
+        <div className="relative z-10 max-w-6xl mx-auto w-full h-full flex flex-col justify-between gap-3 lg:gap-4 flex-1">
+          {/* PHẦN TRÊN: GRID 2 CỘT (HERO TEXT & HERO VISUAL) - DỜI LÊN TRÊN */}
+          <div className="flex-1 flex flex-col lg:flex-row items-center justify-between gap-5 lg:gap-8 pt-1 sm:pt-2 lg:pt-3 pb-2">
+            {/* CỘT TRÁI: TIÊU ĐỀ, LỜI CHÀO, NÚT CTA */}
+            <motion.div 
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="flex-1 flex flex-col items-center lg:items-start text-center lg:text-left will-change-[opacity,transform]"
+            >
+              {/* Lời chào thân thiện cá nhân hóa */}
+              <div
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-white/90 border border-indigo-100 shadow-2xs mb-2.5 backdrop-blur-md"
+              >
+                <div className="w-5.5 h-5.5 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 text-white font-black text-[10px] flex items-center justify-center shadow-3xs">
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <span>Xin chào,</span>
+                  <span className="text-indigo-700 font-extrabold">{displayName}</span>
+                  <span>👋</span>
+                </div>
+              </div>
+
+              {/* Tiêu đề chính lướt nhẹ cực êm không giật lag */}
+              <h1
+                className="text-3xl sm:text-4xl lg:text-[38px] xl:text-[42px] font-black text-slate-900 tracking-tight leading-[1.14] mb-3"
+              >
+                Biến tài liệu khoa học thành <br className="hidden sm:inline" />
+                <span className="bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
+                  LaTeX hoàn mỹ &amp; trực quan
+                </span>
+              </h1>
+
+              {/* Mô tả phụ */}
+              <p 
+                className="max-w-lg text-xs sm:text-sm text-slate-600 font-medium leading-relaxed mb-4"
+              >
+                Giải pháp AI toàn diện hỗ trợ giáo viên và nhà nghiên cứu: Chuyển đổi Word, trích xuất đề thi trắc nghiệm và kiến tạo hình học động chuẩn xác cao.
+              </p>
+
+              {/* Hàng 2 Nút CTA */}
+              <div 
+                className="flex items-center justify-center lg:justify-start gap-3 w-full"
+              >
+                <button
+                  type="button"
+                  onClick={() => onNavigate("latex")}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Bắt đầu chuyển đổi ngay</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenSearch}
+                  className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm border border-slate-200/90 shadow-3xs transition-all flex items-center gap-1.5 cursor-pointer hover:-translate-y-0.5 shrink-0"
+                >
+                  <Command className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Lệnh nhanh</span>
+                  <kbd className="hidden sm:inline-block ml-1 px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-slate-100 rounded border border-slate-300 text-slate-500 shadow-3xs">
+                    Ctrl + K
+                  </kbd>
+                </button>
+              </div>
+            </motion.div>
+
+            {/* CỘT PHẢI: Ô DOCUMENT TRANSFORM TRƯỢT NHẸ XUẤT HIỆN TỨC THÌ */}
+            <motion.div 
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="w-full lg:w-auto flex-1 flex justify-center lg:justify-end -mt-1 lg:-mt-3"
+            >
+              <HeroVisual />
+            </motion.div>
+          </div>
+
+          {/* PHẦN DƯỚI: 4 THẺ TRUY CẬP NHANH */}
+          <div className="w-full pt-3 pb-1 border-t border-slate-200/60">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {quickActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <motion.div
+                    key={action.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                  >
+                    <SpotlightCard
+                      className={"group relative h-full flex flex-col justify-between p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 bg-white/95 hover:bg-white " + action.hoverBorder + " shadow-xs hover:shadow-md transition-all duration-300 cursor-pointer backdrop-blur-sm hover:-translate-y-1"}
+                      spotlightColor={action.spotlightColor}
+                    >
+                      <div onClick={action.action} className="flex items-start gap-3">
+                        <div className={"w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 " + action.bgLight + " " + action.textColor + " shadow-inner group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"}>
+                          <Icon className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1.5 mb-1">
+                            <h3 className={"text-xs sm:text-sm font-black text-slate-900 " + action.hoverText + " transition-colors truncate"}>
+                              {action.title}
+                            </h3>
+                            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
+                              {action.badge}
+                            </span>
+                          </div>
+                          <p className="text-[11px] sm:text-xs text-slate-500 font-medium leading-relaxed line-clamp-2">
+                            {action.desc}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div 
+                        onClick={action.action}
+                        className={"mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] sm:text-xs font-bold " + action.textColor}
+                      >
+                        <span>Khởi động</span>
+                        <ArrowRight className="w-3.5 h-3.5 transform group-hover:translate-x-1.5 transition-transform duration-200" />
+                      </div>
+                    </SpotlightCard>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================================
+          PHẦN TIẾP THEO KHI CUỘN CHUỘT: 4 MINI-DEMO TƯƠNG TÁC CHI TIẾT
+          ===================================================================== */}
+      <div className="space-y-8 pt-1">
+        <motion.div 
+          initial={{ opacity: 0, y: 15 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="text-center max-w-4xl mx-auto px-4"
+        >
+          <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3.5 py-1 rounded-full border border-indigo-100 shadow-3xs">
+            Trải nghiệm tương tác trực quan
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-2.5">
+            Khám Phá Sức Mạnh 4 Công Cụ Cốt Lõi
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-normal whitespace-nowrap overflow-hidden text-ellipsis">
+            Mỗi công cụ được thiết kế chuyên biệt để tối ưu từng khâu trong quy trình soạn thảo khoa học.
+          </p>
+        </motion.div>
+
+        {/* Demo 1: LaTeX Converter - Scroll Reveal mượt mà êm ái */}
+        <motion.div
+          initial={{ opacity: 0, y: 35, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, margin: "-90px" }}
+          transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <LatexMiniDemo onExplore={() => onNavigate("latex")} />
+        </motion.div>
+
+        {/* Demo 2: Exam Creator - Scroll Reveal mượt mà êm ái */}
+        <motion.div
+          initial={{ opacity: 0, y: 35, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, margin: "-90px" }}
+          transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <ExamMiniDemo onExplore={() => onNavigate("exam")} />
+        </motion.div>
+
+        {/* Demo 3: Geometry Workspace - Scroll Reveal mượt mà êm ái */}
+        <motion.div
+          initial={{ opacity: 0, y: 35, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, margin: "-90px" }}
+          transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <GeometryMiniDemo onExplore={() => onNavigate("workspace")} />
+        </motion.div>
+
+        {/* Demo 4: MarkItDown AI - Scroll Reveal mượt mà êm ái */}
+        <motion.div
+          initial={{ opacity: 0, y: 35, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, margin: "-90px" }}
+          transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <MarkItDownMiniDemo onExplore={() => onNavigate("markitdown")} />
+        </motion.div>
+      </div>
+
+      {/* =====================================================================
+          MODAL LỆNH NHANH (Command Palette Ctrl + K)
+          ===================================================================== */}
+      <AnimatePresence>
+        {isSearchOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
+            >
+              <div className="p-4 border-b border-slate-100 flex items-center gap-3">
+                <Search className="w-5 h-5 text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setSelectedIndex(-1);
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="Tìm kiếm công cụ hoặc tính năng..."
+                  className="w-full text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden"
+                />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-[11px] font-bold text-slate-400 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md hidden sm:inline-block">
+                    Tab để chọn
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSearchOpen(false)}
+                    className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-1 bg-slate-100 rounded-lg cursor-pointer"
+                  >
+                    ESC
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 max-h-80 overflow-y-auto space-y-1">
+                {filteredActions.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-400">
+                    Không tìm thấy công cụ phù hợp với từ khóa "{searchQuery}"
+                  </div>
+                ) : (
+                  filteredActions.map((action, idx) => {
+                    const Icon = action.icon;
+                    const isSelected = selectedIndex === idx;
+                    return (
+                      <div
+                        key={action.id}
+                        onClick={() => {
+                          action.action();
+                          setIsSearchOpen(false);
+                        }}
+                        onMouseEnter={() => setSelectedIndex(idx)}
+                        className={"flex items-center justify-between p-3 rounded-2xl cursor-pointer group transition-all " +
+                          (isSelected ? "bg-indigo-50 border border-indigo-200/90 shadow-2xs" : "hover:bg-slate-50 border border-transparent")
+                        }
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={"w-9 h-9 rounded-xl flex items-center justify-center " + action.bgLight + " " + action.textColor + (isSelected ? " scale-105" : "")}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className={"text-xs font-black transition-colors " + (isSelected ? "text-indigo-700" : "text-slate-900 group-hover:text-indigo-700")}>
+                              {action.title}
+                            </div>
+                            <div className="text-[11px] text-slate-500">{action.desc}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isSelected && (
+                            <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-100/70 px-1.5 py-0.5 rounded border border-indigo-200 hidden sm:inline-block">
+                              Enter ↵
+                            </span>
+                          )}
+                          <ChevronRight className={"w-4 h-4 transition-transform " + (isSelected ? "text-indigo-600 translate-x-1" : "text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5")} />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};

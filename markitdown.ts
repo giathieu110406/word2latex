@@ -2,13 +2,22 @@ import * as mammoth from "mammoth";
 import * as xlsx from 'xlsx';
 import * as cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
-import { 
-  toMarkdownBytes, 
-  formatFromBytes, 
-  formatFromExtension, 
-  formatFromPath, 
-} from '@firecrawl/anydoc';
-import type { Format } from '@firecrawl/anydoc';
+
+// Lazy/safe load @firecrawl/anydoc (tránh crash khi Windows AppLocker/WDAC chặn native binary)
+let anydocModule: any = null;
+async function getAnyDoc() {
+  if (!anydocModule) {
+    try {
+      anydocModule = await import('@firecrawl/anydoc');
+    } catch {
+      // Bỏ qua nếu môi trường không load được native binding
+    }
+  }
+  return anydocModule;
+}
+
+type Format = string;
+
 
 /**
  * Bản đồ ánh xạ MIME types thông dụng sang AnyDoc Format
@@ -32,22 +41,24 @@ function resolveFormatFromMime(mimeType: string): Format | null {
  * Xác định Format tối ưu nhất từ Tên tệp, MIME type và Magic bytes
  */
 function detectDocumentFormat(buffer: Buffer, mimeType: string, filename: string): Format | null {
+  if (!anydocModule) return null;
+
   // 1. Kiểm tra từ đường dẫn / tên file
   if (filename) {
-    const fromPath = formatFromPath(filename);
+    const fromPath = anydocModule.formatFromPath ? anydocModule.formatFromPath(filename) : null;
     if (fromPath) return fromPath;
     
     const dotIndex = filename.lastIndexOf('.');
     if (dotIndex !== -1) {
       const ext = filename.slice(dotIndex);
-      const fromExt = formatFromExtension(ext);
+      const fromExt = anydocModule.formatFromExtension ? anydocModule.formatFromExtension(ext) : null;
       if (fromExt) return fromExt;
     }
   }
 
   // 2. Kiểm tra từ magic bytes của buffer
   try {
-    const fromBytes = formatFromBytes(buffer);
+    const fromBytes = anydocModule.formatFromBytes ? anydocModule.formatFromBytes(buffer) : null;
     if (fromBytes) return fromBytes;
   } catch {
     // Bỏ qua lỗi formatFromBytes nếu buffer rỗng hoặc bất thường
@@ -72,12 +83,13 @@ export async function parseFile(
   const lowerName = (filename || '').toLowerCase();
   const lowerMime = (mimeType || '').toLowerCase();
 
+  const anydoc = await getAnyDoc();
   // 1. Ưu tiên nhận diện định dạng tài liệu có cấu trúc cho AnyDoc (Word, Excel, PPT, PDF, CSV, RTF, EPUB...)
   const detectedFormat = detectDocumentFormat(buffer, lowerMime, lowerName);
 
-  if (detectedFormat) {
+  if (detectedFormat && anydoc?.toMarkdownBytes) {
     try {
-      const markdown = await toMarkdownBytes(buffer, detectedFormat);
+      const markdown = await anydoc.toMarkdownBytes(buffer, detectedFormat);
       if (markdown && markdown.trim().length > 0) {
         return markdown.trim();
       }

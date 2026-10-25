@@ -1268,7 +1268,7 @@ input[type=range] {
 
 .file-actions {
   position: fixed;
-  top: 14px;
+  bottom: 16px;
   right: 20px;
   z-index: 30;
   display: flex;
@@ -1281,6 +1281,7 @@ input[type=range] {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-float);
+  height: 44px;
 }
 
 .file-actions #load {
@@ -2100,10 +2101,46 @@ dialog::backdrop {
   }
 
   .canvas-footer {
-    display: none; /* File actions fold into mobile toolbar */
+    display: contents;
+  }
+
+  .file-actions {
+    bottom: 12px;
+    right: 8px;
+    height: 42px;
   }
 
   .template-gallery {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* Ẩn hoàn toàn bảng màu sắc và các tùy chọn màu trong tính năng vẽ hình */
+.qcm-palette,
+.qcm-color-swatch,
+.qcm-color-custom-label,
+.qcm-opacity-group,
+input[type="color"],
+#shape-color,
+#shape-fill,
+#solid-segment-color,
+#solid-cs-color,
+#solid-pl-color,
+#face-color,
+#multi-color,
+#clear-face-color,
+label.field:has(input[type="color"]),
+label.field:has(#face-color),
+label.field:has(#shape-color),
+label.field:has(#shape-fill),
+label.field:has(#solid-segment-color),
+label.field:has(#solid-cs-color),
+label.field:has(#solid-pl-color),
+label.field:has(#multi-color) {
+  display: none !important;
+}
+
+.qcm-palette + .qcm-divider,
+.qcm-divider + .qcm-palette {
+  display: none !important;
 }

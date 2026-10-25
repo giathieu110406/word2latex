@@ -5,7 +5,7 @@ export function getActivePlan(plan = 'free', expiresAt?: number, now = Date.now(
 }
 
 export function canRegisterPlan(target: string, current = 'free', expiresAt?: number, now = Date.now(), hasUsedTrial?: boolean) {
-  if (target === 'trial' && hasUsedTrial) return false;
+  // Cho phép đăng ký lại gói Trial không giới hạn số lần
   return (PLAN_RANK[target] ?? 0) > (PLAN_RANK[getActivePlan(current, expiresAt, now)] ?? 0);
 }
 

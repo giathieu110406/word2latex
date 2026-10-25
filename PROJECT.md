@@ -123,5 +123,15 @@ Hệ thống Vẽ hình phẳng (2D) và Hình không gian (3D) (/ve-hinh) trên
 - `public/ve-hinh/src/app.js`: Toolbar handlers, interactive 2D & 3D drawing tools, Quick Context Menu controller, Undo/Redo.
 - `public/ve-hinh/index.html`: DOM buttons for 2D & 3D tools, `#quick-context-menu` container.
 - `public/ve-hinh/style.css`: Styling for 2D & 3D toolbar, glassmorphism Quick Context Menu.
+- `src/components/ui/`: Bộ linh kiện UI & Micro-interactions (SpotlightCard, CopyMorphButton, SlidingNumber, SplittingText...).
 - `tests/`: Unit and integration test suites.
 - `tests/browser/`: Playwright E2E browser verification scripts.
+
+---
+
+## UI & Animation Reference Guidelines
+Web và các thành phần giao diện / hiệu ứng được chuẩn hóa theo 2 nguồn repository tham chiếu chính:
+1. **Pretext** (`https://github.com/chenglou/pretext.git`): Áp dụng tư duy pre-layouting văn bản cực nhanh, tối ưu render typography, text measurement và tránh layout thrashing cho các thành phần trình diễn text/code/LaTeX.
+2. **Animate UI** (`https://github.com/imskyleen/animate-ui.git`): Áp dụng các components tương tác micro-interactions, nút morph, spotlight card, text splitting, sliding numbers và spring transitions.
+3. **Mở rộng**: Kết hợp mượt mà cùng `motion` (Framer Motion), Tailwind CSS, Lucide icons và các thư viện animation tương thích khác.
+

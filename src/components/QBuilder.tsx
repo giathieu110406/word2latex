@@ -1,5 +1,6 @@
 import React from "react";
 import { Sparkles, HelpCircle, FileEdit, Eye, ChevronDown, Check, Type } from "lucide-react";
+import { motion } from "motion/react";
 
 interface QBuilderProps {
   wordFont: string;
@@ -858,63 +859,98 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                 </div>
 
                 {docQuestions.length > 0 && (
-                  <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1.5 rounded-xl text-[10px] font-bold select-none w-full">
+                  <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1.5 rounded-xl text-[10px] font-bold select-none w-full relative">
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("all")}
-                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all whitespace-nowrap overflow-hidden text-ellipsis ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors whitespace-nowrap overflow-hidden text-ellipsis relative z-10 ${
                         savedQuestionTab === "all"
-                          ? "bg-white text-slate-900 shadow-3xs border border-slate-200/50 font-extrabold"
+                          ? "text-slate-900 font-extrabold"
                           : "text-slate-550 hover:text-slate-900"
                       }`}
                     >
+                      {savedQuestionTab === "all" && (
+                        <motion.div
+                          layoutId="active-qbuilder-tab-pill"
+                          className="absolute inset-0 bg-white rounded-lg shadow-3xs border border-slate-200/50 -z-10"
+                          transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                        />
+                      )}
                       Tất cả ({docQuestions.length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem")}
-                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis relative z-10 ${
                         savedQuestionTab === "trac_nghiem"
-                          ? "bg-white text-blue-700 shadow-3xs border border-blue-100 font-extrabold"
+                          ? "text-blue-700 font-extrabold"
                           : "text-slate-550 hover:text-blue-600"
                       }`}
                     >
+                      {savedQuestionTab === "trac_nghiem" && (
+                        <motion.div
+                          layoutId="active-qbuilder-tab-pill"
+                          className="absolute inset-0 bg-white rounded-lg shadow-3xs border border-blue-100 -z-10"
+                          transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                        />
+                      )}
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
                       <span className="truncate">4 LC ({tracNghiemList.length})</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem_dung_sai")}
-                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis relative z-10 ${
                         savedQuestionTab === "trac_nghiem_dung_sai"
-                          ? "bg-white text-purple-700 shadow-3xs border border-purple-100 font-extrabold"
+                          ? "text-purple-700 font-extrabold"
                           : "text-slate-550 hover:text-purple-600"
                       }`}
                     >
+                      {savedQuestionTab === "trac_nghiem_dung_sai" && (
+                        <motion.div
+                          layoutId="active-qbuilder-tab-pill"
+                          className="absolute inset-0 bg-white rounded-lg shadow-3xs border border-purple-100 -z-10"
+                          transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                        />
+                      )}
                       <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
                       <span className="truncate">Đ/S ({dungSaiList.length})</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("trac_nghiem_tra_loi_ngan")}
-                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis relative z-10 ${
                         savedQuestionTab === "trac_nghiem_tra_loi_ngan"
-                          ? "bg-white text-teal-700 shadow-3xs border border-teal-100 font-extrabold"
+                          ? "text-teal-700 font-extrabold"
                           : "text-slate-550 hover:text-teal-600"
                       }`}
                     >
+                      {savedQuestionTab === "trac_nghiem_tra_loi_ngan" && (
+                        <motion.div
+                          layoutId="active-qbuilder-tab-pill"
+                          className="absolute inset-0 bg-white rounded-lg shadow-3xs border border-teal-100 -z-10"
+                          transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                        />
+                      )}
                       <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
                       <span className="truncate">Ngắn ({traLoiNganList.length})</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setSavedQuestionTab("tu_luan")}
-                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis ${
+                      className={`w-full text-center px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis relative z-10 ${
                         savedQuestionTab === "tu_luan"
-                          ? "bg-white text-rose-700 shadow-3xs border border-rose-100 font-extrabold"
+                          ? "text-rose-700 font-extrabold"
                           : "text-slate-550 hover:text-rose-600"
                       }`}
                     >
+                      {savedQuestionTab === "tu_luan" && (
+                        <motion.div
+                          layoutId="active-qbuilder-tab-pill"
+                          className="absolute inset-0 bg-white rounded-lg shadow-3xs border border-rose-100 -z-10"
+                          transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                        />
+                      )}
                       <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
                       <span className="truncate">Tự luận ({tuLuanList.length})</span>
                     </button>

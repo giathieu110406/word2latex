@@ -2,6 +2,7 @@
 import { authFetch } from "../utils/api-client";
 import React, { useState, useRef, useEffect } from "react";
 import { Sparkles, ArrowRight, Loader2, Paperclip, Code2, Eye, ChevronDown, Check, Type } from "lucide-react";
+import { motion } from "motion/react";
 
 interface LatexConverterProps {
   wordFont: string;
@@ -369,7 +370,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
   };
 
   return (
-    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col w-full h-[calc(100dvh-58px)] max-h-[calc(100dvh-58px)] min-h-[calc(100dvh-58px)] shrink-0">
+    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col w-full h-full min-h-0 flex-1">
       {/* Top Control Settings Panel */}
       <div id="tour-latex-font-controls" className="bg-white px-4 py-2 sm:py-2.5 md:px-5 md:py-2.5 border-b border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-4 select-none">
         <div className="flex items-center justify-between gap-3 md:gap-4 w-full sm:w-auto flex-1">
@@ -708,27 +709,41 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
             <div className="bg-white/40 px-4 py-3 md:px-5 md:py-3.5 border-b border-slate-200/80 flex flex-col sm:flex-row justify-between sm:items-center gap-3 sm:gap-4 select-none min-h-[58px] sm:min-h-[62px]">
               {/* Left Group: Tab selector with visual divider */}
               <div className="flex items-center gap-4 w-full sm:w-auto">
-                <div className="flex bg-slate-200/60 p-1 rounded-xl text-xs font-bold gap-1 w-full sm:w-auto flex-1 sm:flex-none">
+                <div className="flex bg-slate-200/60 p-1 rounded-xl text-xs font-bold gap-1 w-full sm:w-auto flex-1 sm:flex-none relative">
                   <button
                     type="button"
                     onClick={() => setActiveTab("word")}
-                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg transition-all cursor-pointer text-center ${
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg transition-colors cursor-pointer text-center relative z-10 ${
                       activeTab === "word"
-                        ? "bg-white text-slate-950 shadow-3xs font-extrabold"
+                        ? "text-slate-950 font-extrabold"
                         : "text-slate-600 hover:text-slate-900 font-bold"
                     }`}
                   >
+                    {activeTab === "word" && (
+                      <motion.div
+                        layoutId="active-latex-tab-pill"
+                        className="absolute inset-0 bg-white rounded-lg shadow-3xs -z-10"
+                        transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                      />
+                    )}
                     Xem trước
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab("latex")}
-                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg transition-all cursor-pointer text-center ${
+                    className={`flex-1 sm:flex-none px-4 py-2 rounded-lg transition-colors cursor-pointer text-center relative z-10 ${
                       activeTab === "latex"
-                        ? "bg-white text-slate-950 shadow-3xs font-extrabold"
+                        ? "text-slate-950 font-extrabold"
                         : "text-slate-600 hover:text-slate-900 font-bold"
                     }`}
                   >
+                    {activeTab === "latex" && (
+                      <motion.div
+                        layoutId="active-latex-tab-pill"
+                        className="absolute inset-0 bg-white rounded-lg shadow-3xs -z-10"
+                        transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                      />
+                    )}
                     Tải PDF
                   </button>
                 </div>

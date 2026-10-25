@@ -149,6 +149,11 @@ interface ZaloContactWidgetProps {
 }
 
 export const ZaloContactWidget: React.FC<ZaloContactWidgetProps> = ({ isDrawingMode = false }) => {
+  // Ẩn hoàn toàn thú cưng Codex trong không gian vẽ hình để không che chắn giao diện và nút xuất hình
+  if (isDrawingMode) {
+    return null;
+  }
+
   const activity = useSyncExternalStore(
     subscribeToCodexPetActivity,
     getCodexPetActivity,

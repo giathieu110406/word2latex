@@ -13,6 +13,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import { PDFDocument } from "pdf-lib";
+import { motion } from "motion/react";
 import { beginCodexPetActivity, type CodexPetResult } from "../utils/codex-pet-activity";
 import { normalizeMarkdownMath } from "../utils/markdown-math";
 
@@ -798,7 +799,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   const progressPercent = chunks.length > 0 ? Math.round((completedChunksCount / chunks.length) * 100) : 0;
 
   return (
-    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-[620px] h-[calc(100vh-62px)] min-h-[calc(100vh-62px)]">
+    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-0 h-full">
       {/* Header */}
       <div className="p-4 sm:p-6 border-b border-white/50 bg-white/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 shrink-0">
         <div>
@@ -831,24 +832,38 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       </div>
 
       {/* Mobile Tab Switcher */}
-      <div className="md:hidden flex bg-slate-100/90 p-1.5 rounded-2xl mx-3.5 mt-3 mb-2 shrink-0 select-none border border-slate-200/60 shadow-xs">
+      <div className="md:hidden flex bg-slate-100/90 p-1.5 rounded-2xl mx-3.5 mt-3 mb-2 shrink-0 select-none border border-slate-200/60 shadow-xs relative">
         <button
           type="button"
           onClick={() => setMobileView("input")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-            mobileView === "input" ? "bg-white text-indigo-700 shadow-sm border border-slate-200/50" : "text-slate-600 hover:text-slate-900"
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-colors cursor-pointer relative z-10 ${
+            mobileView === "input" ? "text-indigo-700 font-extrabold" : "text-slate-600 hover:text-slate-900"
           }`}
         >
+          {mobileView === "input" && (
+            <motion.div
+              layoutId="active-markitdown-mobile-tab"
+              className="absolute inset-0 bg-white rounded-xl shadow-sm border border-slate-200/50 -z-10"
+              transition={{ type: "spring", stiffness: 450, damping: 35 }}
+            />
+          )}
           <Sliders className="w-3.5 h-3.5" />
           <span>Cấu hình & Tải tệp</span>
         </button>
         <button
           type="button"
           onClick={() => setMobileView("output")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-            mobileView === "output" ? "bg-white text-indigo-700 shadow-sm border border-slate-200/50" : "text-slate-600 hover:text-slate-900"
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-colors cursor-pointer relative z-10 ${
+            mobileView === "output" ? "text-indigo-700 font-extrabold" : "text-slate-600 hover:text-slate-900"
           }`}
         >
+          {mobileView === "output" && (
+            <motion.div
+              layoutId="active-markitdown-mobile-tab"
+              className="absolute inset-0 bg-white rounded-xl shadow-sm border border-slate-200/50 -z-10"
+              transition={{ type: "spring", stiffness: 450, damping: 35 }}
+            />
+          )}
           <FileText className="w-3.5 h-3.5" />
           <span>Hàng đợi & Kết quả</span>
           {outputMarkdown.length > 0 && (
