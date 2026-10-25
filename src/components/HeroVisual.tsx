@@ -81,7 +81,7 @@ export const HeroVisual: React.FC = () => {
       {/* Main Flat Card */}
       <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-xl shadow-slate-200/50 backdrop-blur-xl transition-all duration-300 hover:shadow-indigo-500/10 hover:border-indigo-200">
         {/* Card Header Bar - 1 HÀNG NGANG DUY NHẤT: 3 chấm tròn + tên file + 3 nút tab (Hiệu ứng Animate UI) */}
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-3.5 py-2 gap-2 whitespace-nowrap select-none">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-2.5 py-1.5 sm:px-3.5 sm:py-2 gap-2 whitespace-nowrap select-none">
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
             <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
@@ -160,7 +160,7 @@ export const HeroVisual: React.FC = () => {
         </div>
 
         {/* Dynamic Content Area - KHÓA CỐ ĐỊNH 100% CHIỀU CAO (h-[206px]), KHÔNG CO GIÃN 1 PIXEL NÀO */}
-        <div className="h-[206px] min-h-[206px] max-h-[206px] p-3.5 sm:p-4 flex flex-col justify-between overflow-hidden">
+        <div className="h-[156px] sm:h-[206px] min-h-[156px] sm:min-h-[206px] max-h-[156px] sm:max-h-[206px] p-2 sm:p-4 flex flex-col justify-between overflow-hidden">
           <AnimatePresence mode="wait">
             {/* TAB 1: WORD THÔ */}
             {activeTab === "word" && (
@@ -173,7 +173,7 @@ export const HeroVisual: React.FC = () => {
                 className="flex flex-col justify-between h-full"
               >
                 {/* Header con */}
-                <div className="flex items-center justify-between h-6">
+                <div className="flex items-center justify-between h-5 sm:h-6">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200/80 text-amber-700 font-bold text-[11px]">
                     <Sparkles className="h-3 w-3 animate-spin text-amber-600" />
                     <span>Nhận diện công thức từ Word (.docx)</span>
@@ -190,7 +190,7 @@ export const HeroVisual: React.FC = () => {
                 </div>
 
                 {/* Khung nội dung chuẩn h-[112px] */}
-                <div className="h-[112px] w-full rounded-2xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-2.5 flex flex-col justify-center text-center shadow-2xs">
+                <div className="h-[82px] sm:h-[112px] w-full rounded-xl sm:rounded-2xl border border-slate-200/80 bg-slate-50/70 px-2.5 sm:px-3.5 py-1.5 sm:py-2.5 flex flex-col justify-center text-center shadow-2xs">
                   <p className="text-[11px] font-semibold text-slate-500 mb-1.5">
                     Công thức toán gốc dạng Equation OMML:
                   </p>
@@ -200,7 +200,7 @@ export const HeroVisual: React.FC = () => {
                 </div>
 
                 {/* Footer con */}
-                <div className="flex items-center justify-between text-[11px] text-slate-500 px-1 h-5">
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 px-1 h-4 sm:h-5">
                   <span>Trích xuất: <strong className="text-indigo-600 font-bold">Word Equation OMML</strong></span>
                   <span className="text-emerald-600 font-bold flex items-center gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Đã nhận diện chuẩn xác
@@ -220,7 +220,7 @@ export const HeroVisual: React.FC = () => {
                 className="flex flex-col justify-between h-full"
               >
                 {/* Header con */}
-                <div className="flex items-center justify-between h-6">
+                <div className="flex items-center justify-between h-5 sm:h-6">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200/80 text-indigo-700 font-bold text-[11px]">
                     <Code2 className="h-3 w-3 text-indigo-600" />
                     <span>Mã lệnh LaTeX chuẩn Overleaf</span>
@@ -237,7 +237,7 @@ export const HeroVisual: React.FC = () => {
                 </div>
 
                 {/* Khung nội dung chuẩn h-[112px] - Vừa khít 1 dòng 100% không lướt ngang */}
-                <div className="h-[112px] w-full rounded-2xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 flex flex-col justify-center shadow-inner overflow-hidden">
+                <div className="h-[82px] sm:h-[112px] w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-2.5 sm:px-3.5 py-1.5 sm:py-2.5 flex flex-col justify-center shadow-inner overflow-hidden">
                   <p className="text-[10px] font-mono text-slate-400 mb-1.5">Mã nguồn LaTeX tối ưu:</p>
                   <p className="font-mono text-xs sm:text-sm text-emerald-400 select-all truncate text-center font-semibold bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-800/80">
                     {sampleLatex}
@@ -245,7 +245,7 @@ export const HeroVisual: React.FC = () => {
                 </div>
 
                 {/* Footer con */}
-                <div className="flex items-center justify-between text-[11px] text-slate-500 px-1 h-5">
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 px-1 h-4 sm:h-5">
                   <span>Gói hỗ trợ: <strong className="text-indigo-600 font-bold">amsmath, amssymb</strong></span>
                   <button
                     type="button"
@@ -270,7 +270,7 @@ export const HeroVisual: React.FC = () => {
                 className="flex flex-col justify-between h-full"
               >
                 {/* Header con */}
-                <div className="flex items-center justify-between h-6">
+                <div className="flex items-center justify-between h-5 sm:h-6">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[11px]">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span>KaTeX Math Rendering Engine</span>
@@ -287,7 +287,7 @@ export const HeroVisual: React.FC = () => {
                 </div>
 
                 {/* Khung nội dung chuẩn h-[112px] - Công thức toán to, đẹp, sắc nét, đầy đủ 100% không bị xén */}
-                <div className="h-[112px] w-full rounded-2xl border border-slate-200/80 bg-white px-3.5 py-2 flex flex-col justify-center text-center shadow-xs overflow-visible">
+                <div className="h-[82px] sm:h-[112px] w-full rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white px-2.5 sm:px-3.5 py-1 sm:py-2 flex flex-col justify-center text-center shadow-xs overflow-visible">
                   <p className="text-[11px] font-semibold text-slate-500 mb-1">Công thức toán hoàn chỉnh:</p>
                   <div className="text-base sm:text-lg text-slate-900 py-0.5 flex items-center justify-center overflow-visible">
                     <Tex display math={sampleLatex} />
@@ -295,7 +295,7 @@ export const HeroVisual: React.FC = () => {
                 </div>
 
                 {/* Footer con */}
-                <div className="flex items-center justify-between text-[11px] text-slate-500 px-1 h-5">
+                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 px-1 h-4 sm:h-5">
                   <span>Thời gian phân giải: <strong className="text-indigo-600 font-bold">120ms</strong></span>
                   <span className="text-emerald-600 font-bold flex items-center gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Chuẩn Overleaf &amp; MathJax

@@ -8,20 +8,72 @@
   --font-display: "Space Grotesk", sans-serif;
 }
 
-/* Khóa cuộn cấp root html/body để tránh sinh thanh cuộn kép ngoài ý muốn */
-html,
+/* Khóa cuộn cấp root html/body để loại bỏ hoàn toàn thanh cuộn kép ngoài ý muốn */
+html {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
 body {
   height: 100%;
   width: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden !important;
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
 }
 
 #root {
   height: 100%;
   width: 100%;
+  margin: 0;
+  padding: 0;
   overflow: hidden !important;
+  position: relative;
+}
+
+/* Custom Scrollbar toàn cục hiện đại, thanh mảnh, loại bỏ thanh cuộn Windows thô ráp */
+/* Firefox không hỗ trợ ::-webkit-scrollbar nên dùng thuộc tính chuẩn; Chrome/Edge dùng ::-webkit-scrollbar (ẩn mũi tên) */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Ngăn iOS và iPadOS tự động phóng to (auto-zoom) khi bấm vào ô nhập dữ liệu */

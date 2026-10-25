@@ -4563,15 +4563,10 @@ ${bodyHtml}
                     setIsUserMenuOpen(false);
                     setIsFeedbackOpen(true);
                   }}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer text-left"
                 >
-                  <div className="flex items-center gap-2.5 truncate">
-                    <MessageSquarePlus className="w-4 h-4 text-indigo-500 shrink-0" />
-                    <span className="truncate">Gửi góp ý &amp; Báo lỗi</span>
-                  </div>
-                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">
-                    Mới
-                  </span>
+                  <MessageSquarePlus className="w-4 h-4 text-slate-800 shrink-0" />
+                  <span className="truncate">Gửi góp ý &amp; Báo lỗi</span>
                 </button>
 
                 {/* Notifications & Feedbacks item */}
@@ -4582,14 +4577,16 @@ ${bodyHtml}
                     setIsNotificationsOpen(true);
                     setNoticeCountdown(0);
                   }}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer text-left"
                 >
                   <div className="flex items-center gap-2.5 truncate">
-                    <Bell className="w-4 h-4 text-slate-500 shrink-0" />
+                    <Bell className="w-4 h-4 text-slate-800 shrink-0" />
                     <span className="truncate">Thông báo & Góp ý</span>
                   </div>
                   {unreadCount > 0 && (
-                    <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                    <span className="flex h-4 min-w-4 px-1.5 items-center justify-center rounded-full bg-slate-900 text-[10px] font-black text-white shadow-2xs">
+                      {unreadCount}
+                    </span>
                   )}
                 </button>
 
@@ -4616,8 +4613,15 @@ ${bodyHtml}
               onClick={() => setIsUserMenuOpen(prev => !prev)}
               className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-slate-100/80 transition-all text-left cursor-pointer group ${isUserMenuOpen ? 'bg-slate-100/80 shadow-xs' : ''}`}
             >
-              <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 shrink-0 border border-slate-200">
-                <img src={getUserAvatar()} alt="User avatar" className="w-full h-full object-cover" />
+              <div className="relative shrink-0">
+                <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 border border-slate-200">
+                  <img src={getUserAvatar()} alt="User avatar" className="w-full h-full object-cover" />
+                </div>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-slate-900 text-[9px] font-black text-white ring-2 ring-white shadow-xs">
+                    {unreadCount}
+                  </span>
+                )}
               </div>
               <div className="flex flex-col min-w-0 flex-1">
                 <div className="font-bold text-xs text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
@@ -4635,39 +4639,6 @@ ${bodyHtml}
 
       {/* MAIN CONTENT WRAPPER */}
       <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] max-h-[100dvh] ${isWorkspaceFullscreen ? `overflow-hidden ${sidebarView === 'drawing' && isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto'}`}>
-            {/* 2 NÚT NỔI ĐỘC LẬP HOÀN TOÀN TRÊN NỀN (KHÔNG CÒN THANH DIV DOCK) */}
-            {/* NÚT TRUY CẬP NHANH GÓP Ý & THÔNG BÁO Ở GÓC TRÊN BÊN PHẢI */}
-            <div className="fixed top-2.5 sm:top-3 right-3 sm:right-5 z-40 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsFeedbackOpen(true)}
-                className="px-3 py-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-indigo-50/90 text-indigo-700 hover:text-indigo-800 border border-slate-200/90 hover:border-indigo-300 font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer shrink-0 group"
-                title="Gửi góp ý, báo lỗi hoặc vẽ khoanh vùng màn hình"
-              >
-                <MessageSquarePlus className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-                <span className="hidden sm:inline">Góp ý &amp; Báo lỗi</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-2xs">
-                  MỚI
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsNotificationsOpen(true);
-                  setNoticeCountdown(0);
-                }}
-                className="relative p-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-purple-50/90 text-slate-700 hover:text-purple-700 border border-slate-200/90 hover:border-purple-300 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer shrink-0 group"
-                title="Xem thông báo hệ thống và khảo sát"
-              >
-                <Bell className="w-4.5 h-4.5 text-purple-600 group-hover:scale-110 transition-transform" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white shadow-sm ring-2 ring-white">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-            </div>
             <button 
               onClick={() => setIsMenuOpen(open => !open)}
               className="fixed top-2.5 sm:top-3 left-2.5 sm:left-4 z-40 p-2 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/90 transition-all shadow-sm hover:shadow-md shrink-0 cursor-pointer"

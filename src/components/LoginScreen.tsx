@@ -12,7 +12,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   authError,
 }) => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFC] to-[#F0FDF4]/40 text-slate-850 flex flex-col items-center justify-start sm:justify-center p-3 sm:p-6 md:p-10 py-6 sm:py-10 antialiased font-sans relative overflow-y-auto select-none">
+    <div className="h-full min-h-0 w-full bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFC] to-[#F0FDF4]/40 text-slate-850 flex flex-col items-center justify-start sm:justify-center p-3 sm:p-6 md:p-10 py-6 sm:py-10 antialiased font-sans relative overflow-y-auto select-none">
       {/* Decorative ambient background floating elements */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {/* Top-left soft sparkle */}
