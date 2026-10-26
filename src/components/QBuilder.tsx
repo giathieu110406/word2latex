@@ -640,8 +640,8 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Left Frame: Question and Options */}
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] font-bold text-slate-600 flex items-center gap-0.5 select-none">
+                    <div className="space-y-1.5 flex flex-col">
+                      <span className="text-[11px] font-bold text-slate-600 flex items-center gap-0.5 select-none h-5 truncate">
                         1. Đề bài & các tùy chọn A, B, C, D <span className="text-rose-500 font-bold">*</span>
                       </span>
                       <textarea
@@ -654,14 +654,14 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         }
                         rows={4}
                         placeholder="VD: Cho hàm số $y=x+1$, tìm điểm giao với trục hoành.\nA. $(1;0)$\nB. $(-1;0)$\nC. $(0;1)$\nD. $(0;-1)$"
-                        className="w-full bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed overflow-y-auto transition-all shadow-3xs"
+                        className="w-full flex-1 bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed overflow-y-auto transition-all shadow-3xs"
                       />
                     </div>
 
                     {/* Right Frame: Answer and Solution */}
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] font-bold text-slate-500 select-none">
-                        2. Đáp án giải chi tiết (Có thể bỏ trống)
+                    <div className="space-y-1.5 flex flex-col">
+                      <span className="text-[11px] font-bold text-slate-500 flex items-center select-none h-5 truncate">
+                        2. Đáp án
                       </span>
                       <textarea
                         value={tracNghiemAnswerText}
@@ -673,7 +673,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         }
                         rows={4}
                         placeholder="VD: Chọn B. Giao điểm với trục hoành có $y = 0 \implies x + 1 = 0 \implies x = -1$."
-                        className="w-full bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed overflow-y-auto transition-all shadow-3xs"
+                        className="w-full flex-1 bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed overflow-y-auto transition-all shadow-3xs"
                       />
                     </div>
                   </div>
@@ -748,8 +748,8 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Left Frame: Question Text - REQUIRED */}
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] font-bold text-slate-600 flex items-center gap-0.5 select-none">
+                    <div className="space-y-1.5 flex flex-col">
+                      <span className="text-[11px] font-bold text-slate-600 flex items-center gap-0.5 select-none h-5 truncate">
                         1. Nội dung câu hỏi <span className="text-rose-500 font-bold">*</span>
                       </span>
                       <textarea
@@ -776,9 +776,9 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                     </div>
 
                     {/* Right Frame: Answer Text - OPTIONAL */}
-                    <div className="space-y-1.5">
-                      <span className="text-[11px] font-bold text-slate-500 select-none">
-                        2. Đáp án giải chi tiết (Có thể bỏ trống)
+                    <div className="space-y-1.5 flex flex-col">
+                      <span className="text-[11px] font-bold text-slate-500 flex items-center select-none h-5 truncate">
+                        2. Đáp án
                       </span>
                       <textarea
                         value={newQuestionType === "trac_nghiem_dung_sai" ? dungSaiAnswerText : newQuestionType === "trac_nghiem_tra_loi_ngan" ? traLoiNganAnswerText : tuLuanAnswerText}
