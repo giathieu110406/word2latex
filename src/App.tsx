@@ -4349,7 +4349,7 @@ ${bodyHtml}
       </AnimatePresence>
 
       {/* LEFT SIDEBAR WRAPPER */}
-      <div className={`fixed top-0 bottom-0 left-0 h-[100dvh] max-h-[100dvh] z-[70] shrink-0 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} w-72 sm:w-64 flex flex-col`}>
+      <div className={`fixed top-0 bottom-0 left-0 h-[100dvh] max-h-[100dvh] z-[70] shrink-0 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} w-64 flex flex-col`}>
         <aside 
             className={`bg-white/95 backdrop-blur-md border-r border-slate-200/80 flex flex-col h-full w-full transition-all duration-300 overflow-hidden shadow-2xl`}
         >
@@ -4473,12 +4473,12 @@ ${bodyHtml}
                 </div>
             </div>
           )}
-          {/* User Profile Widget at the bottom */}
-          <div className="p-2.5 border-t border-slate-200/80 bg-white/95 backdrop-blur-md relative shrink-0 mt-auto pb-6 sm:pb-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.04)]" ref={userMenuRef}>
+          {/* User Profile Widget at the bottom - Tối ưu nhỏ gọn ôm sát viền bo cong */}
+          <div className="p-1.5 sm:p-2 border-t border-slate-100 bg-white/95 backdrop-blur-md relative shrink-0 mt-auto" ref={userMenuRef}>
             {/* Popover Dropdown (Flyout outside sidebar on desktop, upwards on mobile) */}
             {isUserMenuOpen && (
               <div 
-                className="absolute md:left-[calc(100%+8px)] md:bottom-3 bottom-full left-2 right-2 md:right-auto md:w-64 mb-2 md:mb-0 bg-white/95 rounded-2xl shadow-2xl border border-slate-200/90 p-1.5 z-[80] flex flex-col gap-0.5 backdrop-blur-md max-h-[70dvh] overflow-y-auto"
+                className="absolute md:left-[calc(100%+8px)] md:bottom-2 bottom-full left-1.5 right-1.5 md:right-auto md:w-64 mb-1.5 md:mb-0 bg-white/95 rounded-2xl shadow-2xl border border-slate-200/90 p-1.5 z-[80] flex flex-col gap-0.5 backdrop-blur-md max-h-[70dvh] overflow-y-auto"
               >
                 {/* User Header */}
                 <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50/90 mb-0.5">
@@ -4624,31 +4624,31 @@ ${bodyHtml}
               </div>
             )}
 
-            {/* User Profile trigger button */}
+            {/* User Profile trigger button - Nhỏ gọn ôm sát viền bo cong */}
             <button
               type="button"
               onClick={() => setIsUserMenuOpen(prev => !prev)}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-slate-100/80 transition-all text-left cursor-pointer group ${isUserMenuOpen ? 'bg-slate-100/80 shadow-xs' : ''}`}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-xl border border-slate-200/70 bg-slate-50/70 hover:bg-slate-100/90 transition-all text-left cursor-pointer group ${isUserMenuOpen ? 'bg-slate-100 border-indigo-200 shadow-xs' : ''}`}
             >
               <div className="relative shrink-0">
-                <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 border border-slate-200">
+                <div className="w-7.5 h-7.5 rounded-full overflow-hidden bg-slate-200 border border-slate-200">
                   <img src={getUserAvatar()} alt="User avatar" className="w-full h-full object-cover" />
                 </div>
                 {unreadCount > 0 && user && (
-                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-slate-900 text-[9px] font-black text-white ring-2 ring-white shadow-xs">
+                  <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded-full bg-slate-900 text-[8px] font-black text-white ring-1 ring-white shadow-xs">
                     {unreadCount}
                   </span>
                 )}
               </div>
               <div className="flex flex-col min-w-0 flex-1">
-                <div className="font-bold text-xs text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
+                <div className="font-bold text-xs text-slate-800 truncate group-hover:text-indigo-600 transition-colors leading-tight">
                   {user ? (userDoc?.displayName || user?.displayName || user?.email?.split("@")[0] || "Tài khoản") : "Khách"}
                 </div>
-                <div className="text-[10px] text-slate-400 truncate">
+                <div className="text-[10px] text-slate-400 truncate leading-tight">
                   {user ? (user?.email || userDoc?.email || "") : "Nhấn để đăng nhập"}
                 </div>
               </div>
-              <ChevronsUpDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 shrink-0" />
+              <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 shrink-0" />
             </button>
           </div>
       </aside>
