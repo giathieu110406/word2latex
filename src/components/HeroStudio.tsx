@@ -50,6 +50,14 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [activeDemoTab, setActiveDemoTab] = useState<"latex" | "exam" | "geometry" | "markitdown">("latex");
+
+  const demoTabs = [
+    { id: "latex", title: "LaTeX Converter", badge: "Word → LaTeX", icon: Sparkles, color: "text-indigo-600", activeBg: "bg-indigo-600" },
+    { id: "exam", title: "Soạn Đề Thi", badge: "AI Trắc Nghiệm", icon: FileText, color: "text-purple-600", activeBg: "bg-purple-600" },
+    { id: "geometry", title: "Hình Vẽ AI", badge: "TikZ & SVG", icon: Compass, color: "text-amber-600", activeBg: "bg-amber-600" },
+    { id: "markitdown", title: "MarkItDown", badge: "Đa Định Dạng", icon: FileSpreadsheet, color: "text-emerald-600", activeBg: "bg-emerald-600" },
+  ];
 
   const handleOpenSearch = () => {
     if (onOpenCommandPalette) {
@@ -199,7 +207,7 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
 
               {/* Tiêu đề chính lướt nhẹ cực êm không giật lag */}
               <h1
-                className="text-2xl sm:text-4xl lg:text-[38px] xl:text-[42px] font-black text-slate-900 tracking-tight leading-[1.18] sm:leading-[1.14] mb-2 sm:mb-3"
+                className="text-[22px] sm:text-3xl lg:text-[38px] xl:text-[42px] font-black text-slate-900 tracking-tight leading-[1.2] sm:leading-[1.14] mb-2 sm:mb-3"
               >
                 Biến tài liệu khoa học thành <br className="hidden sm:inline" />
                 <span className="bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
@@ -305,66 +313,119 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
       </div>
 
       {/* =====================================================================
-          PHẦN TIẾP THEO KHI CUỘN CHUỘT: 4 MINI-DEMO TƯƠNG TÁC CHI TIẾT
+          PHẦN TIẾP THEO KHI CUỘN CHUỘT: TABS MINI-DEMO TƯƠNG TÁC CHI TIẾT
+          TỐI ƯU CẢM ỨNG & HIỆU NĂNG MOBILE: CHỌN TAB XEM TỪNG CÔNG CỤ
           ===================================================================== */}
-      <div className="space-y-8 pt-1">
+      <div className="space-y-4 sm:space-y-6 pt-2">
         <motion.div 
           initial={{ opacity: 0, y: 15 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="text-center max-w-4xl mx-auto px-4"
+          className="text-center max-w-4xl mx-auto px-2 sm:px-4"
         >
-          <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3.5 py-1 rounded-full border border-indigo-100 shadow-3xs">
+          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 shadow-3xs">
             Trải nghiệm tương tác trực quan
           </span>
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-2.5">
+          <h2 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight mt-2">
             Khám Phá Sức Mạnh 4 Công Cụ Cốt Lõi
           </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-normal whitespace-nowrap overflow-hidden text-ellipsis">
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl mx-auto leading-relaxed">
             Mỗi công cụ được thiết kế chuyên biệt để tối ưu từng khâu trong quy trình soạn thảo khoa học.
           </p>
         </motion.div>
 
-        {/* Demo 1: LaTeX Converter - Scroll Reveal mượt mà êm ái */}
-        <motion.div
-          initial={{ opacity: 0, y: 35, scale: 0.98 }}
-          whileInView={{ opacity: 1, y: 0, scale: 1 }}
-          viewport={{ once: true, margin: "-90px" }}
-          transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <LatexMiniDemo onExplore={() => onNavigate("latex")} />
-        </motion.div>
+        {/* BỘ THANH ĐIỀU KHIỂN TABS CHUẨN MOBILE & DESKTOP */}
+        <div className="flex items-center justify-center px-1 sm:px-2">
+          <div className="flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl bg-white/95 border border-slate-200/90 shadow-xs max-w-full overflow-x-auto no-scrollbar">
+            {demoTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeDemoTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveDemoTab(tab.id as any)}
+                  className={`relative isolate flex items-center px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95 ${
+                    isActive
+                      ? "text-white shadow-sm"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
+                  }`}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="overview-demo-tab-pill"
+                      className={`absolute inset-0 rounded-xl z-0 ${tab.activeBg}`}
+                      transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5 sm:gap-2">
+                    <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isActive ? "text-white" : tab.color}`} />
+                    <span className={isActive ? "text-white font-black" : ""}>{tab.title}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold hidden md:inline-block ${
+                      isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                    }`}>
+                      {tab.badge}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-        {/* Demo 2: Exam Creator - Scroll Reveal mượt mà êm ái */}
-        <motion.div
-          initial={{ opacity: 0, y: 35, scale: 0.98 }}
-          whileInView={{ opacity: 1, y: 0, scale: 1 }}
-          viewport={{ once: true, margin: "-90px" }}
-          transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <ExamMiniDemo onExplore={() => onNavigate("exam")} />
-        </motion.div>
+        {/* KHUNG DEMO TƯƠNG TÁC DUY NHẤT VỚI ANIMATION MƯỢT MÀ */}
+        <div className="w-full">
+          <AnimatePresence mode="wait">
+            {activeDemoTab === "latex" && (
+              <motion.div
+                key="latex"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <LatexMiniDemo onExplore={() => onNavigate("latex")} />
+              </motion.div>
+            )}
 
-        {/* Demo 3: Geometry Workspace - Scroll Reveal mượt mà êm ái */}
-        <motion.div
-          initial={{ opacity: 0, y: 35, scale: 0.98 }}
-          whileInView={{ opacity: 1, y: 0, scale: 1 }}
-          viewport={{ once: true, margin: "-90px" }}
-          transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <GeometryMiniDemo onExplore={() => onNavigate("workspace")} />
-        </motion.div>
+            {activeDemoTab === "exam" && (
+              <motion.div
+                key="exam"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <ExamMiniDemo onExplore={() => onNavigate("exam")} />
+              </motion.div>
+            )}
 
-        {/* Demo 4: MarkItDown AI - Scroll Reveal mượt mà êm ái */}
-        <motion.div
-          initial={{ opacity: 0, y: 35, scale: 0.98 }}
-          whileInView={{ opacity: 1, y: 0, scale: 1 }}
-          viewport={{ once: true, margin: "-90px" }}
-          transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <MarkItDownMiniDemo onExplore={() => onNavigate("markitdown")} />
-        </motion.div>
+            {activeDemoTab === "geometry" && (
+              <motion.div
+                key="geometry"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <GeometryMiniDemo onExplore={() => onNavigate("workspace")} />
+              </motion.div>
+            )}
+
+            {activeDemoTab === "markitdown" && (
+              <motion.div
+                key="markitdown"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <MarkItDownMiniDemo onExplore={() => onNavigate("markitdown")} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* =====================================================================

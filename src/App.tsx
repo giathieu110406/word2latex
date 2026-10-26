@@ -4349,23 +4349,23 @@ ${bodyHtml}
       </AnimatePresence>
 
       {/* LEFT SIDEBAR WRAPPER */}
-      <div className={`fixed top-0 left-0 h-full z-[70] shrink-0 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} w-64`}>
+      <div className={`fixed top-0 bottom-0 left-0 h-[100dvh] max-h-[100dvh] z-[70] shrink-0 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} w-72 sm:w-64 flex flex-col`}>
         <aside 
-            className={`bg-white/90 backdrop-blur-md border-r border-white/60 flex-col flex h-full absolute left-0 top-0 transition-all duration-300 overflow-visible w-64 shadow-[0_0_30px_rgba(120,120,180,.08)]`}
+            className={`bg-white/95 backdrop-blur-md border-r border-slate-200/80 flex flex-col h-full w-full transition-all duration-300 overflow-hidden shadow-2xl`}
         >
-          <div className={`p-6 flex items-center shrink-0 group gap-3 justify-between`}>
-             <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100/50 flex items-center justify-center shadow-lg shrink-0 overflow-hidden p-1.5">
+          <div className={`p-4 sm:p-5 flex items-center shrink-0 group gap-3 justify-between border-b border-slate-100`}>
+             <div className="flex items-center gap-2.5">
+                 <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shadow-xs shrink-0 overflow-hidden p-1.5">
                     <img src="/logo.svg" alt="Word2LaTeX" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                  </div>
                  <div>
-                    <div className="font-bold text-slate-800 text-[15px] leading-tight">Word2LaTeX.io.vn</div>
-                    <div className="text-[10px] text-slate-500 leading-tight">© 2026 WordToLaTeX.io.vn</div>
+                    <div className="font-bold text-slate-800 text-[14px] leading-tight">Word2LaTeX.io.vn</div>
+                    <div className="text-[10px] text-slate-400 leading-tight">© 2026 WordToLaTeX.io.vn</div>
                  </div>
              </div>
 
              {/* Close button */}
-             <button onClick={() => setIsMenuOpen(false)} className={`p-1 text-slate-400 hover:text-slate-600 transition-colors`}>
+             <button onClick={() => setIsMenuOpen(false)} className={`p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors`}>
                 <X className="w-5 h-5" />
              </button>
           </div>
@@ -4474,11 +4474,11 @@ ${bodyHtml}
             </div>
           )}
           {/* User Profile Widget at the bottom */}
-          <div className="p-2 border-t border-slate-100/60 relative shrink-0 mt-auto" ref={userMenuRef}>
+          <div className="p-2.5 border-t border-slate-200/80 bg-white/95 backdrop-blur-md relative shrink-0 mt-auto pb-6 sm:pb-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.04)]" ref={userMenuRef}>
             {/* Popover Dropdown (Flyout outside sidebar on desktop, upwards on mobile) */}
             {isUserMenuOpen && (
               <div 
-                className="absolute md:left-[calc(100%+8px)] md:bottom-3 bottom-full left-2 right-2 md:right-auto md:w-64 mb-2 md:mb-0 bg-white/95 rounded-2xl shadow-2xl border border-slate-100 p-1.5 z-[80] flex flex-col gap-0.5 backdrop-blur-md"
+                className="absolute md:left-[calc(100%+8px)] md:bottom-3 bottom-full left-2 right-2 md:right-auto md:w-64 mb-2 md:mb-0 bg-white/95 rounded-2xl shadow-2xl border border-slate-200/90 p-1.5 z-[80] flex flex-col gap-0.5 backdrop-blur-md max-h-[70dvh] overflow-y-auto"
               >
                 {/* User Header */}
                 <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50/90 mb-0.5">
@@ -4656,29 +4656,91 @@ ${bodyHtml}
 
       {/* MAIN CONTENT WRAPPER */}
       <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] max-h-[100dvh] ${isWorkspaceFullscreen ? `overflow-hidden ${sidebarView === 'drawing' && isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto overflow-x-hidden'}`}>
+            {/* MOBILE STICKY TOPBAR */}
+            <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 h-13 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs shrink-0">
+              <div className="flex items-center gap-2.5">
+                <button 
+                  onClick={() => setIsMenuOpen(open => !open)}
+                  className="p-1.5 -ml-1 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all active:scale-95 cursor-pointer"
+                  title="Mở thanh điều hướng Menu"
+                  aria-label="Mở Menu"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => handleSidebarNav('overview')}>
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center p-1 shadow-2xs">
+                    <img src="/logo.svg" alt="Word2LaTeX" className="w-full h-full object-contain" />
+                  </div>
+                  <span className="font-extrabold text-[15px] text-slate-900 tracking-tight">Word2LaTeX</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (
+                  <button
+                    id="guide-tour-topbar-btn"
+                    onClick={() => setIsGuideTourOpen(true)}
+                    className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200/80 font-bold text-[11px] flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                    title="Hướng dẫn sử dụng"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>HDSD</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsCommandPaletteOpen(true)}
+                  className="p-2 rounded-xl text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all active:scale-95 cursor-pointer"
+                  title="Tìm kiếm & Lệnh nhanh (Ctrl+K)"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+
+                {/* Nút Tài khoản cá nhân trên Header Mobile */}
+                <button
+                  onClick={() => {
+                    setIsMenuOpen(true);
+                    setIsUserMenuOpen(true);
+                  }}
+                  className="p-0.5 rounded-full border border-slate-200/90 hover:border-indigo-400 hover:bg-indigo-50/50 transition-all active:scale-95 cursor-pointer relative shrink-0 ml-0.5"
+                  title="Menu tài khoản"
+                  aria-label="Tài khoản cá nhân"
+                >
+                  <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 border border-white">
+                    <img src={getUserAvatar()} alt="Avatar" className="w-full h-full object-cover" />
+                  </div>
+                  {unreadCount > 0 && user && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded-full bg-slate-900 text-[8px] font-black text-white ring-1 ring-white">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </header>
+
+            {/* DESKTOP FLOATING MENU BUTTON */}
             <button 
               onClick={() => setIsMenuOpen(open => !open)}
-              className="fixed top-2.5 sm:top-3 left-2.5 sm:left-4 z-40 p-2 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/90 transition-all shadow-sm hover:shadow-md shrink-0 cursor-pointer"
+              className="hidden md:flex fixed top-3 left-4 z-40 p-2 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/90 transition-all shadow-sm hover:shadow-md shrink-0 cursor-pointer"
               title="Mở thanh điều hướng Menu"
             >
               <Menu className="w-5 h-5" />
             </button>
 
+            {/* DESKTOP GUIDE TOUR BUTTON */}
             {(sidebarView === 'latex' || sidebarView === 'qbuilder' || sidebarView === 'markitdown' || sidebarView === 'drawing') && (
               <button
-                id="guide-tour-topbar-btn"
+                id="guide-tour-topbar-btn-desktop"
                 onClick={() => setIsGuideTourOpen(true)}
-                className="fixed top-2.5 sm:top-3 left-13 sm:left-16 z-40 px-3 py-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-indigo-50/90 text-indigo-700 hover:text-indigo-800 border border-slate-200/90 hover:border-indigo-300 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer group shrink-0"
+                className="hidden md:flex fixed top-3 left-16 z-40 px-3 py-2 rounded-xl bg-white/95 backdrop-blur-md hover:bg-indigo-50/90 text-indigo-700 hover:text-indigo-800 border border-slate-200/90 hover:border-indigo-300 font-bold text-xs items-center gap-1.5 transition-all shadow-sm hover:shadow-md active:scale-95 cursor-pointer group shrink-0"
                 title="Xem hướng dẫn từng bước trực quan cho trang này"
               >
                 <BookOpen className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-                <span className="font-extrabold hidden sm:inline">Hướng dẫn sử dụng</span>
-                <span className="font-extrabold sm:hidden text-[11px]">HDSD</span>
+                <span className="font-extrabold">Hướng dẫn sử dụng</span>
               </button>
             )}
 
             <div className={`flex-1 flex flex-col ${isWorkspaceFullscreen ? 'min-h-0 h-full overflow-hidden' : ''}`}>
-              <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : isWorkspaceFullscreen ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-2' : 'max-w-full w-full px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-6 flex flex-col gap-2 overflow-x-clip shrink-0'}>
+              <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : isWorkspaceFullscreen ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden px-2 sm:px-4 md:px-5 pt-2.5 sm:pt-13 pb-2' : 'max-w-full w-full px-2.5 sm:px-4 md:px-5 pt-2.5 sm:pt-13 pb-6 flex flex-col gap-2 overflow-x-clip shrink-0'}>
         {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics" || sidebarView === "payments") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 

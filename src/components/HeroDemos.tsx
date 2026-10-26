@@ -21,7 +21,9 @@ import {
   Download,
   FileDown,
   Loader2,
-  Keyboard
+  Keyboard,
+  Shuffle,
+  Printer
 } from "lucide-react";
 import katex from "katex";
 import { CopyMorphButton } from "./ui/CopyMorphButton";
@@ -251,40 +253,42 @@ export const LatexMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplore }
   };
 
   return (
-    <div ref={containerRef} className="rounded-3xl border border-slate-200/80 bg-white/95 p-5 sm:p-7 shadow-xl backdrop-blur-xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-100">
-        <div>
-          <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Word Equation &rarr; LaTeX Siêu Tốc &bull; AI Canvas Tự Động
+    <div ref={containerRef} className="rounded-2xl sm:rounded-3xl border border-slate-200/80 bg-white/95 p-3.5 sm:p-7 shadow-xl backdrop-blur-xl">
+      {/* Header - 1 HÀNG DUY NHẤT TRÊN MOBILE */}
+      <div className="flex items-center justify-between gap-2 pb-3 sm:pb-5 border-b border-slate-100">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm sm:text-2xl font-black text-slate-900 tracking-tight truncate">
+            <span className="sm:hidden">Word &rarr; LaTeX Siêu Tốc &bull; AI Canvas</span>
+            <span className="hidden sm:inline">Word Equation &rarr; LaTeX Siêu Tốc &bull; AI Canvas Tự Động</span>
           </h3>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          <p className="hidden sm:block text-xs sm:text-sm text-slate-500 mt-1 truncate">
             Mô phỏng tự động liên tục: Chuyển đổi công thức thô sang Word Equation và trợ lý AI Canvas sửa lỗi cú pháp.
           </p>
         </div>
 
         <button
           onClick={onExplore}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-500/20 transition-all cursor-pointer hover:scale-105"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-500/20 transition-all cursor-pointer hover:scale-105 shrink-0"
         >
-          <span>Mở Trình Chuyển Đổi</span>
-          <ArrowRight className="w-4 h-4" />
+          <span className="hidden sm:inline">Mở Trình Chuyển Đổi</span>
+          <span className="sm:hidden text-[11px]">Mở công cụ</span>
+          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
       </div>
 
-      {/* Tabs & Nút điều khiển Auto / Dừng */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-4 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-400">Chế độ:</span>
+      {/* Tabs & Nút điều khiển Auto / Dừng - CHUNG 1 HÀNG TRÊN CẢ MOBILE & DESKTOP */}
+      <div className="flex items-center justify-between gap-2 pt-3 pb-2 sm:pt-4 sm:pb-3 w-full">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-xs font-bold text-slate-400 hidden sm:inline shrink-0">Chế độ:</span>
           
           {/* Container Tab phong cách Animate-UI Segmented Control */}
-          <div className="flex items-center rounded-xl bg-slate-100/90 p-1 border border-slate-200/80 relative">
-            {/* Tab 1: Chuyển Đổi Công Thức Thô */}
+          <div className="flex items-center rounded-xl bg-slate-100/90 p-0.5 sm:p-1 border border-slate-200/80 relative shrink-0">
+            {/* Tab 1: Convert */}
             <button
               type="button"
               onClick={() => setActiveTab("convert")}
-              className={"relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer z-10 " +
-                (activeTab === "convert" ? "text-indigo-700" : "text-slate-600 hover:text-slate-900")
+              className={"relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer z-10 shrink-0 " +
+                (activeTab === "convert" ? "text-indigo-700 font-black" : "text-slate-600 hover:text-slate-900")
               }
             >
               {activeTab === "convert" && (
@@ -294,16 +298,19 @@ export const LatexMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplore }
                   transition={{ type: "spring", stiffness: 450, damping: 32 }}
                 />
               )}
-              <Keyboard className="w-3.5 h-3.5" />
-              <span>Chuyển Đổi Công Thức Thô</span>
+              <Keyboard className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              <span>
+                <span className="sm:hidden">Convert</span>
+                <span className="hidden sm:inline">Chuyển Đổi Công Thức</span>
+              </span>
             </button>
 
-            {/* Tab 2: AI Canvas (Bỏ icon AI màu vàng, không còn chữ Siêu Tốc) */}
+            {/* Tab 2: AI Canvas */}
             <button
               type="button"
               onClick={() => setActiveTab("canvas")}
-              className={"relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer z-10 " +
-                (activeTab === "canvas" ? "text-indigo-700" : "text-slate-600 hover:text-slate-900")
+              className={"relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer z-10 shrink-0 " +
+                (activeTab === "canvas" ? "text-indigo-700 font-black" : "text-slate-600 hover:text-slate-900")
               }
             >
               {activeTab === "canvas" && (
@@ -314,19 +321,22 @@ export const LatexMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplore }
                 />
               )}
               <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-              <span>AI Canvas: Sửa Lỗi Tự Động</span>
+              <span>
+                <span className="sm:hidden">AI Canvas</span>
+                <span className="hidden sm:inline">AI Canvas: Sửa Lỗi Tự Động</span>
+              </span>
             </button>
           </div>
         </div>
 
-        {/* NÚT AUTO TINH GỌN THEO ĐÚNG HÌNH THIẾT KẾ CỦA HEROVISUAL */}
+        {/* NÚT AUTO TINH GỌN CHUNG 1 DÒNG */}
         <button
           type="button"
           onClick={() => setAutoPlay(!autoPlay)}
-          className="text-xs font-bold text-slate-400 hover:text-indigo-600 flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-slate-50 transition-all select-none"
+          className="text-[11px] sm:text-xs font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg bg-slate-50 border border-slate-200/70 sm:border-transparent sm:bg-transparent transition-all select-none shrink-0"
           title="Tự động lặp lại mô phỏng"
         >
-          <RefreshCw className={"w-3 h-3 " + (autoPlay && isInView ? "animate-spin" : "")} />
+          <RefreshCw className={"w-3 h-3 " + (autoPlay && isInView ? "animate-spin text-indigo-600" : "")} />
           <span>{autoPlay ? "Auto" : "Dừng"}</span>
         </button>
       </div>
@@ -707,100 +717,115 @@ export const ExamMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplore })
   };
 
   return (
-    <div ref={containerRef} className="rounded-3xl border border-slate-200/80 bg-white/95 p-6 sm:p-8 shadow-xl backdrop-blur-xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-100">
-        <div>
-          <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            QBuilder &bull; Quét Câu Hỏi &bull; Soạn Đề Ma Trận &bull; Xuất Bản Đề Thi
+    <div ref={containerRef} className="rounded-2xl sm:rounded-3xl border border-slate-200/80 bg-white/95 p-3.5 sm:p-8 shadow-xl backdrop-blur-xl">
+      {/* Header - 1 HÀNG DUY NHẤT TRÊN MOBILE */}
+      <div className="flex items-center justify-between gap-2 pb-3 sm:pb-6 border-b border-slate-100">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm sm:text-2xl font-black text-slate-900 tracking-tight truncate">
+            <span className="sm:hidden">QBuilder &bull; Soạn &amp; Trộn Đề Thi AI</span>
+            <span className="hidden sm:inline">QBuilder &bull; Quét Câu Hỏi &bull; Soạn Đề Ma Trận &bull; Xuất Bản Đề Thi</span>
           </h3>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          <p className="hidden sm:block text-xs sm:text-sm text-slate-500 mt-1 truncate">
             Quy trình hoàn chỉnh từ bóc tách câu hỏi, trộn đảo đề đến xuất bản trang đề thi in ấn chuẩn Bộ GD&amp;ĐT.
           </p>
         </div>
 
         <button
           onClick={onExplore}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-purple-500/20 transition-all cursor-pointer hover:scale-105"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-purple-500/20 transition-all cursor-pointer hover:scale-105 shrink-0"
         >
-          <span>Mở Trình Soạn Đề</span>
-          <ArrowRight className="w-4 h-4" />
+          <span className="hidden sm:inline">Mở Trình Soạn Đề</span>
+          <span className="sm:hidden text-[11px]">Mở công cụ</span>
+          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
       </div>
 
-      {/* 3 Cảnh Chuyển Đổi (Scene Switcher Tabs) - Phong cách Animate-UI */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-5 pb-4">
-        {/* Step Tabs với animated layoutId */}
-        <div className="flex items-center rounded-xl bg-slate-100/90 p-1 border border-slate-200/80 relative">
-          <button
-            type="button"
-            onClick={() => {
-              setCurrentScene("scan");
-              setAutoPlay(false);
-            }}
-            className={"relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer z-10 " +
-              (currentScene === "scan" ? "text-purple-700" : "text-slate-600 hover:text-slate-900")
-            }
-          >
-            {currentScene === "scan" && (
-              <motion.span
-                layoutId="exam-scene-pill"
-                className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
-                transition={{ type: "spring", stiffness: 450, damping: 32 }}
-              />
-            )}
-            <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-extrabold">1</span>
-            <span>Bóc Tách Câu Hỏi</span>
-          </button>
+      {/* 3 Cảnh Chuyển Đổi (Scene Switcher Tabs) - PHONG CÁCH ĐỒNG BỘ WORD TO LATEX */}
+      <div className="flex items-center justify-between gap-2 pt-3 pb-2 sm:pt-5 sm:pb-4 w-full">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-xs font-bold text-slate-400 hidden sm:inline shrink-0">Chế độ:</span>
 
-          <button
-            type="button"
-            onClick={() => {
-              setCurrentScene("compose");
-              setAutoPlay(false);
-            }}
-            className={"relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer z-10 " +
-              (currentScene === "compose" ? "text-purple-700" : "text-slate-600 hover:text-slate-900")
-            }
-          >
-            {currentScene === "compose" && (
-              <motion.span
-                layoutId="exam-scene-pill"
-                className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
-                transition={{ type: "spring", stiffness: 450, damping: 32 }}
-              />
-            )}
-            <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-extrabold">2</span>
-            <span>Soạn Ma Trận &amp; Trộn Đề</span>
-          </button>
+          {/* Container Tab phong cách Animate-UI Segmented Control ôm sát (shrink-0) */}
+          <div className="flex items-center rounded-xl bg-slate-100/90 p-0.5 sm:p-1 border border-slate-200/80 relative shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentScene("scan");
+                setAutoPlay(false);
+              }}
+              className={"relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer z-10 shrink-0 " +
+                (currentScene === "scan" ? "text-purple-700 font-black" : "text-slate-600 hover:text-slate-900")
+              }
+            >
+              {currentScene === "scan" && (
+                <motion.span
+                  layoutId="exam-scene-pill"
+                  className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              <span>
+                <span className="sm:hidden">Bóc Tách</span>
+                <span className="hidden sm:inline">Bóc Tách Câu Hỏi</span>
+              </span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setCurrentScene("paper");
-              setAutoPlay(false);
-            }}
-            className={"relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer z-10 " +
-              (currentScene === "paper" ? "text-purple-700" : "text-slate-600 hover:text-slate-900")
-            }
-          >
-            {currentScene === "paper" && (
-              <motion.span
-                layoutId="exam-scene-pill"
-                className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
-                transition={{ type: "spring", stiffness: 450, damping: 32 }}
-              />
-            )}
-            <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-extrabold">3</span>
-            <span>Hiện Đề Thi Chuẩn A4</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentScene("compose");
+                setAutoPlay(false);
+              }}
+              className={"relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer z-10 shrink-0 " +
+                (currentScene === "compose" ? "text-purple-700 font-black" : "text-slate-600 hover:text-slate-900")
+              }
+            >
+              {currentScene === "compose" && (
+                <motion.span
+                  layoutId="exam-scene-pill"
+                  className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <Shuffle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              <span>
+                <span className="sm:hidden">Trộn Đề</span>
+                <span className="hidden sm:inline">Soạn Ma Trận &amp; Trộn Đề</span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentScene("paper");
+                setAutoPlay(false);
+              }}
+              className={"relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer z-10 shrink-0 " +
+                (currentScene === "paper" ? "text-purple-700 font-black" : "text-slate-600 hover:text-slate-900")
+              }
+            >
+              {currentScene === "paper" && (
+                <motion.span
+                  layoutId="exam-scene-pill"
+                  className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
+                  transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                />
+              )}
+              <Printer className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              <span>
+                <span className="sm:hidden">Đề A4</span>
+                <span className="hidden sm:inline">Hiện Đề Thi Chuẩn A4</span>
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Nút Auto Play demo kiểu Animate-UI nhỏ gọn */}
         <button
           type="button"
           onClick={() => setAutoPlay(!autoPlay)}
-          className="text-xs font-bold text-slate-400 hover:text-purple-600 flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-slate-50 transition-all select-none"
+          className="text-[11px] sm:text-xs font-bold text-slate-500 hover:text-purple-600 flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg bg-slate-50 border border-slate-200/70 sm:border-transparent sm:bg-transparent transition-all select-none shrink-0"
           title="Tự động lặp lại mô phỏng"
         >
           <RefreshCw className={"w-3 h-3 " + (autoPlay ? "animate-spin text-purple-600" : "")} />
@@ -1211,41 +1236,43 @@ export const GeometryMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplor
   }, [autoPlay]);
 
   return (
-    <div ref={containerRef} className="rounded-3xl border border-slate-200/80 bg-white/95 p-6 sm:p-8 shadow-xl backdrop-blur-xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-100">
-        <div>
-          <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Workspace Vẽ Hình &bull; Mô Tả Bằng Lời Tạo Hình Vẽ
+    <div ref={containerRef} className="rounded-2xl sm:rounded-3xl border border-slate-200/80 bg-white/95 p-3.5 sm:p-8 shadow-xl backdrop-blur-xl">
+      {/* Header - 1 HÀNG DUY NHẤT TRÊN MOBILE */}
+      <div className="flex items-center justify-between gap-2 pb-3 sm:pb-6 border-b border-slate-100">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm sm:text-2xl font-black text-slate-900 tracking-tight truncate">
+            <span className="sm:hidden">Hình Vẽ AI &bull; Chuẩn TikZ &amp; SVG</span>
+            <span className="hidden sm:inline">Workspace Vẽ Hình &bull; Mô Tả Bằng Lời Tạo Hình Vẽ</span>
           </h3>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          <p className="hidden sm:block text-xs sm:text-sm text-slate-500 mt-1 truncate">
             Nhập đề bài hình học, hệ thống tự động suy luận tọa độ và vẽ hình chuẩn mực cho đề thi.
           </p>
         </div>
 
         <button
           onClick={onExplore}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-sky-500/20 transition-all cursor-pointer hover:scale-105"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-sky-500/20 transition-all cursor-pointer hover:scale-105 shrink-0"
         >
-          <span>Mở Workspace Vẽ</span>
-          <ArrowRight className="w-4 h-4" />
+          <span className="hidden sm:inline">Mở Workspace Vẽ</span>
+          <span className="sm:hidden text-[11px]">Mở công cụ</span>
+          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
       </div>
 
-      {/* Mode Switchers - Segmented Control chuẩn Animate-UI */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-5 pb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-400">Mẫu hình vẽ:</span>
+      {/* Mode Switchers - CHUNG 1 HÀNG TRÊN CẢ MOBILE & DESKTOP */}
+      <div className="flex items-center justify-between gap-2 pt-3 pb-2 sm:pt-5 sm:pb-4 w-full">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-xs font-bold text-slate-400 hidden sm:inline shrink-0">Mẫu:</span>
           
-          <div className="flex items-center rounded-xl bg-slate-100/90 p-1 border border-slate-200/80 relative">
+          <div className="flex items-center rounded-xl bg-slate-100/90 p-0.5 sm:p-1 border border-slate-200/80 relative shrink-0">
             <button
               type="button"
               onClick={() => {
                 setShapeMode("circle-triangle");
                 reanimate();
               }}
-              className={"relative flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer z-10 " +
-                (shapeMode === "circle-triangle" ? "text-sky-700" : "text-slate-600 hover:text-slate-900")
+              className={"relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer z-10 shrink-0 " +
+                (shapeMode === "circle-triangle" ? "text-sky-700 font-black" : "text-slate-600 hover:text-slate-900")
               }
             >
               {shapeMode === "circle-triangle" && (
@@ -1255,7 +1282,10 @@ export const GeometryMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplor
                   transition={{ type: "spring", stiffness: 450, damping: 32 }}
                 />
               )}
-              <span>Tam giác nội tiếp đường tròn</span>
+              <span>
+                <span className="sm:hidden">Tam giác nội tiếp</span>
+                <span className="hidden sm:inline">Tam giác nội tiếp đường tròn</span>
+              </span>
             </button>
 
             <button
@@ -1264,8 +1294,8 @@ export const GeometryMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplor
                 setShapeMode("pyramid");
                 reanimate();
               }}
-              className={"relative flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer z-10 " +
-                (shapeMode === "pyramid" ? "text-sky-700" : "text-slate-600 hover:text-slate-900")
+              className={"relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer z-10 shrink-0 " +
+                (shapeMode === "pyramid" ? "text-sky-700 font-black" : "text-slate-600 hover:text-slate-900")
               }
             >
               {shapeMode === "pyramid" && (
@@ -1275,7 +1305,10 @@ export const GeometryMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplor
                   transition={{ type: "spring", stiffness: 450, damping: 32 }}
                 />
               )}
-              <span>Chóp tam giác S.ABC</span>
+              <span>
+                <span className="sm:hidden">Chóp S.ABC</span>
+                <span className="hidden sm:inline">Chóp tam giác S.ABC</span>
+              </span>
             </button>
           </div>
         </div>
@@ -1287,7 +1320,7 @@ export const GeometryMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplor
             setAutoPlay(!autoPlay);
             if (!autoPlay) reanimate();
           }}
-          className="text-xs font-bold text-slate-400 hover:text-sky-600 flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-slate-50 transition-all select-none"
+          className="text-[11px] sm:text-xs font-bold text-slate-500 hover:text-sky-600 flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg bg-slate-50 border border-slate-200/70 sm:border-transparent sm:bg-transparent transition-all select-none shrink-0"
           title="Bật / tắt tự động lặp lại mô phỏng"
         >
           <RefreshCw className={"w-3 h-3 " + (autoPlay && isInView ? "animate-spin text-sky-600" : "")} />
@@ -1583,33 +1616,35 @@ export const MarkItDownMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExpl
   };
 
   return (
-    <div ref={containerRef} className="rounded-3xl border border-slate-200/80 bg-white/95 p-6 sm:p-8 shadow-xl backdrop-blur-xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-100">
-        <div>
-          <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Nạp PDF, DOCX, Video &rarr; Markdown Cấu Trúc Đẹp Mắt
+    <div ref={containerRef} className="rounded-2xl sm:rounded-3xl border border-slate-200/80 bg-white/95 p-3.5 sm:p-8 shadow-xl backdrop-blur-xl">
+      {/* Header - 1 HÀNG DUY NHẤT TRÊN MOBILE */}
+      <div className="flex items-center justify-between gap-2 pb-3 sm:pb-6 border-b border-slate-100">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm sm:text-2xl font-black text-slate-900 tracking-tight truncate">
+            <span className="sm:hidden">MarkItDown &bull; Đa Định Dạng Sang MD</span>
+            <span className="hidden sm:inline">Nạp PDF, DOCX, Video &rarr; Markdown Cấu Trúc Đẹp Mắt</span>
           </h3>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          <p className="hidden sm:block text-xs sm:text-sm text-slate-500 mt-1 truncate">
             Chuyển đổi mọi loại tài liệu học liệu sang Markdown hoàn chỉnh, bảng biểu và công thức toán sạch sẽ.
           </p>
         </div>
 
         <button
           onClick={onExplore}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-500/20 transition-all cursor-pointer hover:scale-105"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-500/20 transition-all cursor-pointer hover:scale-105 shrink-0"
         >
-          <span>Mở MarkItDown AI</span>
-          <ArrowRight className="w-4 h-4" />
+          <span className="hidden sm:inline">Mở MarkItDown AI</span>
+          <span className="sm:hidden text-[11px]">Mở công cụ</span>
+          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
       </div>
 
-      {/* Select file type - Segmented Control chuẩn Animate-UI */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-5 pb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-400">Chọn tệp nguồn demo:</span>
+      {/* Select file type - CHUNG 1 HÀNG TRÊN CẢ MOBILE & DESKTOP */}
+      <div className="flex items-center justify-between gap-2 pt-3 pb-2 sm:pt-5 sm:pb-4 w-full">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-xs font-bold text-slate-400 hidden sm:inline shrink-0">Tệp mẫu:</span>
           
-          <div className="flex items-center rounded-xl bg-slate-100/90 p-1 border border-slate-200/80 relative">
+          <div className="flex items-center rounded-xl bg-slate-100/90 p-0.5 sm:p-1 border border-slate-200/80 relative shrink-0">
             {FILE_PRESETS.map((f, idx) => {
               const Icon = f.icon;
               return (
@@ -1620,8 +1655,8 @@ export const MarkItDownMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExpl
                     handleSelectFile(idx);
                     setAutoPlay(false);
                   }}
-                  className={"relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer z-10 " +
-                    (selectedFileIdx === idx ? "text-emerald-700" : "text-slate-600 hover:text-slate-900")
+                  className={"relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-extrabold transition-colors cursor-pointer z-10 shrink-0 " +
+                    (selectedFileIdx === idx ? "text-emerald-700 font-black" : "text-slate-600 hover:text-slate-900")
                   }
                 >
                   {selectedFileIdx === idx && (
@@ -1631,8 +1666,11 @@ export const MarkItDownMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExpl
                       transition={{ type: "spring", stiffness: 450, damping: 32 }}
                     />
                   )}
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{f.label}</span>
+                  <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <span>
+                    <span className="sm:hidden">{f.type === 'pdf' ? 'PDF' : f.type === 'docx' ? 'Word' : 'Video'}</span>
+                    <span className="hidden sm:inline">{f.label}</span>
+                  </span>
                 </button>
               );
             })}
@@ -1643,7 +1681,7 @@ export const MarkItDownMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExpl
         <button
           type="button"
           onClick={() => setAutoPlay(!autoPlay)}
-          className="text-xs font-bold text-slate-400 hover:text-emerald-600 flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-slate-50 transition-all select-none"
+          className="text-[11px] sm:text-xs font-bold text-slate-500 hover:text-emerald-600 flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg bg-slate-50 border border-slate-200/70 sm:border-transparent sm:bg-transparent transition-all select-none shrink-0"
           title="Tự động chuyển đổi các loại tệp mẫu"
         >
           <RefreshCw className={"w-3 h-3 " + (autoPlay ? "animate-spin text-emerald-600" : "")} />

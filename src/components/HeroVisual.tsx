@@ -81,16 +81,16 @@ export const HeroVisual: React.FC = () => {
       {/* Main Flat Card */}
       <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-xl shadow-slate-200/50 backdrop-blur-xl transition-all duration-300 hover:shadow-indigo-500/10 hover:border-indigo-200">
         {/* Card Header Bar - 1 HÀNG NGANG DUY NHẤT: 3 chấm tròn + tên file + 3 nút tab (Hiệu ứng Animate UI) */}
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-2.5 py-1.5 sm:px-3.5 sm:py-2 gap-2 whitespace-nowrap select-none">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-2.5 py-1.5 sm:px-3.5 sm:py-2 gap-2 whitespace-nowrap select-none overflow-hidden">
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-            <span className="ml-1 text-[11px] font-bold text-slate-600 font-mono">Document_Transform.tex</span>
+            <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-rose-400" />
+            <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-amber-400" />
+            <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-400" />
+            <span className="ml-1 text-[11px] font-bold text-slate-600 font-mono hidden sm:inline">Document_Transform.tex</span>
           </div>
 
           {/* Mode Switcher Tabs với hiệu ứng trượt mượt mà Animate UI (layoutId) */}
-          <div className="relative flex items-center gap-0.5 rounded-xl bg-slate-200/60 p-0.5 shrink-0">
+          <div className="relative flex items-center gap-0.5 rounded-xl bg-slate-200/60 p-0.5 shrink-0 max-w-full">
             {/* Tab 1: Word */}
             <button
               type="button"
@@ -98,7 +98,7 @@ export const HeroVisual: React.FC = () => {
                 setActiveTab("word");
                 setAutoRotate(false);
               }}
-              className={"relative flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition-colors cursor-pointer z-10 " +
+              className={"relative flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] sm:text-[11px] font-bold transition-colors cursor-pointer z-10 " +
                 (activeTab === "word" ? "text-indigo-700" : "text-slate-600 hover:text-slate-900")
               }
             >
@@ -120,7 +120,7 @@ export const HeroVisual: React.FC = () => {
                 setActiveTab("latex");
                 setAutoRotate(false);
               }}
-              className={"relative flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition-colors cursor-pointer z-10 " +
+              className={"relative flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] sm:text-[11px] font-bold transition-colors cursor-pointer z-10 " +
                 (activeTab === "latex" ? "text-indigo-700" : "text-slate-600 hover:text-slate-900")
               }
             >
@@ -132,7 +132,7 @@ export const HeroVisual: React.FC = () => {
                 />
               )}
               <Code2 className="h-3 w-3" />
-              <span>Mã LaTeX</span>
+              <span><span className="hidden sm:inline">Mã </span>LaTeX</span>
             </button>
 
             {/* Tab 3: View */}
@@ -142,7 +142,7 @@ export const HeroVisual: React.FC = () => {
                 setActiveTab("preview");
                 setAutoRotate(false);
               }}
-              className={"relative flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition-colors cursor-pointer z-10 " +
+              className={"relative flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] sm:text-[11px] font-bold transition-colors cursor-pointer z-10 " +
                 (activeTab === "preview" ? "text-indigo-700" : "text-slate-600 hover:text-slate-900")
               }
             >
