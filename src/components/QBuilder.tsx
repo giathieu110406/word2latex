@@ -1453,7 +1453,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   <div
                     ref={docPreviewRef}
                     style={{ fontFamily: wordFont }}
-                    className="preview-content bg-white p-6 md:p-10 rounded-2xl shadow-sm border border-slate-200 max-w-full w-full overflow-x-auto leading-relaxed text-sm md:text-base text-slate-850 space-y-6 select-none relative animate-fade-in"
+                    className="preview-content bg-white p-6 md:p-10 rounded-2xl shadow-sm border border-slate-200 max-w-full w-full overflow-x-auto overflow-y-hidden leading-relaxed text-sm md:text-base text-slate-850 space-y-6 select-none relative animate-fade-in"
                     onCopy={(e) => e.preventDefault()}
                     onCut={(e) => e.preventDefault()}
                   >

@@ -435,7 +435,7 @@ export const LatexMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplore }
                 {/* Khung KaTeX mở rộng h-[148px] bằng chính xác khung bên trái sau khi xóa dòng MathML */}
                 <div 
                   ref={katexContainerRef}
-                  className="h-[148px] min-h-[148px] max-h-[148px] rounded-xl border border-indigo-100/80 bg-white p-3 text-center flex items-center justify-center overflow-x-auto shadow-inner"
+                  className="h-[148px] min-h-[148px] max-h-[148px] rounded-xl border border-indigo-100/80 bg-white p-3 text-center flex items-center justify-center overflow-x-auto overflow-y-hidden shadow-inner"
                 >
                   {convertStep === "typing" ? (
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
@@ -589,7 +589,7 @@ export const LatexMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplore }
                 {/* Khung KaTeX chuẩn h-[110px] */}
                 <div 
                   ref={katexContainerRef}
-                  className="h-[110px] min-h-[110px] max-h-[110px] rounded-xl border border-indigo-100/80 bg-white p-3 text-center flex items-center justify-center overflow-x-auto shadow-inner"
+                  className="h-[110px] min-h-[110px] max-h-[110px] rounded-xl border border-indigo-100/80 bg-white p-3 text-center flex items-center justify-center overflow-x-auto overflow-y-hidden shadow-inner"
                 >
                   {canvasStep === "initial_err" || canvasStep === "typing_prompt" ? (
                     <div className="flex flex-col items-center justify-center gap-1 text-xs text-rose-600">
@@ -1176,33 +1176,39 @@ export const GeometryMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplor
     setTimeout(() => setDrawProgress(1), 50);
   };
 
-  // Reset về tam giác nội tiếp khi cuộn tới
+  // Vòng lặp tự động vẽ liên tục không ngừng:
+  // Luân phiên vẽ nét -> chờ xem hình hoàn chỉnh -> chuyển mẫu và vẽ tiếp liên tục
   useEffect(() => {
-    if (isInView) {
-      setShapeMode("circle-triangle");
-      reanimate();
-    }
-  }, [isInView]);
+    if (!autoPlay) return;
 
-  // Vòng lặp tự động chuyển đổi giữa 2 hình vẽ khi isInView và bật autoPlay (delay 1.5 giây sau khi cuộn tới)
-  useEffect(() => {
-    if (!autoPlay || !isInView) return;
-    let timer: any;
-    const delayTimer = setTimeout(() => {
-      timer = setInterval(() => {
-        setShapeMode(prev => {
-          const next = prev === "circle-triangle" ? "pyramid" : "circle-triangle";
-          setDrawProgress(0);
-          setTimeout(() => setDrawProgress(1), 50);
-          return next;
-        });
-      }, 5000);
-    }, 1500);
-    return () => {
-      clearTimeout(delayTimer);
-      if (timer) clearInterval(timer);
+    let isMounted = true;
+    let cycleTimeout: any;
+
+    const runLoop = () => {
+      // 1. Reset nét vẽ về 0 để bắt đầu chu kỳ vẽ mới
+      setDrawProgress(0);
+
+      // 2. Kích hoạt vẽ nét mượt mà
+      cycleTimeout = setTimeout(() => {
+        if (!isMounted) return;
+        setDrawProgress(1);
+
+        // 3. Sau khi vẽ xong (~2.5s) và cho người dùng ngắm hình (~2s), tự đổi sang hình tiếp theo và lặp lại
+        cycleTimeout = setTimeout(() => {
+          if (!isMounted) return;
+          setShapeMode(prev => (prev === "circle-triangle" ? "pyramid" : "circle-triangle"));
+          runLoop();
+        }, 4200);
+      }, 80);
     };
-  }, [autoPlay, isInView]);
+
+    runLoop();
+
+    return () => {
+      isMounted = false;
+      if (cycleTimeout) clearTimeout(cycleTimeout);
+    };
+  }, [autoPlay]);
 
   return (
     <div ref={containerRef} className="rounded-3xl border border-slate-200/80 bg-white/95 p-6 sm:p-8 shadow-xl backdrop-blur-xl">
@@ -1481,7 +1487,15 @@ export const GeometryMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplor
               />
 
               {/* Right angle at A */}
-              <path d="M 80 148 L 92 148 L 92 160" fill="none" stroke="#e11d48" strokeWidth="1.5" />
+              <motion.path
+                d="M 80 148 L 92 148 L 92 160"
+                fill="none"
+                stroke="#e11d48"
+                strokeWidth="1.5"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: drawProgress ? 1 : 0 }}
+                transition={{ delay: 1.8 }}
+              />
 
               {/* Labels */}
               <text x="75" y="30" fontSize="12" fontWeight="bold" fill="#1e1b4b">S</text>

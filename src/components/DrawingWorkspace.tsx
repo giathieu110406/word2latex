@@ -9,12 +9,17 @@ declare global {
   }
 }
 
-export function DrawingWorkspace({ active }: { active: boolean }) {
+export function DrawingWorkspace({ active, onRequireAuth }: { active: boolean; onRequireAuth?: () => boolean }) {
   useEffect(() => {
-    window.word2latexDrawingFetch = authFetch;
+    window.word2latexDrawingFetch = async (input, init) => {
+      if (onRequireAuth && !onRequireAuth()) {
+        throw new Error('Cần đăng nhập và xác nhận số điện thoại để sử dụng tính năng vẽ hình.');
+      }
+      return authFetch(input, init);
+    };
     window.word2latexDrawingLog = logApiUsage;
     return () => { delete window.word2latexDrawingFetch; delete window.word2latexDrawingLog; };
-  }, []);
+  }, [onRequireAuth]);
 
   return (
     <section id="tour-drawing-workspace" aria-label="Vẽ hình" hidden={!active} className="w-full flex-1 min-h-0" style={{ display: active ? 'flex' : 'none' }}>

@@ -3,7 +3,7 @@ import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils
 import { authFetch } from "./utils/api-client";
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { HelpCircle, FileText, Check, X, Loader2, AlertTriangle, ShieldAlert, Sparkles, CheckCircle2, Bell, MessageSquare, Settings, Image, Trash2, ZoomIn, ArrowRight, Home, Users, Diamond, Search, Mail, Phone, Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserCog, User, Info, Save, Layout, Laptop, Wifi, Lock, Vote, BarChart3, MessageSquarePlus, PauseCircle, PlayCircle, BookOpen, ChevronsUpDown, LogOut, CreditCard, Clock, Square } from "lucide-react";
+import { HelpCircle, FileText, Check, X, Loader2, AlertTriangle, ShieldAlert, Sparkles, CheckCircle2, Bell, MessageSquare, Settings, Image, Trash2, ZoomIn, ArrowRight, Home, Users, Diamond, Search, Mail, Phone, Smartphone, Menu, Filter, ChevronDown, Plus, Pencil, ChevronLeft, ChevronRight, UserCog, User, Info, Save, Layout, Laptop, Wifi, Lock, Vote, BarChart3, MessageSquarePlus, PauseCircle, PlayCircle, BookOpen, ChevronsUpDown, LogOut, CreditCard, Clock, Square } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import katex from "katex";
 import { prepareWordEquations, buildWordClipboard, copyWordContent, downloadWordDocument } from "./utils/word-export";
@@ -159,6 +159,8 @@ export default function App() {
     }
   });
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isPhoneModalOpen, setIsPhoneModalOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // --- ADMIN STATE ---
   const [sidebarView, setSidebarView] = useState<string>("overview");
@@ -872,6 +874,7 @@ export default function App() {
   };
 
   const handleAddQuestion = () => {
+    if (!requireAuthOrVerified()) return;
     let typeToUse = newQuestionType;
     let questionTextRaw = "";
     let answerTextRaw = "";
@@ -1299,6 +1302,7 @@ export default function App() {
   };
 
   const handleShuffleExam = async () => {
+    if (!requireAuthOrVerified()) return;
     if (docQuestions.length === 0) {
       triggerToast("Không có câu hỏi nào để trộn đề thi!", false);
       return;
@@ -1380,6 +1384,7 @@ export default function App() {
 
 
   const downloadDocAsWord = async () => {
+    if (!requireAuthOrVerified()) return;
     if (docQuestions.length === 0) {
       triggerToast("Không có nội dung để tải về!", false);
       return;
@@ -2493,6 +2498,7 @@ export default function App() {
     });
     try {
       await signInWithPopup(auth, provider);
+      setIsAuthModalOpen(false);
       triggerToast("Đăng nhập bằng Google thành công!", true);
     } catch (err: any) {
       if (err.code !== "auth/cancelled-popup-request" && err.code !== "auth/popup-closed-by-user") {
@@ -2508,6 +2514,18 @@ export default function App() {
         setAuthError(err.message || "Đăng nhập bằng Google thất bại.");
       }
     }
+  };
+
+  const requireAuthOrVerified = (): boolean => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return false;
+    }
+    if (!isEmailVerified || !hasValidPhone) {
+      setIsPhoneModalOpen(true);
+      return false;
+    }
+    return true;
   };
 
   const handleLogout = async () => {
@@ -3175,6 +3193,7 @@ ${cleanedBody}
 
 
   const copyRawLaTeX = async () => {
+    if (!requireAuthOrVerified()) return;
     const rawText = overleafCode.trim();
     if (!rawText) {
       triggerToast("Chưa có nội dung để sao chép!", false);
@@ -3215,6 +3234,7 @@ ${cleanedBody}
   };
 
   const downloadAsPdf = async () => {
+    if (!requireAuthOrVerified()) return;
     const rawText = overleafCode.trim();
     if (!rawText) {
       triggerToast("Chưa có nội dung để tải về!", false);
@@ -3927,6 +3947,7 @@ ${bodyHtml}
   };
 
   const copyToWord = async () => {
+    if (!requireAuthOrVerified()) return;
     if (!inputText.trim()) {
       triggerToast("Không có nội dung để sao chép cho Word!", false);
       return;
@@ -3958,6 +3979,7 @@ ${bodyHtml}
   };
 
   const downloadAsWord = async () => {
+    if (!requireAuthOrVerified()) return;
     if (!inputText.trim()) {
       triggerToast("Không có nội dung để tải về!", false);
       return;
@@ -3989,6 +4011,7 @@ ${bodyHtml}
   };
 
   const handleCallAiCanvas = async (customPrompt?: string) => {
+    if (!requireAuthOrVerified()) return;
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -4195,6 +4218,9 @@ ${bodyHtml}
   const upgradeVisibility = getUpgradeVisibility(userDoc?.planType, userDoc?.planExpiresAt);
 
   const getUserAvatar = () => {
+    if (!user) {
+      return `https://ui-avatars.com/api/?name=Khach&background=e0e7ff&color=4f46e5&bold=true&size=128`;
+    }
     if (user?.photoURL) {
       return user.photoURL;
     }
@@ -4220,15 +4246,6 @@ ${bodyHtml}
             </p>
           </div>
         </div>
-      );
-    }
-
-    if (!user) {
-      return (
-        <LoginScreen
-          onGoogleLogin={handleGoogleLogin}
-          authError={authError}
-        />
       );
     }
 
@@ -4260,40 +4277,6 @@ ${bodyHtml}
             </button>
           </div>
         </div>
-      );
-    }
-
-    if (!isEmailVerified) {
-      return (
-        <EmailVerificationGate
-          key={user.uid}
-          email={user.email || user.providerData?.[0]?.email || ""}
-          lockedPhone={normalizeVietnamPhone(String(userDoc?.confirmedPhoneNumber || "")) || undefined}
-          onVerified={async (profile) => {
-            setUserDoc((currentDoc) => ({ ...(currentDoc || {}), ...profile }));
-            await user.getIdToken(true).catch(() => console.warn('Số liên hệ đã xác nhận; token sẽ được làm mới ở lần đăng nhập tiếp theo.'));
-          }}
-        />
-      );
-    }
-
-    if (!hasValidPhone) {
-      return (
-        <MandatoryPhoneGate
-          key={user.uid}
-          user={user}
-          userDoc={userDoc}
-          onPhoneUpdated={(newPhone) => {
-            setUserDoc((currentDoc) => ({
-              ...(currentDoc || {}),
-              phoneNumber: newPhone,
-              confirmedPhoneNumber: '+84' + newPhone.slice(1),
-              phoneConfirmedAt: new Date().toISOString()
-            }));
-            triggerToast("Đã lưu số điện thoại vào cài đặt cá nhân thành công!", true);
-          }}
-          onLogout={handleLogout}
-        />
       );
     }
 
@@ -4504,10 +4487,10 @@ ${bodyHtml}
                   </div>
                   <div className="flex flex-col min-w-0 flex-1">
                     <div className="font-bold text-xs text-slate-800 truncate">
-                      {userDoc?.displayName || user?.displayName || user?.email?.split("@")[0] || "Tài khoản"}
+                      {user ? (userDoc?.displayName || user?.displayName || user?.email?.split("@")[0] || "Tài khoản") : "Khách"}
                     </div>
                     <div className="text-[11px] text-slate-400 truncate">
-                      {user?.email || userDoc?.email || ""}
+                      {user ? (user?.email || userDoc?.email || "") : "Chưa đăng nhập"}
                     </div>
                   </div>
                 </div>
@@ -4528,82 +4511,116 @@ ${bodyHtml}
                   <span className="truncate">Nâng cấp gói đăng ký</span>
                 </button>
 
+                {/* Account details only visible if logged in and verified */}
+                {user && isEmailVerified && hasValidPhone && (
+                  <>
+                    <div className="h-px bg-slate-100 my-0.5 mx-1" />
+
+                    {/* Account / Settings item */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        handleSidebarNav('settings');
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                    >
+                      <Settings className="w-4 h-4 text-slate-500 shrink-0" />
+                      <span className="truncate">Cài đặt cá nhân</span>
+                    </button>
+
+                    {/* Billing / Lịch sử mua hàng item */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        setIsPaymentHistoryModalOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
+                    >
+                      <CreditCard className="w-4 h-4 text-slate-500 shrink-0" />
+                      <span className="truncate">Lịch sử mua hàng</span>
+                    </button>
+
+                    {/* Submit Feedback Item */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        setIsFeedbackOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer text-left"
+                    >
+                      <MessageSquarePlus className="w-4 h-4 text-slate-800 shrink-0" />
+                      <span className="truncate">Gửi góp ý &amp; Báo lỗi</span>
+                    </button>
+
+                    {/* Notifications & Feedbacks item */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        setIsNotificationsOpen(true);
+                        setNoticeCountdown(0);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2.5 truncate">
+                        <Bell className="w-4 h-4 text-slate-800 shrink-0" />
+                        <span className="truncate">Thông báo & Góp ý</span>
+                      </div>
+                      {unreadCount > 0 && (
+                        <span className="flex h-4 min-w-4 px-1.5 items-center justify-center rounded-full bg-slate-900 text-[10px] font-black text-white shadow-2xs">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  </>
+                )}
+
+                {/* If logged in but not phone verified, prompt verification */}
+                {user && (!isEmailVerified || !hasValidPhone) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      setIsPhoneModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100/80 transition-all cursor-pointer text-left mt-1"
+                  >
+                    <Smartphone className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="truncate">Xác minh SĐT qua email</span>
+                  </button>
+                )}
+
                 <div className="h-px bg-slate-100 my-0.5 mx-1" />
 
-                {/* Account / Settings item */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    handleSidebarNav('settings');
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
-                >
-                  <Settings className="w-4 h-4 text-slate-500 shrink-0" />
-                  <span className="truncate">Cài đặt cá nhân</span>
-                </button>
-
-                {/* Billing / Lịch sử mua hàng item */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    setIsPaymentHistoryModalOpen(true);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all cursor-pointer text-left"
-                >
-                  <CreditCard className="w-4 h-4 text-slate-500 shrink-0" />
-                  <span className="truncate">Lịch sử mua hàng</span>
-                </button>
-
-                {/* Submit Feedback Item */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    setIsFeedbackOpen(true);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer text-left"
-                >
-                  <MessageSquarePlus className="w-4 h-4 text-slate-800 shrink-0" />
-                  <span className="truncate">Gửi góp ý &amp; Báo lỗi</span>
-                </button>
-
-                {/* Notifications & Feedbacks item */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    setIsNotificationsOpen(true);
-                    setNoticeCountdown(0);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer text-left"
-                >
-                  <div className="flex items-center gap-2.5 truncate">
-                    <Bell className="w-4 h-4 text-slate-800 shrink-0" />
-                    <span className="truncate">Thông báo & Góp ý</span>
-                  </div>
-                  {unreadCount > 0 && (
-                    <span className="flex h-4 min-w-4 px-1.5 items-center justify-center rounded-full bg-slate-900 text-[10px] font-black text-white shadow-2xs">
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
-
-                <div className="h-px bg-slate-100 my-0.5 mx-1" />
-
-                {/* Log out item */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    handleLogout();
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-all cursor-pointer text-left"
-                >
-                  <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
-                  <span className="truncate">Đăng xuất</span>
-                </button>
+                {/* Login or Log out item */}
+                {user ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-all cursor-pointer text-left"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span className="truncate">Đăng xuất</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      handleGoogleLogin();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer text-left"
+                  >
+                    <User className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span className="truncate">Đăng nhập với Google</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -4617,7 +4634,7 @@ ${bodyHtml}
                 <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 border border-slate-200">
                   <img src={getUserAvatar()} alt="User avatar" className="w-full h-full object-cover" />
                 </div>
-                {unreadCount > 0 && (
+                {unreadCount > 0 && user && (
                   <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-slate-900 text-[9px] font-black text-white ring-2 ring-white shadow-xs">
                     {unreadCount}
                   </span>
@@ -4625,10 +4642,10 @@ ${bodyHtml}
               </div>
               <div className="flex flex-col min-w-0 flex-1">
                 <div className="font-bold text-xs text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
-                  {userDoc?.displayName || user?.displayName || user?.email?.split("@")[0] || "Tài khoản"}
+                  {user ? (userDoc?.displayName || user?.displayName || user?.email?.split("@")[0] || "Tài khoản") : "Khách"}
                 </div>
                 <div className="text-[10px] text-slate-400 truncate">
-                  {user?.email || userDoc?.email || ""}
+                  {user ? (user?.email || userDoc?.email || "") : "Nhấn để đăng nhập"}
                 </div>
               </div>
               <ChevronsUpDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 shrink-0" />
@@ -4638,7 +4655,7 @@ ${bodyHtml}
       </div>
 
       {/* MAIN CONTENT WRAPPER */}
-      <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] max-h-[100dvh] ${isWorkspaceFullscreen ? `overflow-hidden ${sidebarView === 'drawing' && isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 h-[100dvh] max-h-[100dvh] ${isWorkspaceFullscreen ? `overflow-hidden ${sidebarView === 'drawing' && isMenuOpen ? 'md:ml-64' : ''}` : 'overflow-y-auto overflow-x-hidden'}`}>
             <button 
               onClick={() => setIsMenuOpen(open => !open)}
               className="fixed top-2.5 sm:top-3 left-2.5 sm:left-4 z-40 p-2 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/90 transition-all shadow-sm hover:shadow-md shrink-0 cursor-pointer"
@@ -4661,7 +4678,7 @@ ${bodyHtml}
             )}
 
             <div className={`flex-1 flex flex-col ${isWorkspaceFullscreen ? 'min-h-0 h-full overflow-hidden' : ''}`}>
-              <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : isWorkspaceFullscreen ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-2' : 'max-w-full w-full px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-6 flex flex-col gap-2 overflow-x-hidden shrink-0'}>
+              <div className={sidebarView === 'drawing' ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : isWorkspaceFullscreen ? 'w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-2' : 'max-w-full w-full px-2 sm:px-4 md:px-5 pt-12 sm:pt-13 pb-6 flex flex-col gap-2 overflow-x-clip shrink-0'}>
         {(sidebarView === "members" || sidebarView === "feedbacks" || sidebarView === "notify" || sidebarView === "tracking" || sidebarView === "analytics" || sidebarView === "payments") && isAdminUser(user, userDoc) && (
           <div 
             className="space-y-4 sm:space-y-6 flex-1 flex flex-col p-2 sm:p-6 rounded-2xl sm:rounded-[32px] overflow-hidden relative" 
@@ -6842,9 +6859,19 @@ ${bodyHtml}
             triggerToast={triggerToast}
             handlePasteGeneric={handlePasteGeneric}
             handleClear={handleClear}
+            userDoc={userDoc}
+            isPro={isApproved || activePlan === 'pro' || isAdminUser(user, userDoc)}
+            currentMultiplier={currentMultiplier}
+            onRequireAuth={() => requireAuthOrVerified()}
+            incrementPromptCount={incrementPromptCount}
           />
         )}
-        {drawingOpened && <DrawingWorkspace active={sidebarView === 'drawing'} />}
+        {drawingOpened && (
+          <DrawingWorkspace 
+            active={sidebarView === 'drawing'} 
+            onRequireAuth={() => requireAuthOrVerified()}
+          />
+        )}
         {sidebarView === 'qbuilder' && qBuilderPanel}
 
 
@@ -6854,6 +6881,7 @@ ${bodyHtml}
             isPro={isApproved || activePlan === 'pro' || isAdminUser(user, userDoc)}
             userDoc={userDoc}
             onMarkItDownUsage={handleMarkItDownUsage}
+            onRequireAuth={() => requireAuthOrVerified()}
           />
         )}
 
@@ -7960,12 +7988,98 @@ ${bodyHtml}
         />
       )}
 
+      {/* Auth Prompt Modal (when guest clicks on feature actions) */}
+      <AnimatePresence>
+        {isAuthModalOpen && !user && (
+          <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 15 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-white/60 text-center relative overflow-hidden"
+            >
+              <button
+                type="button"
+                onClick={() => setIsAuthModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full p-1.5 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white mx-auto mb-4 shadow-lg shadow-indigo-500/25">
+                <Lock className="w-7 h-7" />
+              </div>
+
+              <h3 className="text-xl font-black text-slate-900 mb-2">
+                Đăng nhập để sử dụng tính năng
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                Bạn đang ở chế độ xem trước. Vui lòng đăng nhập bằng Google và xác nhận số điện thoại qua email để bắt đầu sử dụng đầy đủ công cụ.
+              </p>
+
+              {authError && (
+                <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
+                  {authError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="w-full py-3.5 px-5 rounded-2xl bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] text-white font-black text-xs sm:text-sm tracking-wider uppercase shadow-lg shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-3 cursor-pointer"
+              >
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+                </svg>
+                Đăng nhập bằng Google
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* User Payment History Modal */}
       <UserPaymentHistoryModal
         isOpen={isPaymentHistoryModalOpen}
         onClose={() => setIsPaymentHistoryModalOpen(false)}
         triggerToast={triggerToast}
       />
+
+      {/* Phone / Email Verification Modal (When opened from preview or profile) */}
+      {isPhoneModalOpen && user && !isEmailVerified && (
+        <EmailVerificationGate
+          key={user.uid}
+          email={user.email || user.providerData?.[0]?.email || ""}
+          lockedPhone={normalizeVietnamPhone(String(userDoc?.confirmedPhoneNumber || "")) || undefined}
+          onVerified={async (profile) => {
+            setUserDoc((currentDoc) => ({ ...(currentDoc || {}), ...profile }));
+            setIsPhoneModalOpen(false);
+            await user.getIdToken(true).catch(() => console.warn('Số liên hệ đã xác nhận; token sẽ được làm mới ở lần đăng nhập tiếp theo.'));
+          }}
+        />
+      )}
+
+      {isPhoneModalOpen && user && isEmailVerified && !hasValidPhone && (
+        <MandatoryPhoneGate
+          key={user.uid}
+          user={user}
+          userDoc={userDoc}
+          onPhoneUpdated={(newPhone) => {
+            setUserDoc((currentDoc) => ({
+              ...(currentDoc || {}),
+              phoneNumber: newPhone,
+              confirmedPhoneNumber: '+84' + newPhone.slice(1),
+              phoneConfirmedAt: new Date().toISOString()
+            }));
+            setIsPhoneModalOpen(false);
+            triggerToast("Đã lưu số điện thoại vào cài đặt cá nhân thành công!", true);
+          }}
+          onLogout={handleLogout}
+        />
+      )}
 
       {/* Payment Modal */}
       {createPortal(

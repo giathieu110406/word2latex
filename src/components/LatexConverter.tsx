@@ -33,6 +33,11 @@ interface LatexConverterProps {
     bypassAutoProcess?: boolean,
   ) => void;
   handleClear: () => void;
+  userDoc?: any;
+  isPro?: boolean;
+  currentMultiplier?: number;
+  onRequireAuth?: () => boolean;
+  incrementPromptCount?: () => Promise<void>;
 }
 
 export const LatexConverter: React.FC<LatexConverterProps> = ({
@@ -60,6 +65,11 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
   triggerToast,
   handlePasteGeneric,
   handleClear,
+  userDoc,
+  isPro,
+  currentMultiplier = 1,
+  onRequireAuth,
+  incrementPromptCount,
 }) => {
   const [isExtractingText, setIsExtractingText] = useState<boolean>(false);
   const [mobileView, setMobileView] = useState<"edit" | "preview">("edit");
@@ -252,30 +262,48 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
   };
 
   const extractDocumentFile = async (file: File) => {
+    const isImg = file.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+
+    // Nếu là hình ảnh OCR (sử dụng Gemini AI), kiểm tra đăng nhập & hạn mức AI trong ngày
+    if (isImg) {
+      if (onRequireAuth && !onRequireAuth()) return;
+
+      const currentPromptCount = userDoc?.promptCount || 0;
+      if (!isPro && currentPromptCount >= 15 * currentMultiplier) {
+        triggerToast(
+          `Bạn đã đạt giới hạn nhận diện ảnh bằng AI hôm nay (tối đa ${15 * currentMultiplier} lượt/ngày). Vui lòng nâng cấp gói Pro để không giới hạn!`,
+          false
+        );
+        return;
+      }
+    }
+
     setIsExtractingText(true);
-    triggerToast(`Đang trích xuất văn bản từ tệp "${file.name}"...`, true);
+    triggerToast(isImg ? `Đang nhận diện hình ảnh "${file.name}" sang LaTeX...` : `Đang trích xuất văn bản từ tệp "${file.name}"...`, true);
 
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64Data = (reader.result as string).split(',')[1];
       try {
-        // Ưu tiên chạy ngầm bằng tính năng AnyDoc (fast - không AI) của Markitdown
-        let res = await authFetch("/api/markitdown", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "file",
-            fileData: base64Data,
-            fileName: file.name,
-            mimeType: file.type || "application/octet-stream",
-            mode: "fast",
-          }),
-        });
+        let res: Response;
+        let data: any;
 
-        let data = await res.json();
-
-        // Nếu chế độ fast không thể xử lý (ví dụ: ảnh hoặc file scan cần AI nhận diện), tự động fallback sang chế độ AI Math
-        if (!res.ok || !data.success) {
+        if (isImg) {
+          // Với hình ảnh, gửi trực tiếp sang AI Math Polish để nhận diện OCR công thức toán học và bảng biểu
+          res = await authFetch("/api/markitdown", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "file",
+              fileData: base64Data,
+              fileName: file.name,
+              mimeType: file.type || "image/png",
+              mode: "ai",
+            }),
+          });
+          data = await res.json();
+        } else {
+          // Với tài liệu (Word, PDF text...), ưu tiên AnyDoc Fast Mode
           res = await authFetch("/api/markitdown", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -284,22 +312,41 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
               fileData: base64Data,
               fileName: file.name,
               mimeType: file.type || "application/octet-stream",
-              mode: "ai",
+              mode: "fast",
             }),
           });
           data = await res.json();
+
+          // Fallback sang AI nếu fast mode không đọc được
+          if (!res.ok || !data.success) {
+            res = await authFetch("/api/markitdown", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                type: "file",
+                fileData: base64Data,
+                fileName: file.name,
+                mimeType: file.type || "application/octet-stream",
+                mode: "ai",
+              }),
+            });
+            data = await res.json();
+          }
         }
 
         const extractedText = data.markdown || data.text;
         if (data.success && extractedText) {
           setInputText((prev) => (prev.trim() ? prev + "\n\n" + extractedText : extractedText));
-          triggerToast("Trích xuất văn bản Markdown thành công!", true);
+          if (isImg && incrementPromptCount) {
+            await incrementPromptCount();
+          }
+          triggerToast(isImg ? "Đã nhận diện hình ảnh thành công!" : "Trích xuất văn bản Markdown thành công!", true);
         } else {
-          triggerToast(data.error || "Không thể trích xuất văn bản từ tệp này", false);
+          triggerToast(data.error || "Không thể trích xuất nội dung từ tệp này", false);
         }
       } catch (err: any) {
-        console.error("Lỗi trích xuất văn bản:", err);
-        triggerToast("Lỗi khi kết nối đến dịch vụ trích xuất văn bản!", false);
+        console.error("Lỗi trích xuất văn bản/hình ảnh:", err);
+        triggerToast("Lỗi khi kết nối đến dịch vụ trích xuất!", false);
       } finally {
         setIsExtractingText(false);
       }
@@ -627,10 +674,10 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                   className="absolute inset-0 p-3.5 sm:p-4 md:p-5 pointer-events-none select-none text-slate-400 flex flex-col justify-start"
                 >
                   <p className="text-base sm:text-lg font-bold text-slate-400/90 leading-snug mb-2">
-                    Trích xuất văn bản từ tài liệu bằng cách ấn trợ lý AI và tải tệp lên.
+                    Dán trực tiếp văn bản hoặc hình ảnh chứa công thức (Ctrl+V) vào đây
                   </p>
                   <p className="text-xs sm:text-sm text-slate-400/70 font-normal leading-relaxed">
-                    Hoặc nhập / dán nội dung chứa công thức toán ($x^2$ hoặc $$y = mx+b$$) từ AI hay tài liệu bất kỳ vào đây để chuyển hóa sang Word...
+                    Hỗ trợ dán ảnh chụp màn hình công thức, tài liệu Word/PDF, hoặc nhập công thức LaTeX ($x^2$ hoặc $$y = mx+b$$) để chuyển sang Word...
                   </p>
                 </div>
               )}

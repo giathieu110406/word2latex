@@ -91,7 +91,7 @@ export const HeroVisual: React.FC = () => {
 
           {/* Mode Switcher Tabs với hiệu ứng trượt mượt mà Animate UI (layoutId) */}
           <div className="relative flex items-center gap-0.5 rounded-xl bg-slate-200/60 p-0.5 shrink-0">
-            {/* Tab 1: Word Thô */}
+            {/* Tab 1: Word */}
             <button
               type="button"
               onClick={() => {
@@ -110,7 +110,7 @@ export const HeroVisual: React.FC = () => {
                 />
               )}
               <FileText className="h-3 w-3" />
-              <span>Word Thô</span>
+              <span>Word</span>
             </button>
 
             {/* Tab 2: Mã LaTeX */}
@@ -135,7 +135,7 @@ export const HeroVisual: React.FC = () => {
               <span>Mã LaTeX</span>
             </button>
 
-            {/* Tab 3: KaTeX View */}
+            {/* Tab 3: View */}
             <button
               type="button"
               onClick={() => {
@@ -154,7 +154,7 @@ export const HeroVisual: React.FC = () => {
                 />
               )}
               <Eye className="h-3 w-3" />
-              <span>KaTeX View</span>
+              <span>View</span>
             </button>
           </div>
         </div>

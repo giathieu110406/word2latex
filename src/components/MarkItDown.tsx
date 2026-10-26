@@ -26,6 +26,7 @@ interface MarkItDownProps {
   currentMultiplier?: number;
   userDoc?: any;
   onMarkItDownUsage?: () => Promise<void>;
+  onRequireAuth?: () => boolean;
 }
 
 export interface ChunkItem {
@@ -47,7 +48,7 @@ export type AnalysisStage =
   | "completed"       // Hoàn tất chuẩn hóa
   | "error";          // Gặp lỗi
 
-export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, userDoc, onMarkItDownUsage, currentMultiplier = 1 }) => {
+export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, userDoc, onMarkItDownUsage, onRequireAuth, currentMultiplier = 1 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [outputMarkdown, setOutputMarkdown] = useState("");
   const [inputType, setInputType] = useState<"file" | "url">("file");
@@ -531,6 +532,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
   // Khởi động chuyển đổi toàn bộ danh sách tệp chờ
   const handleStartConversion = async () => {
+    if (onRequireAuth && !onRequireAuth()) return;
     if (selectedFiles.length === 0) {
       triggerToast("Vui lòng chọn hoặc kéo thả ít nhất 1 tệp tin!", false);
       return;
@@ -702,6 +704,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
   const processUrl = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (onRequireAuth && !onRequireAuth()) return;
     if (!url.trim()) return;
 
     petResult.current = "ready";
@@ -743,6 +746,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   };
 
   const handleCopy = async () => {
+    if (onRequireAuth && !onRequireAuth()) return;
     if (!isPro && !hasChargedCurrentFile) {
       const markItDownCount = userDoc?.markItDownCount || 0;
       const promptCount = userDoc?.promptCount || 0;
@@ -766,6 +770,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   };
 
   const handleDownload = async () => {
+    if (onRequireAuth && !onRequireAuth()) return;
     if (!isPro && !hasChargedCurrentFile) {
       const markItDownCount = userDoc?.markItDownCount || 0;
       const promptCount = userDoc?.promptCount || 0;
