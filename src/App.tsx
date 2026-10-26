@@ -4363,11 +4363,6 @@ ${bodyHtml}
                     <div className="text-[10px] text-slate-400 leading-tight">© 2026 WordToLaTeX.io.vn</div>
                  </div>
              </div>
-
-             {/* Close button */}
-             <button onClick={() => setIsMenuOpen(false)} className={`p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors`}>
-                <X className="w-5 h-5" />
-             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto py-2 flex flex-col gap-3 px-3 overflow-x-hidden w-full select-none">
@@ -4691,28 +4686,9 @@ ${bodyHtml}
                   onClick={() => setIsCommandPaletteOpen(true)}
                   className="p-2 rounded-xl text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/80 transition-all active:scale-95 cursor-pointer"
                   title="Tìm kiếm & Lệnh nhanh (Ctrl+K)"
+                  aria-label="Tìm kiếm"
                 >
                   <Search className="w-4 h-4" />
-                </button>
-
-                {/* Nút Tài khoản cá nhân trên Header Mobile */}
-                <button
-                  onClick={() => {
-                    setIsMenuOpen(true);
-                    setIsUserMenuOpen(true);
-                  }}
-                  className="p-0.5 rounded-full border border-slate-200/90 hover:border-indigo-400 hover:bg-indigo-50/50 transition-all active:scale-95 cursor-pointer relative shrink-0 ml-0.5"
-                  title="Menu tài khoản"
-                  aria-label="Tài khoản cá nhân"
-                >
-                  <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 border border-white">
-                    <img src={getUserAvatar()} alt="Avatar" className="w-full h-full object-cover" />
-                  </div>
-                  {unreadCount > 0 && user && (
-                    <span className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded-full bg-slate-900 text-[8px] font-black text-white ring-1 ring-white">
-                      {unreadCount}
-                    </span>
-                  )}
                 </button>
               </div>
             </header>
@@ -4724,6 +4700,16 @@ ${bodyHtml}
               title="Mở thanh điều hướng Menu"
             >
               <Menu className="w-5 h-5" />
+            </button>
+
+            {/* TABLET & DESKTOP FLOATING SEARCH BUTTON */}
+            <button 
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="hidden md:flex fixed top-3 right-4 z-40 p-2 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/90 transition-all shadow-sm hover:shadow-md shrink-0 cursor-pointer"
+              title="Tìm kiếm & Lệnh nhanh (Ctrl+K)"
+              aria-label="Tìm kiếm"
+            >
+              <Search className="w-5 h-5" />
             </button>
 
             {/* DESKTOP GUIDE TOUR BUTTON */}
@@ -4794,106 +4780,155 @@ ${bodyHtml}
               const currentPage = Math.min(Math.max(memberPage, 1), totalPages);
               const paginatedUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+              // Generator for beautiful pastel initials backgrounds
+              const getInitialsStyle = (nameStr: string, emailStr: string) => {
+                const char = nameStr ? nameStr.charAt(0).toUpperCase() : (emailStr ? emailStr.charAt(0).toUpperCase() : 'U');
+                const code = char.charCodeAt(0) || 0;
+                const styles = [
+                  { bg: "bg-[#EFF6FF] border border-[#EFF6FF]/20", text: "text-[#3B82F6]" },
+                  { bg: "bg-[#F3F1FF] border border-[#F3F1FF]/20", text: "text-[#6B5CFF]" },
+                  { bg: "bg-[#E6F9EE] border border-[#E6F9EE]/20", text: "text-[#22C55E]" },
+                  { bg: "bg-[#FFFBEB] border border-[#FFFBEB]/20", text: "text-[#F59E0B]" },
+                  { bg: "bg-[#FFF1F2] border border-[#FFF1F2]/20", text: "text-[#F43F5E]" },
+                ];
+                return { style: styles[code % styles.length], char };
+              };
+
               return (
-                <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] p-4 md:p-6 lg:p-8 flex-1 flex flex-col">
+                <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[22px] sm:rounded-[28px] p-3 sm:p-5 md:p-6 lg:p-8 flex-1 flex flex-col">
                   {/* Header */}
-                  <div className="flex items-center gap-3.5 mb-6">
-                    <div className="w-11 h-11 bg-white/50 rounded-xl flex items-center justify-center shrink-0 border border-white/50">
+                  <div className="flex items-center gap-3 mb-4 sm:mb-6">
+                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-white/50 rounded-xl flex items-center justify-center shrink-0 border border-white/50">
                       <Users className="w-5 h-5 text-indigo-600" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-extrabold tracking-tight text-slate-800 font-sans">Quản lý thành viên</h2>
+                      <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-800 font-sans">Quản lý thành viên</h2>
                       <p className="text-xs text-slate-500 font-medium mt-0.5">Cấp quyền, điều chỉnh lượt dùng và quản trị danh sách người dùng hệ thống.</p>
                     </div>
                   </div>
 
-                  {/* Stats Cards with Spotlight & Sliding Numbers */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-                    <SpotlightCard spotlightColor="rgba(99, 102, 241, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-indigo-50/70 flex items-center justify-center shrink-0">
-                          <Users className="w-4 h-4 text-indigo-600" />
+                  {/* Stats Cards: Trên mobile dạng 2 hàng thẻ nhỏ (hàng trên 3, hàng dưới 2), trên desktop 5 cột 1 hàng */}
+                  <div className="flex flex-col gap-2 mb-4 sm:mb-6">
+                    {/* Hàng 1 trên mobile (3 chỉ số): Tổng thành viên, Đang hoạt động, Chờ duyệt */}
+                    <div className="grid grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+                      <SpotlightCard spotlightColor="rgba(99, 102, 241, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
+                        <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-3">
+                          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-indigo-50/70 flex items-center justify-center shrink-0">
+                            <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm sm:text-base lg:text-lg font-black text-slate-800"><SlidingNumber value={totalMembers} /></div>
+                            <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">Tổng thành viên</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalMembers} /></div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tổng thành viên</div>
+                      </SpotlightCard>
+
+                      <SpotlightCard spotlightColor="rgba(16, 185, 129, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
+                        <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-3">
+                          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50/70 flex items-center justify-center shrink-0">
+                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" strokeWidth={3} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm sm:text-base lg:text-lg font-black text-slate-800"><SlidingNumber value={activeMembers} /></div>
+                            <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">Hoạt động</div>
+                          </div>
                         </div>
-                      </div>
-                    </SpotlightCard>
-                    <SpotlightCard spotlightColor="rgba(16, 185, 129, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-50/70 flex items-center justify-center shrink-0">
-                          <Check className="w-4 h-4 text-emerald-600" strokeWidth={3} />
+                      </SpotlightCard>
+
+                      <SpotlightCard spotlightColor="rgba(245, 158, 11, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
+                        <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-3">
+                          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-50/70 flex items-center justify-center shrink-0">
+                            <UserCog className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm sm:text-base lg:text-lg font-black text-slate-800"><SlidingNumber value={pendingMembers} /></div>
+                            <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">Chờ duyệt</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={activeMembers} /></div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Đang hoạt động</div>
+                      </SpotlightCard>
+
+                      {/* Hiển thị trên desktop cho 5 cột */}
+                      <SpotlightCard spotlightColor="rgba(37, 99, 235, 0.15)" className="hidden lg:block bg-white/60 border border-white/60 rounded-2xl p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-blue-50/70 flex items-center justify-center shrink-0">
+                            <FileText className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalLatexCount} /></div>
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">LaTeX hôm nay</div>
+                          </div>
                         </div>
-                      </div>
-                    </SpotlightCard>
-                    <SpotlightCard spotlightColor="rgba(245, 158, 11, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-50/70 flex items-center justify-center shrink-0">
-                          <UserCog className="w-4 h-4 text-amber-600" />
+                      </SpotlightCard>
+
+                      <SpotlightCard spotlightColor="rgba(225, 29, 72, 0.15)" className="hidden lg:block bg-white/60 border border-white/60 rounded-2xl p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-rose-50/70 flex items-center justify-center shrink-0">
+                            <span className="font-black text-rose-600 text-xs tracking-tight">AI</span>
+                          </div>
+                          <div>
+                            <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalPromptCount} /></div>
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">AI hôm nay</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={pendingMembers} /></div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Chờ duyệt</div>
+                      </SpotlightCard>
+                    </div>
+
+                    {/* Hàng 2 trên mobile (2 chỉ số): LaTeX hôm nay & AI hôm nay */}
+                    <div className="grid grid-cols-2 lg:hidden gap-2 sm:gap-3">
+                      <SpotlightCard spotlightColor="rgba(37, 99, 235, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-2xs hover:shadow-xs transition-all duration-200">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50/70 flex items-center justify-center shrink-0">
+                            <FileText className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm sm:text-base font-black text-slate-800"><SlidingNumber value={totalLatexCount} /></div>
+                            <div className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">LaTeX hôm nay</div>
+                          </div>
                         </div>
-                      </div>
-                    </SpotlightCard>
-                    <SpotlightCard spotlightColor="rgba(37, 99, 235, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-50/70 flex items-center justify-center shrink-0">
-                          <FileText className="w-4 h-4 text-blue-600" />
+                      </SpotlightCard>
+
+                      <SpotlightCard spotlightColor="rgba(225, 29, 72, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-2xs hover:shadow-xs transition-all duration-200">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-50/70 flex items-center justify-center shrink-0">
+                            <span className="font-black text-rose-600 text-[10px] tracking-tight">AI</span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm sm:text-base font-black text-slate-800"><SlidingNumber value={totalPromptCount} /></div>
+                            <div className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">AI hôm nay</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalLatexCount} /></div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">LaTeX hôm nay</div>
-                        </div>
-                      </div>
-                    </SpotlightCard>
-                    <SpotlightCard spotlightColor="rgba(225, 29, 72, 0.15)" className="bg-white/60 border border-white/60 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition-all duration-200 col-span-2 sm:col-span-1">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-rose-50/70 flex items-center justify-center shrink-0">
-                          <span className="font-black text-rose-600 text-xs tracking-tight">AI</span>
-                        </div>
-                        <div>
-                          <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalPromptCount} /></div>
-                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">AI hôm nay</div>
-                        </div>
-                      </div>
-                    </SpotlightCard>
+                      </SpotlightCard>
+                    </div>
                   </div>
 
                   {/* Table Card */}
-                  <div className="bg-white/72 backdrop-blur-lg border border-white/50 rounded-[28px] flex-1 flex flex-col overflow-hidden shadow-[0_10px_40px_rgba(120,120,180,.08)]">
-                    {/* Toolbar */}
-                    <div className="p-5 border-b border-white/50 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/50">
-                      <div className="flex items-center gap-3 w-full sm:w-auto flex-1 justify-end sm:justify-start">
-                        {/* Left toolbar elements if any */}
+                  <div className="bg-white/72 backdrop-blur-lg border border-white/50 rounded-[22px] sm:rounded-[28px] flex-1 flex flex-col overflow-hidden shadow-[0_10px_40px_rgba(120,120,180,.08)]">
+                    {/* Toolbar: Ô Tìm kiếm 1 hàng, Bộ lọc nằm ở hàng dưới căn phải */}
+                    <div className="p-3 sm:p-5 border-b border-white/50 flex flex-col gap-2.5 bg-white/50">
+                      {/* Hàng 1: Ô Tìm kiếm */}
+                      <div className="relative w-full">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Tìm tên hoặc email..."
+                          value={userSearchQuery}
+                          onChange={(e) => {
+                            setUserSearchQuery(e.target.value);
+                            setMemberPage(1);
+                          }}
+                          className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-full pl-10 pr-4 py-2 sm:py-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none transition-all duration-200 focus:border-[#6B5CFF] focus:bg-white focus:ring-4 focus:ring-[#6B5CFF]/10 shadow-3xs"
+                        />
                       </div>
-                      <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                        <div className="relative w-full sm:w-[260px]">
-                          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                          <input
-                            type="text"
-                            placeholder="Tìm tên hoặc email..."
-                            value={userSearchQuery}
-                            onChange={(e) => {
-                              setUserSearchQuery(e.target.value);
-                              setMemberPage(1);
-                            }}
-                            className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-full pl-10 pr-4 py-2.5 text-xs font-semibold text-slate-700 placeholder-slate-400 outline-none transition-all duration-200 focus:border-[#6B5CFF] focus:bg-white focus:ring-4 focus:ring-[#6B5CFF]/10"
-                          />
-                        </div>
+
+                      {/* Hàng 2: Nút Bộ lọc căn phải */}
+                      <div className="flex justify-end w-full relative">
                         <div className="relative shrink-0">
                           <button
                             onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[#E8EBF3] hover:bg-[#F9F9FF] rounded-full text-xs font-bold text-slate-600 transition-all duration-200 shadow-2xs"
+                            className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-white border border-[#E8EBF3] hover:bg-[#F9F9FF] rounded-full text-xs font-bold text-slate-600 transition-all duration-200 shadow-2xs cursor-pointer active:scale-95"
                           >
-                            <Filter className="w-3.5 h-3.5" />
-                            Bộ lọc
+                            <Filter className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Bộ lọc</span>
                             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                           </button>
                           {showFilterDropdown && (
@@ -4905,17 +4940,118 @@ ${bodyHtml}
                             </div>
                           )}
                         </div>
-                        <button
-                          onClick={() => setShowAddMemberModal(true)}
-                          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#7B5CFF] to-[#6A6CFF] text-white rounded-full text-xs font-bold transition-all duration-200 shadow-[0_8px_20px_rgba(107,92,255,0.2)] hover:shadow-[0_10px_24px_rgba(107,92,255,0.3)] hover:scale-[1.02] active:scale-[0.98] shrink-0"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          Thêm thành viên
-                        </button>
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto flex-1">
+                    {/* GIAO DIỆN MOBILE: CHỈ HIỆN 3 THÔNG SỐ: THÀNH VIÊN (AVATAR+TÊN), SỐ LƯỢT SỬ DỤNG, THAO TÁC */}
+                    <div className="md:hidden divide-y divide-[#EEF2F7]/70 flex-1 overflow-y-auto">
+                      {paginatedUsers.map((u) => {
+                        const isSelf = user && u.uid === user.uid;
+                        const usage = getUserTodayUsage(u);
+                        const { style: avatarStyle, char: avatarChar } = getInitialsStyle(u.displayName, u.email);
+
+                        return (
+                          <div key={u.uid} className="p-2.5 sm:p-3 flex items-center justify-between gap-2 hover:bg-[#FCFCFF]/60 transition-colors">
+                            {/* 1. Thành viên: Avatar + Tên (ẨN UID mã định danh) */}
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <div 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedUserDetails(u);
+                                  setShowUserDetailsModal(true);
+                                }}
+                                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden font-bold text-xs shadow-2xs cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ${u.photoURL ? 'bg-slate-100' : avatarStyle.bg + ' ' + avatarStyle.text}`}
+                                title="Xem chi tiết thành viên"
+                              >
+                                {u.photoURL ? (
+                                  <img referrerPolicy="no-referrer" src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" />
+                                ) : (
+                                  <span>{avatarChar}</span>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-extrabold text-[#1E2432] text-xs truncate flex items-center gap-1">
+                                  <span className="truncate">{u.displayName || "Thành viên"}</span>
+                                  {isSelf && (
+                                    <span className="bg-[#F3F1FF] text-[#6B5CFF] text-[8px] font-black px-1.5 py-0.2 rounded-full border border-[#ECE8FF] shrink-0">OWNER</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 2. Số lượt sử dụng */}
+                            <div className="flex flex-col items-center shrink-0 px-1 text-center">
+                              <div className="text-[11px] font-extrabold text-slate-800">
+                                <span className="text-indigo-600 font-black">{usage.latex}</span>
+                                <span className="text-slate-300 font-normal"> / </span>
+                                <span className="text-purple-600 font-black">{usage.prompt}</span>
+                                <span className="text-slate-300 font-normal"> / </span>
+                                <span className="text-blue-600 font-black">{usage.exam}</span>
+                              </div>
+                              <div className="text-[8px] font-bold text-slate-400 tracking-tight">
+                                LaTeX • AI • Đề
+                              </div>
+                            </div>
+
+                            {/* 3. Thao tác (Chỉnh sửa & Xóa) */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const isReset = u.lastLatexResetDate !== getTodayStr();
+                                  setEditingUser({
+                                    ...u,
+                                    latexCount: isReset ? 0 : (u.latexCount || 0),
+                                    examCount: isReset ? 0 : (u.examCount || 0),
+                                    promptCount: isReset ? 0 : (u.promptCount || 0),
+                                    lastLatexResetDate: getTodayStr()
+                                  });
+                                  setShowEditMemberModal(true);
+                                }}
+                                className="w-7 h-7 rounded-full flex items-center justify-center bg-white text-slate-500 hover:text-slate-700 hover:bg-[#F9F9FF] border border-[#E8EBF3] transition-all shadow-xs cursor-pointer active:scale-90"
+                                title="Chỉnh sửa"
+                              >
+                                <Pencil className="w-3 h-3 pointer-events-none" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (isSelf) {
+                                    triggerToast("Bạn không thể tự xóa tài khoản của chính mình!", false);
+                                    return;
+                                  }
+                                  if (window.confirm("Bạn có chắc chắn muốn xóa thành viên này?")) {
+                                    try {
+                                      await deleteDoc(doc(db, "users", u.uid));
+                                      triggerToast("Xóa thành viên thành công!");
+                                    } catch (e: any) {
+                                      triggerToast("Có lỗi khi xóa: " + e.message, false);
+                                    }
+                                  }
+                                }}
+                                className="w-7 h-7 rounded-full flex items-center justify-center bg-[#FFF1F2] text-[#F43F5E] hover:bg-[#ffe4e6] transition-all border border-rose-100/50 shadow-xs cursor-pointer active:scale-90"
+                                title="Xóa"
+                              >
+                                <Trash2 className="w-3 h-3 pointer-events-none" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {paginatedUsers.length === 0 && (
+                        <div className="py-12 text-center">
+                          <Users className="w-8 h-8 mb-2 opacity-20 mx-auto text-[#7D8799]" />
+                          <p className="text-xs font-medium text-[#7D8799]">Không tìm thấy thành viên nào</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* GIAO DIỆN DESKTOP / TABLET: BẢNG 5 CỘT TRUYỀN THỐNG */}
+                    <div className="hidden md:block overflow-x-auto flex-1">
                       <table className="w-full text-left border-collapse min-w-[900px]">
                         <thead>
                           <tr className="bg-white border-b border-[#EEF2F7] text-[#7D8799] text-[10px] font-bold uppercase tracking-wider">
@@ -4929,21 +5065,6 @@ ${bodyHtml}
                         <tbody className="divide-y divide-[#EEF2F7]/50">
                           {paginatedUsers.map((u) => {
                             const isSelf = user && u.uid === user.uid;
-
-                            // Generator for beautiful pastel initials backgrounds matching the image
-                            const getInitialsStyle = (nameStr: string, emailStr: string) => {
-                              const char = nameStr ? nameStr.charAt(0).toUpperCase() : (emailStr ? emailStr.charAt(0).toUpperCase() : 'U');
-                              const code = char.charCodeAt(0) || 0;
-                              const styles = [
-                                { bg: "bg-[#EFF6FF] border border-[#EFF6FF]/20", text: "text-[#3B82F6]" },
-                                { bg: "bg-[#F3F1FF] border border-[#F3F1FF]/20", text: "text-[#6B5CFF]" },
-                                { bg: "bg-[#E6F9EE] border border-[#E6F9EE]/20", text: "text-[#22C55E]" },
-                                { bg: "bg-[#FFFBEB] border border-[#FFFBEB]/20", text: "text-[#F59E0B]" },
-                                { bg: "bg-[#FFF1F2] border border-[#FFF1F2]/20", text: "text-[#F43F5E]" },
-                              ];
-                              return { style: styles[code % styles.length], char };
-                            };
-
                             const { style: avatarStyle, char: avatarChar } = getInitialsStyle(u.displayName, u.email);
 
                             return (
@@ -6338,72 +6459,39 @@ ${bodyHtml}
               return (
                 <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] p-4 md:p-6 lg:p-8 flex-1 flex flex-col">
                   {/* Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-11 h-11 bg-amber-50 rounded-xl flex items-center justify-center shrink-0 border border-amber-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 sm:mb-6 border-b border-slate-100 pb-3 sm:pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 sm:w-11 sm:h-11 bg-amber-50 rounded-xl flex items-center justify-center shrink-0 border border-amber-100">
                         <ShieldAlert className="w-5 h-5 text-amber-600" />
                       </div>
                       <div>
-                        <h2 className="text-xl font-extrabold tracking-tight text-slate-800">Hệ thống theo dõi & cảnh báo</h2>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5">Phân biệt và kiểm soát hành vi đăng nhập nhiều tài khoản</p>
+                        <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-800">Hệ thống theo dõi & cảnh báo</h2>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="grid grid-cols-2 gap-2 w-full sm:w-auto items-center">
+                      {totalAlerts > 0 && (
+                        <span className="text-[10px] sm:text-[11px] font-bold bg-amber-500/10 text-amber-600 px-2.5 py-2 rounded-xl border border-amber-500/20 text-center truncate">
+                          Phát hiện {totalAlerts} nhóm trùng khớp
+                        </span>
+                      )}
+
                       {totalAlerts > 0 && (
                         <button
                           onClick={handleDismissAll}
                           disabled={dismissingAll}
-                          className="text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl border border-amber-500 shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-55 cursor-pointer"
+                          className="text-[10px] sm:text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-2 rounded-xl border border-amber-500 shadow-sm transition-all flex items-center justify-center gap-1 disabled:opacity-55 cursor-pointer text-center active:scale-95"
                         >
                           {dismissingAll ? (
                             <span>Đang xử lý...</span>
                           ) : (
                             <>
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>Xóa tất cả cảnh báo hiện tại (Chỉ lần này)</span>
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">Xóa tất cả các cảnh báo</span>
                             </>
                           )}
                         </button>
                       )}
-
-                      {totalAlerts > 0 && (
-                        <span className="text-[11px] font-bold bg-amber-500/10 text-amber-600 px-3 py-2 rounded-xl border border-amber-500/20">
-                          Phát hiện {totalAlerts} nhóm trùng khớp
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-
-
-                  {/* Clarification Hub Box */}
-                  <div className="mb-6 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 flex gap-3 text-slate-700 text-xs leading-relaxed">
-                    <Info className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-                    <div className="space-y-2">
-                      <p className="font-bold text-slate-800 text-sm">Cẩm nang phân biệt dấu hiệu sử dụng hệ thống:</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-rose-50/50 border border-rose-100 p-3 rounded-xl">
-                          <div className="flex items-center gap-1.5 font-bold text-rose-700 mb-1">
-                            <Laptop className="w-3.5 h-3.5" />
-                            <span>1. Dùng chung thiết bị (Fingerprint)</span>
-                          </div>
-                          <p className="text-slate-600 text-[11px]">
-                            Nhiều tài khoản đăng nhập trên <strong>cùng một trình duyệt/thiết bị vật lý</strong>. 
-                            Khả năng rất cao là một người tạo nhiều tài khoản clone để lạm dụng tài nguyên.
-                          </p>
-                        </div>
-                        <div className="bg-amber-50/40 border border-amber-100 p-3 rounded-xl">
-                          <div className="flex items-center gap-1.5 font-bold text-amber-700 mb-1">
-                            <Wifi className="w-3.5 h-3.5" />
-                            <span>2. Dùng chung mạng IP (IP Address)</span>
-                          </div>
-                          <p className="text-slate-600 text-[11px]">
-                            Nhiều thiết bị khác nhau cùng kết nối từ <strong>một mạng Wi-Fi (Trường học, văn phòng, quán cafe...)</strong>. 
-                            Đây là hành vi sử dụng chung mạng bình thường, <strong>không nên vội vã coi là gian lận/lạm dụng</strong>.
-                          </p>
-                        </div>
-                      </div>
                     </div>
                   </div>
 

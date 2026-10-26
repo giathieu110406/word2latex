@@ -12,6 +12,18 @@ const formatDateTime = (value: string) =>
 const formatTimeOnly = (value: string) =>
   value ? new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(value)) : '—';
 
+const formatShortDay = (dateStr: string) => {
+  const parts = dateStr.split('-');
+  if (parts.length < 3) return dateStr;
+  return `${parts[2]}/${parts[1]}`;
+};
+
+const formatDateDisplay = (dateStr: string) => {
+  const parts = dateStr.split('-');
+  if (parts.length < 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
+
 const formatDayLabel = (dateStr: string) => {
   const [y, m, d] = dateStr.split('-').map(Number);
   if (!y || !m || !d) return dateStr;
@@ -130,28 +142,25 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
   const activeFeatureMeta = FEATURE_META.find(f => f.key === feature) || FEATURE_META[0];
 
   return (
-    <section data-testid="analytics-dashboard" className="bg-white/85 backdrop-blur-lg border border-slate-200/80 shadow-sm rounded-3xl p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
+    <section data-testid="analytics-dashboard" className="bg-white/85 backdrop-blur-lg border border-slate-200/80 shadow-sm rounded-3xl p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 min-w-0">
       {/* Header */}
-      <div className="flex flex-wrap justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+      <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-100 pb-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
               <BarChart3 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-extrabold text-xl text-slate-800 tracking-tight">Dashboard Phân Tích Sử Dụng</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Chỉ tính hạn mức trên <span className="font-semibold text-indigo-600">word2latex.io.vn</span> · 7 ngày gần nhất ({from} → {to}) · Cập nhật: {formatDateTime(updated)}
-              </p>
+              <h2 className="font-extrabold text-lg sm:text-xl text-slate-800 tracking-tight">Dashboard Phân Tích Sử Dụng</h2>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto shrink-0">
           <button
             type="button"
             onClick={() => void refresh()}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 transition disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold text-slate-700 transition disabled:opacity-50 active:scale-95 cursor-pointer shadow-2xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
             {loading ? 'Đang tải...' : 'Làm mới'}
@@ -160,7 +169,7 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
             type="button"
             onClick={exportLog}
             disabled={!data}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 transition disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold text-slate-700 transition disabled:opacity-50 active:scale-95 cursor-pointer shadow-2xs"
           >
             <Download className="w-3.5 h-3.5" />
             Xuất báo cáo
@@ -194,21 +203,21 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
 
       {/* 6 KPI Cards kiêm Bộ lọc Tính năng */}
       <div>
-        <div className="flex items-center justify-between mb-2.5">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <div className="flex items-center justify-between mb-2 sm:mb-2.5">
+          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
             Tổng hạn mức toàn hệ thống (7 ngày) · Bấm vào thẻ để lọc theo tính năng
           </span>
           {feature !== 'all' && (
             <button
               type="button"
               onClick={() => setFeature('all')}
-              className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+              className="text-[11px] sm:text-xs font-semibold text-indigo-600 hover:text-indigo-800"
             >
               Xóa bộ lọc ({activeFeatureMeta.shortLabel})
             </button>
           )}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
           {FEATURE_META.map(item => {
             const Icon = item.icon;
             const isSelected = feature === item.key;
@@ -220,27 +229,27 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
                 type="button"
                 onClick={() => setFeature(item.key)}
                 data-testid={`feature-filter-${item.key}`}
-                className={`text-left rounded-2xl border p-3.5 transition-all cursor-pointer ${
+                className={`text-left rounded-xl sm:rounded-2xl border p-2.5 sm:p-3.5 transition-all cursor-pointer ${
                   isSelected
                     ? item.activeBg
                     : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/60'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`inline-flex items-center justify-center w-8 h-8 rounded-xl ${item.badgeBg}`}>
-                    <Icon className="w-4 h-4" />
+                <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                  <span className={`inline-flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl ${item.badgeBg}`}>
+                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </span>
-                  <span className="text-[11px] font-semibold text-slate-400">7 ngày</span>
+                  <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400">7 ngày</span>
                 </div>
-                <div className="mt-2.5">
+                <div className="mt-1.5 sm:mt-2.5">
                   <strong
-                    className={`text-2xl font-black tracking-tight ${item.textColor}`}
+                    className={`text-xl sm:text-2xl font-black tracking-tight ${item.textColor}`}
                     data-testid={item.key === 'all' ? 'analytics-success-count' : undefined}
                   >
                     {data ? total7d : '—'}
                   </strong>
                   <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{item.label}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 sm:mt-1 truncate">
                     Ngày {date.slice(8, 10)}/{date.slice(5, 7)}: <strong className="text-slate-700">{data ? dayCount : '—'}</strong> lượt
                   </p>
                 </div>
@@ -251,27 +260,27 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
       </div>
 
       {/* Biểu đồ cột lịch sử 7 ngày gần nhất */}
-      <div className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div className="rounded-2xl border border-slate-200/80 bg-slate-50/50 p-3 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
           <div>
-            <h3 className="text-sm font-extrabold text-slate-800">
-              Lịch sử sử dụng 7 ngày gần nhất ({activeFeatureMeta.label})
+            <h3 className="text-xs sm:text-sm font-extrabold text-slate-800">
+              Lịch sử sử dụng 7 ngày gần nhất{feature !== 'all' ? ` (${activeFeatureMeta.label})` : ''}
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Bấm vào cột ngày bất kỳ để xem chi tiết số lượt sử dụng của từng người ở bảng dưới cùng
+            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
+              Bấm vào cột ngày bất kỳ để xem chi tiết ở bảng dưới cùng
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold text-slate-600">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] font-semibold text-slate-600">
             {FEATURE_META.filter(f => f.key !== 'all').map(f => (
-              <span key={f.key} className="inline-flex items-center gap-1.5">
-                <span className={`w-2.5 h-2.5 rounded-sm ${f.barColor}`} />
+              <span key={f.key} className="inline-flex items-center gap-1 sm:gap-1.5">
+                <span className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-xs sm:rounded-sm ${f.barColor}`} />
                 {f.shortLabel}
               </span>
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-2 sm:gap-3 items-end pt-4">
+        <div className="grid grid-cols-7 gap-1 sm:gap-3 items-end pt-2 sm:pt-4">
           {summary.days.map(d => {
             const isSelected = d.date === date;
             const heightPct = d.filteredTotal > 0 ? Math.max(12, Math.round((d.filteredTotal / maxDayCount) * 100)) : 4;
@@ -284,26 +293,26 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
                   setExpandedUid(null);
                 }}
                 data-testid={`day-column-${d.date}`}
-                className={`group flex flex-col items-center rounded-2xl p-2 sm:p-3 border transition-all cursor-pointer ${
+                className={`group flex flex-col items-center rounded-xl sm:rounded-2xl p-1 sm:p-3 border transition-all cursor-pointer ${
                   isSelected
                     ? 'border-indigo-600 bg-white shadow-sm ring-2 ring-indigo-500/20'
                     : 'border-transparent hover:border-slate-200 hover:bg-white/70'
                 }`}
               >
-                <span className={`text-xs sm:text-sm font-black mb-1.5 ${isSelected ? 'text-indigo-700' : 'text-slate-700'}`}>
+                <span className={`text-[11px] sm:text-sm font-black mb-1 sm:mb-1.5 ${isSelected ? 'text-indigo-700' : 'text-slate-700'}`}>
                   {d.filteredTotal}
                 </span>
-                <div className="w-full h-28 sm:h-36 bg-slate-100 rounded-xl flex flex-col justify-end overflow-hidden p-1">
+                <div className="w-full h-24 sm:h-36 bg-slate-100 rounded-lg sm:rounded-xl flex flex-col justify-end overflow-hidden p-0.5 sm:p-1">
                   {d.filteredTotal === 0 ? (
                     <div className="w-full h-1 rounded-full bg-slate-200" />
                   ) : feature !== 'all' ? (
                     <div
-                      className={`w-full rounded-lg transition-all duration-300 ${activeFeatureMeta.barColor}`}
+                      className={`w-full rounded-md sm:rounded-lg transition-all duration-300 ${activeFeatureMeta.barColor}`}
                       style={{ height: `${heightPct}%` }}
                     />
                   ) : (
                     <div
-                      className="w-full rounded-lg overflow-hidden flex flex-col justify-end transition-all duration-300"
+                      className="w-full rounded-md sm:rounded-lg overflow-hidden flex flex-col justify-end transition-all duration-300"
                       style={{ height: `${heightPct}%` }}
                     >
                       {BUCKET_KEYS.map(k => {
@@ -323,8 +332,8 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
                     </div>
                   )}
                 </div>
-                <span className={`mt-2 text-[11px] sm:text-xs font-bold whitespace-nowrap ${isSelected ? 'text-indigo-700' : 'text-slate-600'}`}>
-                  {formatDayLabel(d.date)}
+                <span className={`mt-1.5 sm:mt-2 text-[10px] sm:text-xs font-bold text-center block w-full truncate leading-tight ${isSelected ? 'text-indigo-700' : 'text-slate-600'}`}>
+                  {formatShortDay(d.date)}
                 </span>
                 <span className="text-[10px] text-slate-400 hidden sm:inline">
                   {(summary.usersByDate[d.date] || []).length} người
@@ -339,15 +348,15 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
       <div className="space-y-3 pt-1">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
               <Users className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base text-slate-800">
-                Số lượt sử dụng của từng người · Ngày {formatDayLabel(date)} ({date})
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-800">
+                Ngày {formatDateDisplay(date)}
               </h3>
-              <p className="text-xs text-slate-500">
-                Có <strong>{dailyUsers.length}</strong> người dùng phát sinh hạn mức ({activeFeatureMeta.label.toLowerCase()}) trên web · Bấm vào từng người để xem các mốc giờ chi tiết
+              <p className="text-[11px] sm:text-xs text-slate-500">
+                Có <strong className="text-slate-700">{dailyUsers.length}</strong> người dùng phát sinh hạn mức{feature !== 'all' ? ` (${activeFeatureMeta.label.toLowerCase()})` : ''} trên web
               </p>
             </div>
           </div>
@@ -360,7 +369,7 @@ export const AdminAnalyticsDashboard: React.FC<AdminAnalyticsDashboardProps> = (
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Tìm tên, email, UID..."
               aria-label="Tìm người dùng trong ngày"
-              className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-2 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+              className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-1.5 sm:py-2 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
             />
           </div>
         </div>

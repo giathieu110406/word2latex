@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { auth } from "../firebase";
-import { Loader2, Banknote, Search, Sparkles, Gift, X, CheckCircle2, Trash2, AlertTriangle } from "lucide-react";
+import { Loader2, Banknote, Search, Sparkles, Gift, X, CheckCircle2, Trash2, AlertTriangle, Info, Copy, Check } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 interface AdminPaymentsProps {
   allUsers: any[];
@@ -14,6 +16,10 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
   const [filterType, setFilterType] = useState<"all" | "payos" | "admin">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Chi tiết giao dịch được chọn khi bấm Avatar trên mobile
+  const [selectedPaymentDetail, setSelectedPaymentDetail] = useState<any | null>(null);
+  const [detailCopied, setDetailCopied] = useState(false);
 
   // Swiped row id and delete states
   const [swipedPaymentId, setSwipedPaymentId] = useState<string | null>(null);
@@ -193,31 +199,31 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
   }).slice(0, 5);
 
   return (
-    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] p-4 md:p-6 lg:p-8 flex-1 flex flex-col h-full">
+    <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[22px] sm:rounded-[28px] p-3 sm:p-5 md:p-6 lg:p-8 flex-1 flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 bg-white/50 rounded-xl flex items-center justify-center shrink-0 border border-white/50">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3.5 sm:mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 bg-white/60 rounded-xl flex items-center justify-center shrink-0 border border-white/50 shadow-2xs">
             <Banknote className="w-5 h-5 text-indigo-600" />
           </div>
           <div>
-            <h2 className="text-xl font-extrabold tracking-tight text-slate-800 font-sans">Quản lý thanh toán & Gói</h2>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">Lịch sử giao dịch PayOS và danh sách gói cấp qua quyền Admin.</p>
+            <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-800 font-sans">Quản lý thanh toán & Gói</h2>
           </div>
         </div>
         
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3.5 py-2 flex flex-col items-end">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-400">Doanh thu PayOS</span>
-            <span className="text-base font-black text-indigo-700">
+        {/* 3 Ô TRÊN CÙNG 1 HÀNG */}
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-3 w-full md:w-auto shrink-0">
+          <div className="bg-indigo-50 border border-indigo-100/90 rounded-xl p-2 sm:px-3.5 sm:py-2 flex flex-col items-center sm:items-end justify-center text-center sm:text-right shadow-3xs">
+            <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-indigo-500 truncate w-full">Doanh thu</span>
+            <span className="text-xs sm:text-sm md:text-base font-black text-indigo-700 truncate w-full">
               {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(totalRevenue)}
             </span>
           </div>
 
-          <div className="bg-purple-50 border border-purple-100 rounded-xl px-3.5 py-2 flex flex-col items-end">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-purple-400">Gói Admin cấp</span>
-            <span className="text-base font-black text-purple-700">
-              {totalAdminGrants} lượt (0 ₫)
+          <div className="bg-purple-50 border border-purple-100/90 rounded-xl p-2 sm:px-3.5 sm:py-2 flex flex-col items-center sm:items-end justify-center text-center sm:text-right shadow-3xs">
+            <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-purple-500 truncate w-full">Admin cấp</span>
+            <span className="text-xs sm:text-sm md:text-base font-black text-purple-700 truncate w-full">
+              {totalAdminGrants} lượt
             </span>
           </div>
 
@@ -228,63 +234,177 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
               setGrantSuccessMsg("");
               setGrantErrorMsg("");
             }}
-            className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold shadow-sm hover:shadow transition-all cursor-pointer flex items-center gap-2"
+            className="p-1.5 sm:px-4 sm:py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold shadow-sm hover:shadow transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 active:scale-95"
           >
-            <Sparkles className="w-4 h-4" />
-            Cấp gói thành viên
+            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span className="text-[10px] sm:text-xs truncate font-extrabold">Cấp gói</span>
           </button>
         </div>
       </div>
 
       {/* Controls & Filter */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 mb-3.5 sm:mb-5">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-4 w-4 text-slate-400" />
           </div>
           <input
             type="text"
-            className="block w-full pl-10 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm shadow-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+            className="block w-full pl-10 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm shadow-xs focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
             placeholder="Tìm theo Mã GD, Email, Tên hoặc Ghi chú..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
           />
         </div>
 
-        <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 shrink-0">
+        {/* 3 Ô FILTER BẰNG NHAU (GRID COLS 3) VỚI ANIMATE UI */}
+        <div className="grid grid-cols-3 gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/60 shrink-0 w-full sm:w-auto relative select-none">
           <button
             type="button"
             onClick={() => { setFilterType("all"); setCurrentPage(1); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              filterType === "all" ? "bg-white text-slate-800 shadow-xs" : "text-slate-600 hover:text-slate-900"
+            className={`relative py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-bold transition-colors cursor-pointer text-center z-10 ${
+              filterType === "all" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            Tất cả ({payments.length})
+            {filterType === "all" && (
+              <motion.div
+                layoutId="active-payment-filter-pill"
+                className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="truncate block">Tất cả ({payments.length})</span>
           </button>
+
           <button
             type="button"
             onClick={() => { setFilterType("payos"); setCurrentPage(1); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              filterType === "payos" ? "bg-white text-emerald-700 shadow-xs" : "text-slate-600 hover:text-slate-900"
+            className={`relative py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-bold transition-colors cursor-pointer text-center z-10 ${
+              filterType === "payos" ? "text-emerald-700" : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            PayOS ({totalPayosOrders})
+            {filterType === "payos" && (
+              <motion.div
+                layoutId="active-payment-filter-pill"
+                className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="truncate block">PayOS ({totalPayosOrders})</span>
           </button>
+
           <button
             type="button"
             onClick={() => { setFilterType("admin"); setCurrentPage(1); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              filterType === "admin" ? "bg-white text-purple-700 shadow-xs" : "text-slate-600 hover:text-slate-900"
+            className={`relative py-1.5 px-2 rounded-lg text-[11px] sm:text-xs font-bold transition-colors cursor-pointer text-center z-10 ${
+              filterType === "admin" ? "text-purple-700" : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            Admin cấp ({totalAdminGrants})
+            {filterType === "admin" && (
+              <motion.div
+                layoutId="active-payment-filter-pill"
+                className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
+                transition={{ type: "spring", stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="truncate block">Admin cấp ({totalAdminGrants})</span>
           </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden flex-1 flex flex-col min-h-[400px]">
-        <div className="overflow-x-auto">
+      {/* Main List & Table Container */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden flex-1 flex flex-col min-h-[300px] md:min-h-[400px]">
+        {/* GIAO DIỆN MOBILE: DANH SÁCH THÀNH VIÊN KHÔNG CẦN CUỘN NGANG */}
+        <div className="md:hidden divide-y divide-slate-100 flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="py-16 text-center">
+              <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mx-auto mb-2" />
+              <p className="text-slate-500 text-xs font-medium">Đang tải dữ liệu...</p>
+            </div>
+          ) : error ? (
+            <div className="py-16 text-center text-rose-500 px-4">
+              <p className="font-semibold text-xs mb-2">{error}</p>
+              <button
+                onClick={fetchPayments}
+                className="px-3 py-1 bg-rose-50 text-rose-700 rounded-lg text-xs font-bold"
+              >
+                Thử lại
+              </button>
+            </div>
+          ) : currentPayments.length === 0 ? (
+            <div className="py-16 text-center text-slate-400">
+              <Banknote className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              <p className="text-xs font-medium">Không tìm thấy giao dịch nào.</p>
+            </div>
+          ) : (
+            currentPayments.map((p) => (
+              <div
+                key={p.id}
+                className="p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition-colors"
+              >
+                {/* Khách hàng (bấm avatar để xem Mã đơn & Thời gian kích hoạt) */}
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaymentDetail(p)}
+                    className="relative shrink-0 rounded-full ring-2 ring-indigo-100/90 hover:ring-indigo-400 active:scale-95 transition-all cursor-pointer"
+                    title="Bấm để xem Mã đơn & Thời gian kích hoạt"
+                  >
+                    <img
+                      src={p.user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.user?.displayName || p.user?.email || 'User')}&background=random`}
+                      alt=""
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-indigo-600 rounded-full flex items-center justify-center text-white ring-1 ring-white">
+                      <Info className="w-2 h-2" />
+                    </div>
+                  </button>
+
+                  <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setSelectedPaymentDetail(p)}>
+                    <div className="font-bold text-slate-800 text-xs truncate flex items-center gap-1.5">
+                      <span className="truncate">{p.user?.displayName || "Thành viên"}</span>
+                      {p.isAdminGrant ? (
+                        <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
+                          Admin
+                        </span>
+                      ) : (
+                        <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                          PayOS
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">{p.user?.email || `UID: ${p.uid}`}</div>
+                  </div>
+                </div>
+
+                {/* Gói & Giá trị + Trạng thái hiện tại */}
+                <div className="flex flex-col items-end shrink-0 gap-0.5 text-right">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${getPlanColor(p.plan)}`}>
+                      {p.plan || 'UNKNOWN'}
+                    </span>
+                    <span className="font-black text-xs text-slate-800">
+                      {p.isAdminGrant ? (
+                        <span className="text-purple-700 font-bold">0 ₫</span>
+                      ) : (
+                        new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(p.amount) || 0)
+                      )}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                    <span className="text-slate-400">Trạng thái:</span>
+                    <span className={`uppercase font-bold text-[10px] ${getPlanColor(p.user?.planType || 'free').replace('bg-', 'text-').split(' ')[1]}`}>
+                      {p.user?.planType || 'FREE'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* GIAO DIỆN DESKTOP / TABLET: BẢNG 5 CỘT TRUYỀN THỐNG */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 text-[11px] uppercase tracking-wider font-bold text-slate-500 border-b border-slate-200">
@@ -467,24 +587,24 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
         </div>
       </div>
 
-      {/* Pagination Footer */}
-      {!loading && !error && filteredPayments.length > 0 && (
-        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-          <div className="text-xs font-medium text-slate-500">
-            Hiển thị <span className="font-bold text-slate-700">{pageIndex * itemsPerPage + 1}</span> - <span className="font-bold text-slate-700">{Math.min((pageIndex + 1) * itemsPerPage, filteredPayments.length)}</span> trên tổng số <span className="font-bold text-slate-700">{filteredPayments.length}</span> giao dịch
+      {/* Pagination Footer - Chỉ hiện khi có từ 2 trang trở lên */}
+      {!loading && !error && totalPages > 1 && (
+        <div className="mt-3 sm:mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+          <div className="text-xs font-semibold text-slate-500">
+            Trang <span className="font-extrabold text-indigo-600">{currentPage}</span> / <span className="font-bold text-slate-700">{totalPages}</span>
           </div>
           <div className="flex gap-2">
             <button
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               Trang trước
             </button>
             <button
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               Trang tiếp
             </button>
@@ -493,9 +613,15 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
       )}
 
       {/* MODAL CẤP GÓI CHO NGƯỜI DÙNG */}
-      {showGrantModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-[24px] border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col p-6 gap-5">
+      {showGrantModal && typeof document !== "undefined" && createPortal(
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto"
+          onClick={() => setShowGrantModal(false)}
+        >
+          <div 
+            className="bg-white rounded-[24px] border border-slate-100 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col p-6 gap-5"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
@@ -653,13 +779,23 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* MODAL XÁC NHẬN XÓA GIAO DỊCH ADMIN CẤP */}
-      {paymentToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-[24px] border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden flex flex-col p-6 gap-4">
+      {paymentToDelete && typeof document !== "undefined" && createPortal(
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
+          onClick={() => {
+            setPaymentToDelete(null);
+            setDeleteError("");
+          }}
+        >
+          <div 
+            className="bg-white rounded-[24px] border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden flex flex-col p-6 gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
                 <AlertTriangle className="w-5 h-5" />
@@ -705,8 +841,137 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
+
+      {/* MODAL CHI TIẾT GIAO DỊCH (MÃ ĐƠN & THỜI GIAN KÍCH HOẠT) KHI BẤM AVATAR TRÊN MOBILE */}
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {selectedPaymentDetail && (
+            <div 
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]"
+              onClick={() => setSelectedPaymentDetail(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 10 }}
+                transition={{ duration: 0.18 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-sm overflow-hidden flex flex-col p-5 gap-3.5 relative"
+              >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <img
+                    src={selectedPaymentDetail.user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedPaymentDetail.user?.displayName || selectedPaymentDetail.user?.email || 'User')}&background=random`}
+                    alt=""
+                    className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-extrabold text-slate-800 truncate">
+                      {selectedPaymentDetail.user?.displayName || "Thành viên"}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {selectedPaymentDetail.user?.email || `UID: ${selectedPaymentDetail.uid}`}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPaymentDetail(null)}
+                  className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Chi tiết Mã đơn & Thời gian */}
+              <div className="flex flex-col gap-2.5 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70 text-xs">
+                {/* Mã đơn */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500 font-semibold">Mã đơn:</span>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    <span className="truncate max-w-[160px]">#{selectedPaymentDetail.id}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(selectedPaymentDetail.id);
+                        setDetailCopied(true);
+                        setTimeout(() => setDetailCopied(false), 1500);
+                      }}
+                      className="text-slate-400 hover:text-indigo-600 cursor-pointer"
+                      title="Sao chép mã đơn"
+                    >
+                      {detailCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Kênh thanh toán */}
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-semibold">Kênh giao dịch:</span>
+                  <span className="font-bold">
+                    {selectedPaymentDetail.isAdminGrant ? (
+                      <span className="text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 text-[11px]">
+                        Admin cấp quyền (0 ₫)
+                      </span>
+                    ) : (
+                      <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
+                        Cổng PayOS QR
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Thời gian kích hoạt */}
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-semibold">Kích hoạt lúc:</span>
+                  <span className="font-bold text-slate-800 text-[11px]">
+                    {selectedPaymentDetail.activatedAt
+                      ? `${new Date(selectedPaymentDetail.activatedAt).toLocaleTimeString('vi-VN')}, ${new Date(selectedPaymentDetail.activatedAt).toLocaleDateString('vi-VN')}`
+                      : "N/A"}
+                  </span>
+                </div>
+
+                {/* Gói & Giá trị */}
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-semibold">Gói đăng ký:</span>
+                  <span className="font-extrabold uppercase text-indigo-700">
+                    {selectedPaymentDetail.plan} ({selectedPaymentDetail.isAdminGrant ? "0 ₫" : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(selectedPaymentDetail.amount) || 0)})
+                  </span>
+                </div>
+
+                {selectedPaymentDetail.note && (
+                  <div className="flex flex-col gap-0.5 pt-1 border-t border-slate-200/60">
+                    <span className="text-slate-500 font-semibold">Ghi chú:</span>
+                    <span className="text-slate-600 italic">{selectedPaymentDetail.note}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action nút xóa (chỉ áp dụng cho giao dịch Admin cấp) */}
+              {selectedPaymentDetail.isAdminGrant && (
+                <div className="flex items-center justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentToDelete(selectedPaymentDetail);
+                      setSelectedPaymentDetail(null);
+                    }}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors border border-rose-200/60 shadow-2xs active:scale-95"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa giao dịch này</span>
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>,
+      document.body
+    )}
     </div>
   );
 };

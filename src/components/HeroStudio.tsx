@@ -183,13 +183,13 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
         {/* CỤM NỘI DUNG CHÍNH (RELATIVE Z-10 ĐỂ NỔI TRÊN NỀN PARTICLE) */}
         <div className="relative z-10 max-w-6xl mx-auto w-full h-full flex flex-col justify-between gap-3 lg:gap-4 flex-1">
           {/* PHẦN TRÊN: GRID 2 CỘT (HERO TEXT & HERO VISUAL) - DỜI LÊN TRÊN */}
-          <div className="flex-1 flex flex-col lg:flex-row items-center justify-between gap-5 lg:gap-8 pt-1 sm:pt-2 lg:pt-3 pb-2">
+          <div className="flex-1 flex flex-col lg:flex-row items-center justify-between gap-5 lg:gap-8 pt-1 sm:pt-2 lg:pt-3 pb-2 min-w-0">
             {/* CỘT TRÁI: TIÊU ĐỀ, LỜI CHÀO, NÚT CTA */}
             <motion.div 
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
-              className="flex-1 flex flex-col items-center lg:items-start text-center lg:text-left will-change-[opacity,transform]"
+              className="flex-1 min-w-0 flex flex-col items-center lg:items-start text-center lg:text-left will-change-[opacity,transform]"
             >
               {/* Lời chào thân thiện cá nhân hóa */}
               <div
@@ -205,21 +205,21 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
                 </div>
               </div>
 
-              {/* Tiêu đề chính lướt nhẹ cực êm không giật lag */}
+              {/* Tiêu đề chính: Chữ đen 1 hàng, chữ xanh tím 1 hàng trên tablet & desktop */}
               <h1
-                className="text-[22px] sm:text-3xl lg:text-[38px] xl:text-[42px] font-black text-slate-900 tracking-tight leading-[1.2] sm:leading-[1.14] mb-2 sm:mb-3"
+                className="text-2xl sm:text-3xl lg:text-[27px] xl:text-[38px] font-black text-slate-900 tracking-tight leading-[1.2] sm:leading-[1.18] mb-2 sm:mb-3"
               >
-                Biến tài liệu khoa học thành <br className="hidden sm:inline" />
-                <span className="bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
+                <span className="block whitespace-nowrap">Biến tài liệu khoa học thành</span>
+                <span className="block whitespace-nowrap bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
                   LaTeX hoàn mỹ &amp; trực quan
                 </span>
               </h1>
 
-              {/* Mô tả phụ */}
+              {/* Mô tả phụ - rút gọn 2 dòng */}
               <p 
-                className="max-w-lg text-xs sm:text-sm text-slate-600 font-medium leading-relaxed mb-3 sm:mb-4 line-clamp-3 sm:line-clamp-none"
+                className="max-w-lg text-xs sm:text-sm text-slate-600 font-medium leading-relaxed mb-3 sm:mb-4 line-clamp-2"
               >
-                Giải pháp AI toàn diện hỗ trợ giáo viên và nhà nghiên cứu: Chuyển đổi Word, trích xuất đề thi trắc nghiệm và kiến tạo hình học động chuẩn xác cao.
+                Giải pháp AI toàn diện hỗ trợ giáo viên: Chuyển đổi Word sang LaTeX và trích xuất đề thi chuẩn xác.
               </p>
 
               {/* Hàng 2 Nút CTA */}
@@ -250,12 +250,12 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
               </div>
             </motion.div>
 
-            {/* CỘT PHẢI: Ô DOCUMENT TRANSFORM TRƯỢT NHẸ XUẤT HIỆN TỨC THÌ */}
+            {/* CỘT PHẢI: Ô DOCUMENT TRANSFORM - KÍCH THƯỚC KHÓA CỐ ĐỊNH ĐỒNG NHẤT KHÔNG CO GIÃN */}
             <motion.div 
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
-              className="w-full lg:w-auto flex-1 flex justify-center lg:justify-end -mt-1 lg:-mt-3"
+              className="w-full lg:w-[460px] xl:w-[500px] shrink-0 min-w-0 flex justify-center lg:justify-end -mt-1 lg:-mt-3"
             >
               <HeroVisual />
             </motion.div>
@@ -330,7 +330,7 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
           <h2 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight mt-2">
             Khám Phá Sức Mạnh 4 Công Cụ Cốt Lõi
           </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl mx-auto leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl sm:max-w-none sm:whitespace-nowrap mx-auto leading-relaxed">
             Mỗi công cụ được thiết kế chuyên biệt để tối ưu từng khâu trong quy trình soạn thảo khoa học.
           </p>
         </motion.div>
