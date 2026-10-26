@@ -678,11 +678,12 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                     </div>
                   </div>
 
-                  {/* Column pickers & inline Add button */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-100/50 p-2 rounded-xl border border-slate-200/80 select-none">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-600 shrink-0">
-                        Bố cục đáp án:
+                  {/* Column pickers & inline Add button - 1 HÀNG DUY NHẤT TRÊN CẢ MOBILE & DESKTOP */}
+                  <div className="flex items-center justify-between gap-1.5 sm:gap-2.5 bg-slate-100/50 p-1.5 sm:p-2 rounded-xl border border-slate-200/80 select-none">
+                    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                      <span className="text-[11px] sm:text-xs font-bold text-slate-600 shrink-0">
+                        <span className="hidden sm:inline">Bố cục đáp án:</span>
+                        <span className="sm:hidden">Bố cục:</span>
                       </span>
                       <div className="flex gap-1">
                         {[1, 2, 4].map((cols) => (
@@ -690,7 +691,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                             key={cols}
                             type="button"
                             onClick={() => setNewTracNghiemColumns(cols)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all cursor-pointer shrink-0 ${
                               newTracNghiemColumns === cols
                                 ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500 scale-[1.03]"
                                 : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-3xs"
@@ -702,7 +703,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       {editingQuestionId && (
                         <button
                           type="button"
@@ -718,7 +719,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                             setTuLuanAnswerText("");
                             triggerToast("Đã hủy bỏ chỉnh sửa.", true);
                           }}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs cursor-pointer border border-slate-200 transition-all"
+                          className="px-2 sm:px-3 py-1 sm:py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] sm:text-xs cursor-pointer border border-slate-200 transition-all shrink-0"
                         >
                           Hủy
                         </button>
@@ -726,7 +727,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                       <button
                         type="button"
                         onClick={handleAddQuestion}
-                        className={`px-4 py-1.5 text-white font-extrabold rounded-lg text-xs flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer whitespace-nowrap transition-all ${
+                        className={`px-2.5 sm:px-4 py-1 sm:py-1.5 text-white font-extrabold rounded-lg text-[11px] sm:text-xs flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer whitespace-nowrap transition-all shrink-0 ${
                           editingQuestionId
                             ? "bg-amber-600 hover:bg-amber-700"
                             : "bg-indigo-600 hover:bg-indigo-700"
