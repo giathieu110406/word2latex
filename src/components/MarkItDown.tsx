@@ -1,6 +1,7 @@
 
 import { authFetch } from "../utils/api-client";
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import { getActivePlan, getPlanLimits } from "../../shared/subscription-policy";
+import React, { useEffect, useState, useRef, useMemo, useDeferredValue, startTransition } from "react";
 import { 
   FileUp, Link as LinkIcon, Loader2, Sparkles, Copy, Download, Check, 
   FileType, FileText, Image as ImageIcon, Layout, 
@@ -20,12 +21,30 @@ import { normalizeMarkdownMath } from "../utils/markdown-math";
 const REMARK_PLUGINS = [remarkMath, remarkGfm];
 const REHYPE_PLUGINS: any[] = [[rehypeKatex, { throwOnError: false, strict: false }]];
 
+interface MemoizedMarkdownContentProps {
+  content: string;
+}
+
+const MemoizedMarkdownContent = React.memo<MemoizedMarkdownContentProps>(({ content }) => {
+  return (
+    <div className="markdown-body prose prose-sm max-w-none prose-indigo">
+      <Markdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+      >
+        {content}
+      </Markdown>
+    </div>
+  );
+});
+MemoizedMarkdownContent.displayName = "MemoizedMarkdownContent";
+
 interface MarkItDownProps {
   triggerToast: (msg: string, success?: boolean) => void;
   isPro: boolean;
   currentMultiplier?: number;
   userDoc?: any;
-  onMarkItDownUsage?: () => Promise<void>;
+  onMarkItDownUsage?: (isAi?: boolean) => Promise<void>;
   onRequireAuth?: () => boolean;
 }
 
@@ -62,6 +81,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
   const normalizedMarkdown = useMemo(() => {
     return normalizeMarkdownMath(outputMarkdown);
   }, [outputMarkdown]);
+  const deferredMarkdown = useDeferredValue(normalizedMarkdown);
   const [isCopied, setIsCopied] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
   const [hasChargedCurrentFile, setHasChargedCurrentFile] = useState(false);
@@ -410,8 +430,10 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       const data = await res.json();
       if (data.success && typeof data.markdown === "string" && data.markdown.trim().length > 0 && data.markdown.trim() !== "undefined") {
         const finalMarkdown = data.markdown.trim();
-        setOutputMarkdown(finalMarkdown);
-        setAnalysisStage("completed");
+        startTransition(() => {
+          setOutputMarkdown(finalMarkdown);
+          setAnalysisStage("completed");
+        });
         triggerToast("Chuẩn hóa công thức Toán LaTeX thành công!", true);
         return finalMarkdown;
       } else {
@@ -471,9 +493,11 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         const fastData = await fastRes.json();
         if (fastData.success && typeof fastData.markdown === "string" && fastData.markdown.trim().length > 0) {
           fastMarkdown = fastData.markdown.trim();
-          setFastDraftMarkdown(fastMarkdown);
-          setOutputMarkdown(fastMarkdown);
-          setAnalysisStage("fast_extracted");
+          startTransition(() => {
+            setFastDraftMarkdown(fastMarkdown);
+            setOutputMarkdown(fastMarkdown);
+            setAnalysisStage("fast_extracted");
+          });
           triggerToast("Trích xuất siêu tốc thành công!", true);
         }
       }
@@ -520,8 +544,10 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
       const aiData = await aiRes.json();
       if (aiData.success && typeof aiData.markdown === "string" && aiData.markdown.trim().length > 0 && aiData.markdown.trim() !== "undefined") {
         const aiMarkdown = normalizeMarkdownMath(aiData.markdown.trim());
-        setOutputMarkdown(aiMarkdown);
-        setAnalysisStage("completed");
+        startTransition(() => {
+          setOutputMarkdown(aiMarkdown);
+          setAnalysisStage("completed");
+        });
         triggerToast("Chuyển đổi AI thành công!", true);
         return aiMarkdown;
       } else {
@@ -547,6 +573,9 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     setFastDraftMarkdown("");
     setStageErrorMsg(null);
     setAnalysisStage("reading");
+
+    // Cho phép trình duyệt render frame cập nhật trạng thái UI và chuyển tab mượt mà trước khi đọc tệp
+    await new Promise((resolve) => setTimeout(resolve, 30));
 
     // TRƯỜNG HỢP 1: Chỉ có 1 tệp duy nhất
     if (selectedFiles.length === 1) {
@@ -597,7 +626,9 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
         updatedChunks[idx].status = "completed";
         updatedChunks[idx].markdown = resMarkdown;
         setChunks([...updatedChunks]);
-        setOutputMarkdown(stitchChunks(updatedChunks));
+        startTransition(() => {
+          setOutputMarkdown(stitchChunks(updatedChunks));
+        });
       } catch (err: any) {
         console.error(`Lỗi tại tệp ${idx + 1}:`, err);
         petResult.current = getPetErrorResult(err);
@@ -611,8 +642,10 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
 
     const finalCombined = stitchChunks(updatedChunks);
     if (finalCombined) {
-      setOutputMarkdown(finalCombined);
-      setAnalysisStage("completed");
+      startTransition(() => {
+        setOutputMarkdown(finalCombined);
+        setAnalysisStage("completed");
+      });
     }
     if (!abortControllerRef.current) {
       triggerToast("Đã hoàn tất xử lý danh sách tệp tin!", true);
@@ -745,46 +778,92 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
     }
   };
 
-  const handleCopy = async () => {
-    if (onRequireAuth && !onRequireAuth()) return;
-    if (!isPro && !hasChargedCurrentFile) {
-      const markItDownCount = userDoc?.markItDownCount || 0;
-      const promptCount = userDoc?.promptCount || 0;
-
-      if (markItDownCount >= 1 * currentMultiplier) {
-        triggerToast("Bạn đã hết lượt dùng thử MarkItDown AI miễn phí hôm nay. Hãy nâng cấp gói PRO để sử dụng không giới hạn!", false);
-        return;
-      }
-      if (promptCount >= 15 * currentMultiplier) {
-        triggerToast("Bạn đã hết lượt sử dụng AI hôm nay. Hãy nâng cấp gói PRO!", false);
-        return;
-      }
-      if (onMarkItDownUsage) await onMarkItDownUsage();
-      setHasChargedCurrentFile(true);
+  const fallbackCopy = (text: string) => {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    } catch (e) {
+      console.warn("Không thể sao chép qua execCommand:", e);
     }
+  };
 
-    navigator.clipboard.writeText(outputMarkdown);
+  const handleCopy = () => {
+    if (onRequireAuth && !onRequireAuth()) return;
+
+    // 1. Sao chép tức thì vào bộ nhớ tạm (0ms latency, không chờ await mạng)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(outputMarkdown).catch(() => {
+        fallbackCopy(outputMarkdown);
+      });
+    } else {
+      fallbackCopy(outputMarkdown);
+    }
     setIsCopied(true);
     triggerToast("Đã sao chép toàn bộ Markdown vào bộ nhớ tạm", true);
     setTimeout(() => setIsCopied(false), 2000);
+
+    // 2. Ghi nhận hạn mức chạy nền không block UI
+    if (!isPro && !hasChargedCurrentFile) {
+      const markItDownCount = userDoc?.markItDownCount || 0;
+      const promptCount = userDoc?.promptCount || 0;
+      const userPlan = getActivePlan(userDoc?.planType, userDoc?.planExpiresAt);
+      const limits = getPlanLimits(userPlan);
+
+      // Nếu chế độ AI: kiểm tra hạn mức AI trong ngày
+      if (conversionMode === "ai") {
+        if (promptCount >= limits.ai) {
+          triggerToast(`Bạn đã hết lượt sử dụng AI hôm nay (tối đa ${limits.ai} lượt/ngày). Hãy nâng cấp gói để tiếp tục!`, false);
+          return;
+        }
+      } else {
+        // Chế độ AnyDoc không AI: kiểm tra hạn mức file MarkItDown
+        if (limits.markitdown !== Infinity && markItDownCount >= limits.markitdown) {
+          triggerToast(`Bạn đã hết lượt chuyển đổi MarkItDown hôm nay (tối đa ${limits.markitdown} file/ngày). Hãy nâng cấp gói PRO để sử dụng không giới hạn!`, false);
+          return;
+        }
+      }
+      setHasChargedCurrentFile(true);
+      if (onMarkItDownUsage) {
+        onMarkItDownUsage(conversionMode === "ai").catch((err) => {
+          console.error("Lỗi cập nhật số lượt dùng MarkItDown:", err);
+        });
+      }
+    }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = () => {
     if (onRequireAuth && !onRequireAuth()) return;
     if (!isPro && !hasChargedCurrentFile) {
       const markItDownCount = userDoc?.markItDownCount || 0;
       const promptCount = userDoc?.promptCount || 0;
+      const userPlan = getActivePlan(userDoc?.planType, userDoc?.planExpiresAt);
+      const limits = getPlanLimits(userPlan);
 
-      if (markItDownCount >= 1 * currentMultiplier) {
-        triggerToast("Bạn đã hết lượt dùng thử MarkItDown AI miễn phí hôm nay. Hãy nâng cấp gói PRO!", false);
-        return;
+      // Nếu chế độ AI: kiểm tra hạn mức AI trong ngày
+      if (conversionMode === "ai") {
+        if (promptCount >= limits.ai) {
+          triggerToast(`Bạn đã hết lượt sử dụng AI hôm nay (tối đa ${limits.ai} lượt/ngày). Hãy nâng cấp gói để tiếp tục!`, false);
+          return;
+        }
+      } else {
+        // Chế độ AnyDoc không AI: kiểm tra hạn mức file MarkItDown
+        if (limits.markitdown !== Infinity && markItDownCount >= limits.markitdown) {
+          triggerToast(`Bạn đã hết lượt chuyển đổi MarkItDown hôm nay (tối đa ${limits.markitdown} file/ngày). Hãy nâng cấp gói PRO để sử dụng không giới hạn!`, false);
+          return;
+        }
       }
-      if (promptCount >= 15 * currentMultiplier) {
-        triggerToast("Bạn đã hết lượt sử dụng AI hôm nay. Hãy nâng cấp gói PRO!", false);
-        return;
-      }
-      if (onMarkItDownUsage) await onMarkItDownUsage();
       setHasChargedCurrentFile(true);
+      if (onMarkItDownUsage) {
+        onMarkItDownUsage(conversionMode === "ai").catch((err) => {
+          console.error("Lỗi cập nhật số lượt dùng MarkItDown:", err);
+        });
+      }
     }
 
     const blob = new Blob([outputMarkdown], { type: "text/markdown;charset=utf-8" });
@@ -1310,14 +1389,7 @@ export const MarkItDown: React.FC<MarkItDownProps> = ({ triggerToast, isPro, use
                 <p className="text-sm font-medium text-slate-600">Đang đọc tài liệu & khởi tạo phân đoạn...</p>
               </div>
             ) : outputMarkdown ? (
-              <div className="markdown-body prose prose-sm max-w-none prose-indigo">
-                <Markdown
-                  remarkPlugins={REMARK_PLUGINS}
-                  rehypePlugins={REHYPE_PLUGINS}
-                >
-                  {normalizedMarkdown}
-                </Markdown>
-              </div>
+              <MemoizedMarkdownContent content={deferredMarkdown} />
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
                 <Sparkles className="w-12 h-12 text-slate-300" />

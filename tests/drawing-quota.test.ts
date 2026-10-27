@@ -66,8 +66,8 @@ test('provider failure refunds the same bucket, reset occurs at Vietnam 05:00, e
   f.profiles.alice.planExpiresAt = Date.now() - 1;
   f.profiles.alice.promptCount = 15;
   assert.equal((await f.request('alice')).code, 429);
-  assert.equal(getAiUsageDay(new Date('2026-10-08T21:59:00Z')), '8/10/2026');
-  assert.equal(getAiUsageDay(new Date('2026-10-08T22:00:00Z')), '9/10/2026');
+  assert.equal(getAiUsageDay(new Date('2026-10-08T16:59:00Z')), '8/10/2026');
+  assert.equal(getAiUsageDay(new Date('2026-10-08T17:00:00Z')), '9/10/2026');
   f.profiles.bob.lastLatexResetDate = 'old';
   f.profiles.bob.promptCount = 100;
   f.profiles.bob.latexCount = 12;

@@ -20,13 +20,29 @@ export async function readPhoneHistory(db: Firestore, actorUid: string, actorEma
   const history = await ref.collection('phoneConfirmations').orderBy('confirmedAt', 'desc').limit(100).get();
   const phone = normalizeVietnamPhone(String(profile.data()?.confirmedPhoneNumber || profile.data()?.phoneNumber || ''));
   let duplicatePhone = false;
+  const duplicateAccounts: Array<{ uid: string; email: string; displayName: string }> = [];
   if (phone) {
     const [confirmed, legacy] = await Promise.all([
-      db.collection('users').where('confirmedPhoneNumber', '==', phone).limit(2).get(),
-      db.collection('users').where('phoneNumber', 'in', [phone, `0${phone.slice(3)}`]).limit(2).get(),
+      db.collection('users').where('confirmedPhoneNumber', '==', phone).limit(10).get(),
+      db.collection('users').where('phoneNumber', 'in', [phone, `0${phone.slice(3)}`]).limit(10).get(),
     ]);
-    // Legacy numbers with arbitrary separators may be missed; all new confirmations are canonical.
-    duplicatePhone = [...confirmed.docs, ...legacy.docs].some(user => user.id !== targetUid);
+    const seenUids = new Set<string>();
+    [...confirmed.docs, ...legacy.docs].forEach(docSnap => {
+      if (docSnap.id !== targetUid && !seenUids.has(docSnap.id)) {
+        seenUids.add(docSnap.id);
+        const data = docSnap.data() || {};
+        duplicateAccounts.push({
+          uid: docSnap.id,
+          email: String(data.email || ''),
+          displayName: String(data.displayName || 'Thành viên'),
+        });
+      }
+    });
+    duplicatePhone = duplicateAccounts.length > 0;
   }
-  return { events: history.docs.map(event => ({ id: event.id, ...event.data() })), duplicatePhone };
+  return { 
+    events: history.docs.map(event => ({ id: event.id, ...event.data() })), 
+    duplicatePhone,
+    duplicateAccounts
+  };
 }

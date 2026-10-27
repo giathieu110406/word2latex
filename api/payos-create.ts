@@ -16,10 +16,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { plan } = req.body;
-    const amount = ({ trial: 5000, plus: 12000, pro: 19000 } as Record<string, number>)[plan];
-    if (!amount) {
-      return res.status(400).json({ error: "Gói đăng ký không hợp lệ." });
+    const { plan, interval = 'month' } = req.body;
+    if (!['plus', 'pro'].includes(plan)) {
+      return res.status(400).json({ error: 'Gói đăng ký không hợp lệ.' });
     }
     const header = req.headers.authorization;
     if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'Vui lòng đăng nhập.' });
@@ -29,6 +28,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const uid = decoded.uid;
     const profile = (await db.collection('users').doc(uid).get()).data();
     if (!profile) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
+
+    let amount: number;
+    if (plan === 'plus') {
+      if (interval === 'year') {
+        amount = 78000;
+      } else {
+        amount = profile.hasSubscribedPlus ? 13000 : 9000;
+      }
+    } else {
+      amount = interval === 'year'? 90000 : 15000;
+    }
     if (!canRegisterPlan(plan, profile.planType, profile.planExpiresAt, Date.now())) {
       return res.status(409).json({ error: 'Bạn đã đăng ký gói này hoặc gói cao hơn. Vui lòng chờ gói hiện tại hết hạn.' });
     }

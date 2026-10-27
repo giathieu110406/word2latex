@@ -14,7 +14,8 @@ import {
   TrendingUp,
   Layers,
   Compass,
-  FileSpreadsheet
+  FileSpreadsheet,
+  LayoutGrid
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SpotlightCard } from "./ui/SpotlightCard";
@@ -34,7 +35,7 @@ interface HeroStudioProps {
   onOpenCommandPalette?: () => void;
   isAdmin: boolean;
   isApproved: boolean;
-  currentMultiplier: number;
+  currentMultiplier?: number;
 }
 
 export const HeroStudio: React.FC<HeroStudioProps> = ({
@@ -47,10 +48,15 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
   isApproved,
   currentMultiplier
 }) => {
-  const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [activeDemoTab, setActiveDemoTab] = useState<"latex" | "exam" | "geometry" | "markitdown">("latex");
+
+  useEffect(() => {
+    if (isSearchOpen) {
+      setSelectedIndex(0);
+    }
+  }, [isSearchOpen]);
 
   const demoTabs = [
     { id: "latex", title: "LaTeX Converter", badge: "Word → LaTeX", icon: Sparkles, color: "text-indigo-600", activeBg: "bg-indigo-600" },
@@ -132,38 +138,47 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
     }
   ];
 
-  const filteredActions = quickActions.filter(a => 
-    a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    a.desc.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Xử lý bàn phím trong Modal điều hướng nhanh (Tab, Mũi tên lên/xuống, Enter, ESC)
+  useEffect(() => {
+    if (!isSearchOpen) return;
 
-  // Xử lý bàn phím trong Modal tìm kiếm (Tab, Mũi tên lên/xuống, Enter, ESC)
-  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      setIsSearchOpen(false);
-      return;
-    }
-
-    if (filteredActions.length === 0) return;
-
-    if (e.key === "Tab" || e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIndex(prev => (prev + 1 >= filteredActions.length ? 0 : prev + 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIndex(prev => (prev <= 0 ? filteredActions.length - 1 : prev - 1));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const target = selectedIndex >= 0 && selectedIndex < filteredActions.length
-        ? filteredActions[selectedIndex]
-        : filteredActions[0];
-      if (target) {
-        target.action();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
         setIsSearchOpen(false);
+        return;
       }
-    }
-  };
+
+      if (quickActions.length === 0) return;
+
+      if (e.key === "Tab") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          setSelectedIndex(prev => (prev <= 0 ? quickActions.length - 1 : prev - 1));
+        } else {
+          setSelectedIndex(prev => (prev + 1 >= quickActions.length ? 0 : prev + 1));
+        }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev + 1 >= quickActions.length ? 0 : prev + 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev <= 0 ? quickActions.length - 1 : prev - 1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const target = selectedIndex >= 0 && selectedIndex < quickActions.length
+          ? quickActions[selectedIndex]
+          : quickActions[0];
+        if (target) {
+          target.action();
+          setIsSearchOpen(false);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isSearchOpen, selectedIndex, quickActions]);
 
   return (
     <div className="flex-1 flex flex-col pb-0 select-none pt-0">
@@ -433,35 +448,29 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
           ===================================================================== */}
       <AnimatePresence>
         {isSearchOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsSearchOpen(false)}>
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
               className="relative w-full max-w-xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
             >
-              <div className="p-4 border-b border-slate-100 flex items-center gap-3">
-                <Search className="w-5 h-5 text-slate-400 shrink-0" />
-                <input
-                  type="text"
-                  autoFocus
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setSelectedIndex(-1);
-                  }}
-                  onKeyDown={handleSearchKeyDown}
-                  placeholder="Tìm kiếm công cụ hoặc tính năng..."
-                  className="w-full text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden"
-                />
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <LayoutGrid className="w-5 h-5 text-indigo-600 shrink-0" />
+                  <span className="text-sm font-bold text-slate-800 select-none truncate">
+                    Chọn công cụ hoặc tính năng...
+                  </span>
+                </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[11px] font-bold text-slate-400 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md hidden sm:inline-block">
+                  <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md hidden sm:inline-block">
                     Tab để chọn
                   </span>
                   <button
                     type="button"
                     onClick={() => setIsSearchOpen(false)}
-                    className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-1 bg-slate-100 rounded-lg cursor-pointer"
+                    className="text-xs font-bold text-slate-500 hover:text-slate-700 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer transition-colors"
                   >
                     ESC
                   </button>
@@ -469,49 +478,43 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
               </div>
 
               <div className="p-3 max-h-80 overflow-y-auto space-y-1">
-                {filteredActions.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-400">
-                    Không tìm thấy công cụ phù hợp với từ khóa "{searchQuery}"
-                  </div>
-                ) : (
-                  filteredActions.map((action, idx) => {
-                    const Icon = action.icon;
-                    const isSelected = selectedIndex === idx;
-                    return (
-                      <div
-                        key={action.id}
-                        onClick={() => {
-                          action.action();
-                          setIsSearchOpen(false);
-                        }}
-                        onMouseEnter={() => setSelectedIndex(idx)}
-                        className={"flex items-center justify-between p-3 rounded-2xl cursor-pointer group transition-all " +
-                          (isSelected ? "bg-indigo-50 border border-indigo-200/90 shadow-2xs" : "hover:bg-slate-50 border border-transparent")
-                        }
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={"w-9 h-9 rounded-xl flex items-center justify-center " + action.bgLight + " " + action.textColor + (isSelected ? " scale-105" : "")}>
-                            <Icon className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className={"text-xs font-black transition-colors " + (isSelected ? "text-indigo-700" : "text-slate-900 group-hover:text-indigo-700")}>
-                              {action.title}
-                            </div>
-                            <div className="text-[11px] text-slate-500">{action.desc}</div>
-                          </div>
+                {quickActions.map((action, idx) => {
+                  const Icon = action.icon;
+                  const isSelected = selectedIndex === idx;
+                  return (
+                    <div
+                      key={action.id}
+                      onClick={() => {
+                        action.action();
+                        setIsSearchOpen(false);
+                      }}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                      className={"flex items-center justify-between p-3 rounded-2xl cursor-pointer group transition-all " +
+                        (isSelected ? "bg-indigo-50 border border-indigo-200/90 shadow-2xs" : "hover:bg-slate-50 border border-transparent")
+                      }
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={"w-9 h-9 rounded-xl flex items-center justify-center " + action.bgLight + " " + action.textColor + (isSelected ? " scale-105" : "")}>
+                          <Icon className="w-4 h-4" />
                         </div>
-                        <div className="flex items-center gap-2">
-                          {isSelected && (
-                            <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-100/70 px-1.5 py-0.5 rounded border border-indigo-200 hidden sm:inline-block">
-                              Enter ↵
-                            </span>
-                          )}
-                          <ChevronRight className={"w-4 h-4 transition-transform " + (isSelected ? "text-indigo-600 translate-x-1" : "text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5")} />
+                        <div>
+                          <div className={"text-xs font-black transition-colors " + (isSelected ? "text-indigo-700" : "text-slate-900 group-hover:text-indigo-700")}>
+                            {action.title}
+                          </div>
+                          <div className="text-[11px] text-slate-500">{action.desc}</div>
                         </div>
                       </div>
-                    );
-                  })
-                )}
+                      <div className="flex items-center gap-2">
+                        {isSelected && (
+                          <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-100/70 px-1.5 py-0.5 rounded border border-indigo-200 hidden sm:inline-block">
+                            Enter ↵
+                          </span>
+                        )}
+                        <ChevronRight className={"w-4 h-4 transition-transform " + (isSelected ? "text-indigo-600 translate-x-1" : "text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5")} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
           </div>

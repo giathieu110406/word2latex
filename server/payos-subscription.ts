@@ -13,7 +13,7 @@ export async function findPaymentUser(db: Firestore, description: string) {
 }
 
 export async function activatePaidPlan(db: Firestore, uid: string, orderCode: number, amount: number, source: ActivitySource='web') {
-  const plan = (amount === 5000 || amount === 9000) ? 'trial' : amount === 12000 ? 'plus' : (amount === 19000 || amount === 29000) ? 'pro' : null;
+  const plan = (amount === 9000 || amount === 12000 || amount === 13000 || amount === 78000) ? 'plus' : (amount === 5000 || amount === 7000) ? 'trial' : (amount === 15000 || amount === 17000 || amount === 19000 || amount === 29000 || amount === 49000 || amount === 102000) ? 'pro' : null;
   if (!plan || !Number.isSafeInteger(orderCode)) throw new Error('Invalid paid order');
   const userRef = db.collection('users').doc(uid);
   const paymentRef = db.collection('payosPayments').doc(String(orderCode));
@@ -26,9 +26,13 @@ export async function activatePaidPlan(db: Firestore, uid: string, orderCode: nu
     const user = await transaction.get(userRef);
     if (!user.exists) throw new Error('Payment user not found');
     const now = Date.now();
+    const isAnnual = amount === 78000 || amount === 90000 || amount === 102000;
+    const durationDays = plan === 'trial' ? 12 : isAnnual ? 365 : 30; // TRIAL: 12 ngày, Tháng: 30 ngày, Năm: 365 ngày
     transaction.update(userRef, {
       planType: plan, pricingPlan: plan,
-      planExpiresAt: now + (plan === 'trial' ? 7 : 30) * 86400000,
+      hasUsedTrial: plan === 'trial' ? true : user.data()?.hasUsedTrial || false,
+      hasSubscribedPlus: (plan === 'plus' || user.data()?.hasSubscribedPlus) ? true : false,
+      planExpiresAt: now + durationDays * 86400000,
       updatedAt: new Date(now).toISOString(),
     });
     transaction.set(paymentRef, { uid, amount, plan, activatedAt: now });

@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search,
+  Compass,
   FileText,
   Pencil,
-  Compass,
   FileSpreadsheet,
   ChevronRight,
-  Sparkles,
   CreditCard,
-  Settings,
   MessageSquarePlus,
-  Bell
+  Bell,
+  LayoutGrid
 } from "lucide-react";
 
 export interface CommandPaletteModalProps {
@@ -31,8 +29,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onOpenFeedback,
   onOpenNotifications
 }) => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Danh sách công cụ & tính năng toàn hệ thống
   const quickActions = [
@@ -123,42 +120,50 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     }
   ];
 
-  const filteredActions = quickActions.filter(
-    (a) =>
-      a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.desc.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   useEffect(() => {
     if (isOpen) {
-      setSearchQuery("");
-      setSelectedIndex(-1);
+      setSelectedIndex(0);
     }
   }, [isOpen]);
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-      return;
-    }
+  // Điều hướng bằng bàn phím: Tab / ArrowDown / ArrowUp để chọn, Enter để mở, ESC để thoát
+  useEffect(() => {
+    if (!isOpen) return;
 
-    if (filteredActions.length === 0) return;
-
-    if (e.key === "Tab" || e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % filteredActions.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev <= 0 ? filteredActions.length - 1 : prev - 1));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
-      if (filteredActions[targetIndex]) {
-        filteredActions[targetIndex].action();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
       }
-    }
-  };
+
+      if (quickActions.length === 0) return;
+
+      if (e.key === "Tab") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          setSelectedIndex((prev) => (prev <= 0 ? quickActions.length - 1 : prev - 1));
+        } else {
+          setSelectedIndex((prev) => (prev + 1) % quickActions.length);
+        }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % quickActions.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev <= 0 ? quickActions.length - 1 : prev - 1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        const targetIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        if (quickActions[targetIndex]) {
+          quickActions[targetIndex].action();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isOpen, selectedIndex, quickActions, onClose]);
 
   return (
     <AnimatePresence>
@@ -175,28 +180,22 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             onClick={(e) => e.stopPropagation()}
             className="relative w-full max-w-xl bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
           >
-            <div className="p-4 border-b border-slate-100 flex items-center gap-3">
-              <Search className="w-5 h-5 text-slate-400 shrink-0" />
-              <input
-                type="text"
-                autoFocus
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setSelectedIndex(-1);
-                }}
-                onKeyDown={handleSearchKeyDown}
-                placeholder="Tìm kiếm công cụ hoặc tính năng... (toàn hệ thống)"
-                className="w-full text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-hidden"
-              />
+            {/* Header: Không nhập tìm kiếm, hiển thị danh mục chọn kèm phím tắt Tab & ESC */}
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <LayoutGrid className="w-5 h-5 text-indigo-600 shrink-0" />
+                <span className="text-sm font-bold text-slate-800 select-none truncate">
+                  Chọn công cụ hoặc tính năng... (toàn hệ thống)
+                </span>
+              </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[11px] font-bold text-slate-400 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md hidden sm:inline-block">
+                <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md hidden sm:inline-block">
                   Tab để chọn
                 </span>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-1 bg-slate-100 rounded-lg cursor-pointer"
+                  className="text-xs font-bold text-slate-500 hover:text-slate-700 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer transition-colors"
                 >
                   ESC
                 </button>
@@ -204,71 +203,65 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             </div>
 
             <div className="p-3 max-h-80 overflow-y-auto space-y-1">
-              {filteredActions.length === 0 ? (
-                <div className="p-6 text-center text-xs text-slate-400">
-                  Không tìm thấy công cụ phù hợp với từ khóa "{searchQuery}"
-                </div>
-              ) : (
-                filteredActions.map((action, idx) => {
-                  const Icon = action.icon;
-                  const isSelected = selectedIndex === idx;
-                  return (
-                    <div
-                      key={action.id}
-                      onClick={action.action}
-                      onMouseEnter={() => setSelectedIndex(idx)}
-                      className={
-                        "flex items-center justify-between p-3 rounded-2xl cursor-pointer group transition-all " +
-                        (isSelected
-                          ? "bg-indigo-50 border border-indigo-200/90 shadow-2xs"
-                          : "hover:bg-slate-50 border border-transparent")
-                      }
-                    >
-                      <div className="flex items-center gap-3">
+              {quickActions.map((action, idx) => {
+                const Icon = action.icon;
+                const isSelected = selectedIndex === idx;
+                return (
+                  <div
+                    key={action.id}
+                    onClick={action.action}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    className={
+                      "flex items-center justify-between p-3 rounded-2xl cursor-pointer group transition-all " +
+                      (isSelected
+                        ? "bg-indigo-50 border border-indigo-200/90 shadow-2xs"
+                        : "hover:bg-slate-50 border border-transparent")
+                    }
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={
+                          "w-9 h-9 rounded-xl flex items-center justify-center " +
+                          action.bgLight +
+                          " " +
+                          action.textColor +
+                          (isSelected ? " scale-105" : "")
+                        }
+                      >
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div>
                         <div
                           className={
-                            "w-9 h-9 rounded-xl flex items-center justify-center " +
-                            action.bgLight +
-                            " " +
-                            action.textColor +
-                            (isSelected ? " scale-105" : "")
+                            "text-xs font-black transition-colors " +
+                            (isSelected
+                              ? "text-indigo-700"
+                              : "text-slate-900 group-hover:text-indigo-700")
                           }
                         >
-                          <Icon className="w-4 h-4" />
+                          {action.title}
                         </div>
-                        <div>
-                          <div
-                            className={
-                              "text-xs font-black transition-colors " +
-                              (isSelected
-                                ? "text-indigo-700"
-                                : "text-slate-900 group-hover:text-indigo-700")
-                            }
-                          >
-                            {action.title}
-                          </div>
-                          <div className="text-[11px] text-slate-500">{action.desc}</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {isSelected && (
-                          <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-100/70 px-1.5 py-0.5 rounded border border-indigo-200 hidden sm:inline-block">
-                            Enter ↵
-                          </span>
-                        )}
-                        <ChevronRight
-                          className={
-                            "w-4 h-4 transition-transform " +
-                            (isSelected
-                              ? "text-indigo-600 translate-x-1"
-                              : "text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5")
-                          }
-                        />
+                        <div className="text-[11px] text-slate-500">{action.desc}</div>
                       </div>
                     </div>
-                  );
-                })
-              )}
+                    <div className="flex items-center gap-2">
+                      {isSelected && (
+                        <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-100/70 px-1.5 py-0.5 rounded border border-indigo-200 hidden sm:inline-block">
+                          Enter ↵
+                        </span>
+                      )}
+                      <ChevronRight
+                        className={
+                          "w-4 h-4 transition-transform " +
+                          (isSelected
+                            ? "text-indigo-600 translate-x-1"
+                            : "text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5")
+                        }
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </motion.div>
         </div>

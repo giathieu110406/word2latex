@@ -23,7 +23,7 @@ import { EmailVerificationGate } from "./components/EmailVerificationGate";
 import { MandatoryPhoneGate } from "./components/MandatoryPhoneGate";
 import { hasPhoneConfirmation, isEmailOtpVerified } from "./utils/email-verification";
 import { normalizeVietnamPhone } from "../shared/phone-confirmation";
-import { canRegisterPlan, getActivePlan, getUpgradeVisibility } from "../shared/subscription-policy";
+import { canRegisterPlan, getActivePlan, getUpgradeVisibility, getPlanLimits } from "../shared/subscription-policy";
 import { getAiUsageDay } from "../shared/ai-usage-policy";
 import { PhoneConfirmationHistory } from "./components/PhoneConfirmationHistory";
 import { DrawingWorkspace } from "./components/DrawingWorkspace";
@@ -125,8 +125,98 @@ function isAdminUser(user: any, userDoc: any): boolean {
   return checkIsOwnerEmail(user) || isAdminByRole(userDoc);
 }
 
+function AnimatedPriceCounter({ value }: { value: number }) {
+  const headTarget = Math.floor(value / 1000);
+  const [displayHead, setDisplayHead] = React.useState(headTarget);
+  React.useEffect(() => {
+    let start = displayHead;
+    const end = headTarget;
+    if (start === end) return;
+    const duration = 500;
+    const startTime = performance.now();
+    const update = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      const current = Math.round(start + (end - start) * ease);
+      setDisplayHead(current);
+      if (progress < 1) requestAnimationFrame(update);
+    };
+    const animId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(animId);
+  }, [headTarget]);
+  return <span>{displayHead}.000</span>;
+}
+
+class SafeModalBoundary extends React.Component<{ children: React.ReactNode; fallback?: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("SafeModalBoundary caught error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="p-6 text-center text-rose-600 bg-rose-50/70 rounded-2xl border border-rose-100 flex flex-col items-center gap-2">
+          <p className="font-bold text-sm">Không thể kết xuất thông tin thành viên này</p>
+          <p className="text-xs text-rose-500 font-mono max-w-xs break-words">{this.state.error?.message || "Lỗi dữ liệu cấu trúc không tương thích."}</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function getTodayStr(): string {
+
   return getAiUsageDay();
+}
+
+// --- CẤP ĐỘ 2: DEVICE-LEVEL QUOTA THROTTLE (Hạn mức cộng dồn theo thiết bị) ---
+function getDeviceDailyUsage(): { latexCount: number; promptCount: number; examCount: number } {
+  try {
+    const today = getTodayStr();
+    const raw = localStorage.getItem("device_daily_usage");
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data.date === today) {
+        return {
+          latexCount: Number(data.latexCount) || 0,
+          promptCount: Number(data.promptCount) || 0,
+          examCount: Number(data.examCount) || 0,
+        };
+      }
+    }
+  } catch (e) {}
+  return { latexCount: 0, promptCount: 0, examCount: 0 };
+}
+
+function incrementDeviceUsage(type: 'latex' | 'prompt' | 'exam') {
+  try {
+    const today = getTodayStr();
+    const current = getDeviceDailyUsage();
+    if (type === 'latex') current.latexCount++;
+    else if (type === 'prompt') current.promptCount++;
+    else if (type === 'exam') current.examCount++;
+
+    localStorage.setItem("device_daily_usage", JSON.stringify({
+      date: today,
+      ...current,
+    }));
+  } catch (e) {}
+}
+
+function checkDeviceFreeQuotaExceeded(type: 'latex' | 'prompt' | 'exam'): boolean {
+  const current = getDeviceDailyUsage();
+  if (type === 'latex' && current.latexCount >= 30) return true;
+  if (type === 'prompt' && current.promptCount >= 12) return true;
+  if (type === 'exam' && current.examCount >= 10) return true;
+  return false;
 }
 
 export default function App() {
@@ -169,17 +259,50 @@ export default function App() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
   const [isPaymentHistoryModalOpen, setIsPaymentHistoryModalOpen] = useState<boolean>(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuDropdownRef = useRef<HTMLDivElement>(null);
+  const [userMenuPosition, setUserMenuPosition] = useState<{ left: number; bottom: number; width?: number; isMobile: boolean }>({ left: 0, bottom: 0, isMobile: false });
 
   useEffect(() => {
+    if (!isUserMenuOpen) return;
+
+    const updatePosition = () => {
+      if (!userMenuRef.current) return;
+      const rect = userMenuRef.current.getBoundingClientRect();
+      const isMobile = window.innerWidth < 768;
+      if (isMobile) {
+        setUserMenuPosition({
+          left: rect.left,
+          bottom: window.innerHeight - rect.top + 8,
+          width: rect.width,
+          isMobile: true
+        });
+      } else {
+        setUserMenuPosition({
+          left: rect.right + 8,
+          bottom: Math.max(12, window.innerHeight - rect.bottom),
+          isMobile: false
+        });
+      }
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
     const handleClickOutside = (event: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        userMenuRef.current && !userMenuRef.current.contains(target) &&
+        userMenuDropdownRef.current && !userMenuDropdownRef.current.contains(target)
+      ) {
         setIsUserMenuOpen(false);
       }
     };
-    if (isUserMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
+
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isUserMenuOpen]);
@@ -242,6 +365,7 @@ export default function App() {
   const [editingUser, setEditingUser] = useState<any | null>(null);
 
   // -- PRICING STATE & MODALS --
+  const [pricingBillingCycle, setPricingBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [selectedPricingPlan, setSelectedPricingPlan] = useState<string | null>(null);
   const [paymentOrder, setPaymentOrder] = useState<{ id: string, amount: number, plan: string, bin?: string, accountNumber?: string, qrCode?: string, orderCode?: number } | null>(null);
 
@@ -262,7 +386,11 @@ export default function App() {
 
       const fetchPayOS = async () => {
         try {
-          const amounts: Record<string, number> = { trial: 9000, plus: 19000, pro: 29000 };
+                    const isAnnual = pricingBillingCycle === 'annual';
+          const amounts: Record<string, number> = {
+            plus: isAnnual ? 78000 : (!userDoc?.hasSubscribedPlus ? 9000 : 13000),
+            pro: isAnnual ? 90000 : 15000,
+          };
           const response = await authFetch("/api/payos-create", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -356,14 +484,15 @@ export default function App() {
   useEffect(() => {
     if (!userDoc || !user || isAdminUser(user, userDoc) || !hasPhoneConfirmation(userDoc)) return;
     const today = getTodayStr();
-    // Với gói Pro: latexCount và examCount là không giới hạn, chỉ kiểm tra promptCount (tối đa 15 * 4 = 60 lượt)
+    const limits = getPlanLimits(activePlan);
     const reached = userDoc.lastLatexResetDate === today
-      ? (activePlan === 'pro'
-          ? (Number(userDoc.promptCount || 0) >= 15 * currentMultiplier ? [`${user.uid}:${today}:${activePlan}:promptCount`] : [])
-          : (['latexCount', 'examCount', 'promptCount'] as const)
-              .filter((field, index) => Number(userDoc[field] || 0) >= [30, 10, 15][index] * currentMultiplier)
-              .map(field => `${user.uid}:${today}:${activePlan}:${field}`)
-        )
+      ? (['latexCount', 'examCount', 'promptCount'] as const)
+          .filter((field) => {
+            const limitKey = field === 'promptCount' ? 'ai' : field === 'latexCount' ? 'latex' : 'exam';
+            const limitVal = limits[limitKey];
+            return limitVal !== Infinity && Number(userDoc[field] || 0) >= limitVal;
+          })
+          .map(field => `${user.uid}:${today}:${activePlan}:${field}`)
       : [];
     if (reached.some(key => !reachedLimits.current.includes(key))) setSidebarView('pricing');
     reachedLimits.current = reached;
@@ -605,12 +734,30 @@ export default function App() {
         return updated;
       });
 
+      const maxCountdown = isAdminUser(user, userDoc)
+        ? 0
+        : unpopped.reduce((max, n) => {
+            const cd = Number(n.countdownSeconds) || (n.type === 'warning' ? 10 : 0);
+            return Math.max(max, cd);
+          }, 0);
+
       setIsNotificationsOpen(true);
-      setNoticeCountdown(0);
+      setNoticeCountdown(maxCountdown);
     }
   }, [visibleNotifications, user, poppedNoticeIds]);
 
   const handleCloseNotifications = () => {
+    const hasPendingMandatoryPoll = visibleNotifications.some(isNotificationMandatoryPending);
+    const cannotClose = !isAdminUser(user, userDoc) && (noticeCountdown > 0 || hasPendingMandatoryPoll);
+    if (cannotClose) {
+      if (hasPendingMandatoryPoll) {
+        triggerToast("⚠️ Bạn cần hoàn thành bình chọn / đóng góp ý kiến bắt buộc trước khi đóng thông báo!", false);
+      } else if (noticeCountdown > 0) {
+        triggerToast(`⚠️ Vui lòng đọc thông báo trong ${noticeCountdown} giây nữa trước khi đóng.`, false);
+      }
+      return;
+    }
+
     setIsNotificationsOpen(false);
     setNoticeCountdown(0);
     if (user && visibleNotifications.length > 0) {
@@ -2587,6 +2734,14 @@ export default function App() {
 
   const incrementLatexCount = async () => {
     logApiUsage("Chuyển đổi LaTeX");
+    if (activePlan === 'free') {
+      if (checkDeviceFreeQuotaExceeded('latex')) {
+        triggerToast("Thiết bị này đã sử dụng hết hạn mức LaTeX miễn phí hôm nay (30 lượt). Vui lòng nâng cấp gói để tiếp tục!", false);
+        setSidebarView('pricing');
+        return;
+      }
+      incrementDeviceUsage('latex');
+    }
     if (user && userDoc) {
       try {
         const todayStr = getTodayStr();
@@ -2610,6 +2765,14 @@ export default function App() {
 
   const incrementExamCount = async () => {
     logApiUsage("Áp dụng đề thi");
+    if (activePlan === 'free') {
+      if (checkDeviceFreeQuotaExceeded('exam')) {
+        triggerToast("Thiết bị này đã sử dụng hết hạn mức Soạn đề thi miễn phí hôm nay (10 đề). Vui lòng nâng cấp gói để tiếp tục!", false);
+        setSidebarView('pricing');
+        return;
+      }
+      incrementDeviceUsage('exam');
+    }
     if (user && userDoc) {
       try {
         const todayStr = getTodayStr();
@@ -2633,6 +2796,14 @@ export default function App() {
 
   const incrementPromptCount = async () => {
     logApiUsage("Áp dụng tinh chỉnh AI");
+    if (activePlan === 'free') {
+      if (checkDeviceFreeQuotaExceeded('prompt')) {
+        triggerToast("Thiết bị này đã sử dụng hết hạn mức AI miễn phí hôm nay (12 lượt). Vui lòng nâng cấp gói để tiếp tục!", false);
+        setSidebarView('pricing');
+        return;
+      }
+      incrementDeviceUsage('prompt');
+    }
     if (user && userDoc) {
       try {
         const todayStr = getTodayStr();
@@ -2654,8 +2825,15 @@ export default function App() {
     }
   };
 
-  const handleMarkItDownUsage = async () => {
-
+  const handleMarkItDownUsage = async (isAi?: boolean) => {
+    if (activePlan === 'free') {
+      if (checkDeviceFreeQuotaExceeded('prompt')) {
+        triggerToast("Thiết bị này đã sử dụng hết hạn mức AI miễn phí hôm nay. Vui lòng nâng cấp gói để tiếp tục!", false);
+        setSidebarView('pricing');
+        return;
+      }
+      incrementDeviceUsage('prompt');
+    }
     if (user && userDoc) {
       try {
         const todayStr = getTodayStr();
@@ -4204,7 +4382,7 @@ ${bodyHtml}
   // Determine user constraints
   const isOwner = checkIsOwnerEmail(user);
   const isApproved = isOwner || userDoc?.status === "approved";
-  const isRejected = !isApproved && userDoc?.status === "rejected";
+  const isRejected = !isApproved && (userDoc?.status === "rejected" || userDoc?.status === "suspended");
   const isEmailVerified = Boolean(
     isEmailOtpVerified(userDoc) ||
     userDoc?.emailOtpVerifiedAt ||
@@ -4259,14 +4437,12 @@ ${bodyHtml}
             <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-500"></div>
 
             <h2 className="text-2xl font-bold tracking-tight text-white mb-2 font-display">
-              Tài Khoản Bị Từ Chối
+              {userDoc?.status === "suspended" ? "Tài Khoản Bị Tạm Khóa" : "Tài Khoản Bị Từ Chối"}
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed mb-6">
-              Yêu cầu truy cập hệ thống của bạn đã bị người quản trị từ chối. Vui
-              lòng liên hệ Admin qua email{" "}
-              <strong className="text-blue-400">giathieu110406@gmail.com</strong>{" "}
-              hoặc Zalo <strong className="text-blue-400">0335.784.563</strong>{" "}
-              để biết thêm chi tiết.
+              {userDoc?.status === "suspended"
+                ? "Hệ thống phát hiện tài khoản của bạn đang có dấu hiệu đăng nhập nhiều tài khoản trên cùng một thiết bị để lạm dụng hạn mức. Vui lòng liên hệ Admin qua email giathieu110406@gmail.com hoặc Zalo 0335.784.563 để được hỗ trợ mở khóa."
+                : "Yêu cầu truy cập hệ thống của bạn đã bị người quản trị từ chối. Vui lòng liên hệ Admin qua email giathieu110406@gmail.com hoặc Zalo 0335.784.563 để biết thêm chi tiết."}
             </p>
 
             <button
@@ -4470,10 +4646,18 @@ ${bodyHtml}
           )}
           {/* User Profile Widget at the bottom - Tối ưu nhỏ gọn ôm sát viền bo cong */}
           <div className="p-1.5 sm:p-2 border-t border-slate-100 bg-white/95 backdrop-blur-md relative shrink-0 mt-auto" ref={userMenuRef}>
-            {/* Popover Dropdown (Flyout outside sidebar on desktop, upwards on mobile) */}
-            {isUserMenuOpen && (
+            {/* Popover Dropdown (Flyout outside sidebar via React Portal to avoid overflow-hidden clipping) */}
+            {isUserMenuOpen && createPortal(
               <div 
-                className="absolute md:left-[calc(100%+8px)] md:bottom-2 bottom-full left-1.5 right-1.5 md:right-auto md:w-64 mb-1.5 md:mb-0 bg-white/95 rounded-2xl shadow-2xl border border-slate-200/90 p-1.5 z-[80] flex flex-col gap-0.5 backdrop-blur-md max-h-[70dvh] overflow-y-auto"
+                ref={userMenuDropdownRef}
+                style={{
+                  position: "fixed",
+                  left: `${userMenuPosition.left}px`,
+                  bottom: `${userMenuPosition.bottom}px`,
+                  width: userMenuPosition.isMobile ? `${userMenuPosition.width}px` : "16rem",
+                  zIndex: 9999,
+                }}
+                className="bg-white/95 rounded-2xl shadow-2xl border border-slate-200/90 p-1.5 flex flex-col gap-0.5 backdrop-blur-md max-h-[70dvh] overflow-y-auto"
               >
                 {/* User Header */}
                 <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50/90 mb-0.5">
@@ -4616,7 +4800,8 @@ ${bodyHtml}
                     <span className="truncate">Đăng nhập với Google</span>
                   </button>
                 )}
-              </div>
+              </div>,
+              document.body
             )}
 
             {/* User Profile trigger button - Nhỏ gọn ôm sát viền bo cong */}
@@ -5116,11 +5301,14 @@ ${bodyHtml}
                                 <td className="py-4 px-6">
                                   {(() => {
                                     const usage = getUserTodayUsage(u);
+                                    const activePlan = getActivePlan(u.planType, u.planExpiresAt);
+                                    const limits = getPlanLimits(activePlan);
+                                    const formatLimit = (val: number) => val === Infinity ? '∞' : val;
                                     return (
                                       <div className="flex flex-col gap-1 text-[11px] text-slate-500 font-medium">
-                                        <div>LaTeX: <span className="text-[#1E2432] font-bold">{usage.latex}</span>/{u.planType === 'pro' ? '∞' : u.planType === 'plus' || u.planType === 'trial' ? 60 : 30}</div>
-                                        <div>AI: <span className="text-[#1E2432] font-bold">{usage.prompt}</span>/{u.planType === 'pro' ? 60 : u.planType === 'plus' || u.planType === 'trial' ? 30 : 15}</div>
-                                        <div>Đề thi: <span className="text-[#1E2432] font-bold">{usage.exam}</span>/{u.planType === 'pro' ? '∞' : u.planType === 'plus' || u.planType === 'trial' ? 20 : 10}</div>
+                                        <div>LaTeX: <span className="text-[#1E2432] font-bold">{usage.latex}</span>/{formatLimit(limits.latex)}</div>
+                                        <div>AI: <span className="text-[#1E2432] font-bold">{usage.prompt}</span>/{formatLimit(limits.ai)}</div>
+                                        <div>Đề thi: <span className="text-[#1E2432] font-bold">{usage.exam}</span>/{formatLimit(limits.exam)}</div>
                                       </div>
                                     );
                                   })()}
@@ -5277,97 +5465,115 @@ ${bodyHtml}
                           >
                             <button
                               onClick={() => setShowUserDetailsModal(false)}
-                              className="absolute top-4 right-4 w-7 h-7 rounded-full flex items-center justify-center bg-slate-100/80 text-slate-500 hover:bg-rose-50 hover:text-rose-500 transition-colors"
+                              className="absolute top-4 right-4 w-7 h-7 rounded-full flex items-center justify-center bg-slate-100/80 text-slate-500 hover:bg-rose-50 hover:text-rose-500 transition-colors z-10"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
 
-                            <div className="flex flex-col items-center text-center">
-                              <div className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden font-bold text-xl shadow-sm mb-3 bg-indigo-50 text-indigo-600 ring-2 ring-indigo-50">
-                                {selectedUserDetails.photoURL ? (
-                                  <img referrerPolicy="no-referrer" src={selectedUserDetails.photoURL} alt={selectedUserDetails.displayName} className="w-full h-full object-cover" />
-                                ) : (
-                                  <span>{(selectedUserDetails.displayName || selectedUserDetails.email || 'U').charAt(0).toUpperCase()}</span>
-                                )}
-                              </div>
-                              <h3 className="text-lg font-extrabold text-[#1E2432] font-sans leading-tight">{selectedUserDetails.displayName || "Thành viên"}</h3>
-                              <div className="text-[13px] font-medium text-slate-500 mt-0.5">{selectedUserDetails.email || "Không có email"}</div>
+                            <SafeModalBoundary key={selectedUserDetails?.uid}>
+                              <div className="flex flex-col items-center text-center">
+                                <div className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden font-bold text-xl shadow-sm mb-3 bg-indigo-50 text-indigo-600 ring-2 ring-indigo-50">
+                                  {selectedUserDetails.photoURL ? (
+                                    <img referrerPolicy="no-referrer" src={selectedUserDetails.photoURL} alt={selectedUserDetails.displayName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span>{(selectedUserDetails.displayName || selectedUserDetails.email || 'U').charAt(0).toUpperCase()}</span>
+                                  )}
+                                </div>
+                                <h3 className="text-lg font-extrabold text-[#1E2432] font-sans leading-tight">{selectedUserDetails.displayName || "Thành viên"}</h3>
+                                <div className="text-[13px] font-medium text-slate-500 mt-0.5">{selectedUserDetails.email || "Không có email"}</div>
 
-                              <div className="flex items-center gap-1.5 mt-3">
-                                {selectedUserDetails.status === "approved" ? (
-                                  <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E6F9EE] text-[#10B981] border border-emerald-100">
-                                    Đang hoạt động
+                                <div className="flex items-center gap-1.5 mt-3">
+                                  {selectedUserDetails.status === "approved" ? (
+                                    <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E6F9EE] text-[#10B981] border border-emerald-100">
+                                      Đang hoạt động
+                                    </span>
+                                  ) : selectedUserDetails.status === "pending" ? (
+                                    <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFFBEB] text-[#F59E0B] border border-amber-100">
+                                      Chờ duyệt
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFF1F2] text-[#F43F5E] border border-rose-100">
+                                      Bị khóa
+                                    </span>
+                                  )}
+                                  <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                                    {selectedUserDetails.role === "admin" ? "ADMIN" : "USER"}
                                   </span>
-                                ) : selectedUserDetails.status === "pending" ? (
-                                  <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFFBEB] text-[#F59E0B] border border-amber-100">
-                                    Chờ duyệt
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFF1F2] text-[#F43F5E] border border-rose-100">
-                                    Bị khóa
-                                  </span>
-                                )}
-                                <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
-                                  {selectedUserDetails.role === "admin" ? "ADMIN" : "USER"}
-                                </span>
+                                </div>
                               </div>
-                            </div>
 
-                            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 flex flex-col gap-2.5 mt-1">
-                              <div className="flex flex-col gap-1.5 w-full">
+                              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 flex flex-col gap-2.5 mt-1">
+                                <div className="flex flex-col gap-1.5 w-full">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Điện thoại</span>
+                                    <span className="text-[13px] font-semibold text-slate-800">
+                                      {(() => {
+                                        const p = selectedUserDetails.confirmedPhoneNumber || selectedUserDetails.phoneNumber || selectedUserDetails.providerData?.[0]?.phoneNumber;
+                                        if (!p) return "Chưa cập nhật";
+                                        if (typeof p === "string") return p;
+                                        if (typeof p === "object" && p.phone) return String(p.phone);
+                                        return String(p);
+                                      })()}
+                                    </span>
+                                  </div>
+                                  {Array.isArray(selectedUserDetails.phoneHistory) && selectedUserDetails.phoneHistory.length > 0 && (
+                                    <div className="flex flex-col gap-1.5 mt-0.5 pt-1.5 border-t border-slate-200/50">
+                                      <span className="text-[10px] text-slate-500 font-medium">Lịch sử khai báo số điện thoại:</span>
+                                      {selectedUserDetails.phoneHistory.map((item: any, idx: number) => {
+                                        const phoneText = typeof item === 'string' ? item : (item?.phone ? String(item.phone) : '');
+                                        if (!phoneText) return null;
+                                        const recordedDate = item?.recordedAt ? new Date(item.recordedAt).toLocaleDateString("vi-VN") : null;
+                                        const isCurrent = item?.type === 'current';
+                                        return (
+                                          <div key={idx} className="flex justify-between items-center bg-white/70 px-2 py-1 rounded-md border border-slate-100">
+                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                              {isCurrent ? 'Hiện tại' : 'Lịch sử'}{recordedDate ? ` (${recordedDate})` : ''}
+                                            </span>
+                                            <span className={`text-[11px] font-medium ${isCurrent ? 'text-indigo-600 font-bold' : 'text-slate-600'}`}>{phoneText}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="h-px w-full bg-slate-200/60"></div>
                                 <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Điện thoại</span>
-                                  <span className="text-[13px] font-semibold text-slate-800">{selectedUserDetails.confirmedPhoneNumber || selectedUserDetails.phoneNumber || selectedUserDetails.providerData?.[0]?.phoneNumber || "Chưa cập nhật"}</span>
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tham gia</span>
+                                  <span className="text-[13px] font-semibold text-slate-800">
+                                    {selectedUserDetails.createdAt ? new Date(selectedUserDetails.createdAt).toLocaleDateString("vi-VN") : "Không rõ"}
+                                  </span>
                                 </div>
-                                {Array.isArray(selectedUserDetails.phoneHistory) && selectedUserDetails.phoneHistory.length > 0 && (
-                                  <div className="flex flex-col gap-1 mt-0.5 pt-1.5 border-t border-slate-200/50">
-                                    <span className="text-[10px] text-slate-500">Lịch sử khai báo cũ (chưa có bằng chứng OTP):</span>
-                                    {selectedUserDetails.phoneHistory.map((oldPhone: string, idx: number) => (
-                                      <div key={idx} className="flex justify-between items-center opacity-70">
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Lịch sử</span>
-                                        <span className="text-[11px] font-medium text-slate-500">{oldPhone}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
+                                <div className="h-px w-full bg-slate-200/60"></div>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Mã UID</span>
+                                  <span className="text-[11px] font-mono text-slate-500 truncate">{selectedUserDetails.uid}</span>
+                                </div>
                               </div>
-                              <div className="h-px w-full bg-slate-200/60"></div>
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tham gia</span>
-                                <span className="text-[13px] font-semibold text-slate-800">
-                                  {selectedUserDetails.createdAt ? new Date(selectedUserDetails.createdAt).toLocaleDateString("vi-VN") : "Không rõ"}
-                                </span>
-                              </div>
-                              <div className="h-px w-full bg-slate-200/60"></div>
-                              <div className="flex items-center justify-between gap-4">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Mã UID</span>
-                                <span className="text-[11px] font-mono text-slate-500 truncate">{selectedUserDetails.uid}</span>
-                              </div>
-                            </div>
 
-                            <PhoneConfirmationHistory uid={selectedUserDetails.uid} />
-                            {(() => {
-                              const isToday = selectedUserDetails.lastLatexResetDate === todayStr;
-                              const l = isToday ? (selectedUserDetails.latexCount || 0) : 0;
-                              const e = isToday ? (selectedUserDetails.examCount || 0) : 0;
-                              const p = isToday ? (selectedUserDetails.promptCount || 0) : 0;
-                              return (
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">LaTeX (Hôm nay)</span>
-                                    <span className="text-lg font-black text-slate-800">{l}</span>
+                              <PhoneConfirmationHistory uid={selectedUserDetails.uid} />
+                              {(() => {
+                                const isToday = selectedUserDetails.lastLatexResetDate === todayStr;
+                                const l = isToday ? (selectedUserDetails.latexCount || 0) : 0;
+                                const e = isToday ? (selectedUserDetails.examCount || 0) : 0;
+                                const p = isToday ? (selectedUserDetails.promptCount || 0) : 0;
+                                return (
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">LaTeX (Hôm nay)</span>
+                                      <span className="text-lg font-black text-slate-800">{l}</span>
+                                    </div>
+                                    <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Đề thi (Hôm nay)</span>
+                                      <span className="text-lg font-black text-slate-800">{e}</span>
+                                    </div>
+                                    <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
+                                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dàn AI (Hôm nay)</span>
+                                      <span className="text-lg font-black text-slate-800">{p}</span>
+                                    </div>
                                   </div>
-                                  <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Đề thi (Hôm nay)</span>
-                                    <span className="text-lg font-black text-slate-800">{e}</span>
-                                  </div>
-                                  <div className="bg-white border border-slate-100 shadow-sm rounded-lg p-2.5 flex flex-col items-center justify-center text-center">
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dàn AI (Hôm nay)</span>
-                                    <span className="text-lg font-black text-slate-800">{p}</span>
-                                  </div>
-                                </div>
-                              );
-                            })()}
+                                );
+                              })()}
+                            </SafeModalBoundary>
                           </motion.div>
                         </div>
                       )}
@@ -5563,56 +5769,62 @@ ${bodyHtml}
 
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức sử dụng (Lượt đã dùng)</span>
 
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="flex flex-col gap-1.5">
-                                  <label className="text-xs font-bold text-[#1E2432]">LaTeX (Tối đa 30)</label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={30}
-                                    value={editingUser.latexCount !== undefined ? editingUser.latexCount : 0}
-                                    onChange={(e) => setEditingUser({ ...editingUser, latexCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                                    className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                  />
-                                </div>
+                            {(() => {
+                              const editingActivePlan = getActivePlan(editingUser.planType, editingUser.planExpiresAt);
+                              const editingLimits = getPlanLimits(editingActivePlan);
+                              const formatLimit = (val: number) => val === Infinity ? 'Không giới hạn' : val;
+                              return (
+                                <>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="flex flex-col gap-1.5">
+                                      <label className="text-xs font-bold text-[#1E2432]">LaTeX (Tối đa {formatLimit(editingLimits.latex)})</label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={editingUser.latexCount !== undefined ? editingUser.latexCount : 0}
+                                        onChange={(e) => setEditingUser({ ...editingUser, latexCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
+                                      />
+                                    </div>
 
-                                <div className="flex flex-col gap-1.5">
-                                  <label className="text-xs font-bold text-[#1E2432]">Đề thi (Tối đa 10)</label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={10}
-                                    value={editingUser.examCount !== undefined ? editingUser.examCount : 0}
-                                    onChange={(e) => setEditingUser({ ...editingUser, examCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                                    className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                  />
-                                </div>
-                              </div>
+                                    <div className="flex flex-col gap-1.5">
+                                      <label className="text-xs font-bold text-[#1E2432]">Đề thi (Tối đa {formatLimit(editingLimits.exam)})</label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={editingUser.examCount !== undefined ? editingUser.examCount : 0}
+                                        onChange={(e) => setEditingUser({ ...editingUser, examCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
+                                      />
+                                    </div>
+                                  </div>
 
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="flex flex-col gap-1.5">
-                                  <label className="text-xs font-bold text-[#1E2432]">Dàn AI (Tối đa 13)</label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={13}
-                                    value={editingUser.promptCount !== undefined ? editingUser.promptCount : 0}
-                                    onChange={(e) => setEditingUser({ ...editingUser, promptCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                                    className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                  />
-                                </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="flex flex-col gap-1.5">
+                                      <label className="text-xs font-bold text-[#1E2432]">AI / Dán thông minh (Tối đa {formatLimit(editingLimits.ai)})</label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={editingUser.promptCount !== undefined ? editingUser.promptCount : 0}
+                                        onChange={(e) => setEditingUser({ ...editingUser, promptCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
+                                      />
+                                    </div>
 
-                                <div className="flex flex-col gap-1.5">
-                                  <label className="text-xs font-bold text-[#1E2432]">Tổng yêu cầu</label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={editingUser.queryCount !== undefined ? editingUser.queryCount : 0}
-                                    onChange={(e) => setEditingUser({ ...editingUser, queryCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                                    className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                  />
-                                </div>
-                              </div>
+                                    <div className="flex flex-col gap-1.5">
+                                      <label className="text-xs font-bold text-[#1E2432]">Tổng yêu cầu</label>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={editingUser.queryCount !== undefined ? editingUser.queryCount : 0}
+                                        onChange={(e) => setEditingUser({ ...editingUser, queryCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
+                                      />
+                                    </div>
+                                  </div>
+                                </>
+                              );
+                            })()}
                             </div>
                           </div>
 
@@ -6368,15 +6580,20 @@ ${bodyHtml}
             )}
             {/* Sub-tab 4: Tracking & Warnings */}
             {sidebarView === "tracking" && (() => {
+              // Helper kiểm tra xem một tài khoản đã được bỏ qua ở đợt vi phạm hiện tại hay chưa.
+              // Nếu người dùng có lượt đăng nhập mới (lastLoginAt > dismissedAlertAt), coi như tái phạm và không bỏ qua.
+              const isUserDismissed = (u: any): boolean => {
+                if (!u.dismissedAlertAt) return false;
+                if (!u.lastLoginAt) return true;
+                return new Date(u.lastLoginAt).getTime() <= new Date(u.dismissedAlertAt).getTime();
+              };
+
               // 1. Group users by Device Fingerprint
               const deviceFingerprintGroups = new Map<string, any[]>();
               // 2. Group users by lastIp
               const ipGroups = new Map<string, any[]>();
 
               allUsers.forEach(u => {
-                // Skip if dismissedAlert is true (user explicitly dismissed)
-                if (u.dismissedAlert) return;
-
                 if (u.deviceFingerprint) {
                   if (!deviceFingerprintGroups.has(u.deviceFingerprint)) {
                     deviceFingerprintGroups.set(u.deviceFingerprint, []);
@@ -6393,11 +6610,10 @@ ${bodyHtml}
 
               // NÂNG CẤP HỆ THỐNG:
               // Chỉ coi là trùng khớp thiết bị thực tế nếu vân tay thiết bị có định dạng hiện đại (chứa "dev_")
-              // Các dấu vân tay kiểu cũ (legacy) thiếu mã ngẫu nhiên, dẫn đến tỉ lệ báo động nhầm (false positive) cực kỳ cao
-              // khi nhiều người dùng sử dụng cùng phiên bản trình duyệt và độ phân giải màn hình.
+              // Và nhóm có từ 2 tài khoản trở lên chưa duyệt / phi admin, trong đó có ít nhất 1 tài khoản tái phạm / mới (chưa bỏ qua đợt này)
               const flaggedDeviceGroups = Array.from(deviceFingerprintGroups.entries())
                 .map(([fp, group]) => [fp, group.filter(u => u.role !== "admin" && u.status !== "approved")] as [string, any[]])
-                .filter(([fp, group]) => group.length > 1 && fp.includes("dev_"));
+                .filter(([fp, group]) => group.length > 1 && fp.includes("dev_") && group.some(u => !isUserDismissed(u)));
 
               const flaggedIpGroups = Array.from(ipGroups.entries())
                 .map(([ip, group]) => {
@@ -6411,7 +6627,7 @@ ${bodyHtml}
 
                   return [ip, filteredGroup] as [string, any[]];
                 })
-                .filter(([ip, group]) => group.length > 1);
+                .filter(([ip, group]) => group.length > 1 && group.some(u => !isUserDismissed(u)));
 
               const totalAlerts = flaggedDeviceGroups.length + flaggedIpGroups.length;
 
@@ -6426,31 +6642,111 @@ ${bodyHtml}
                 }
               });
 
-              const handleDismissGroup = async (groupUsers: any[]) => {
+              // CẤP ĐỘ 1: Gửi thông báo nhắc nhở nhẹ nhàng tới từng tài khoản
+              const handleSendSecurityWarning = async (groupUsers: any[], groupType: "device" | "ip") => {
                 try {
-                  const promises = groupUsers.map(u => 
-                    updateDoc(doc(db, "users", u.uid), { dismissedAlert: true })
+                  const nowIso = new Date().toISOString();
+                  const targets = groupUsers.filter(u => u.role !== "admin");
+                  if (targets.length === 0) return;
+
+                  const notifContent = "Chào bạn, cảm ơn bạn vì đã tin tưởng sử dụng web. Chúng mình đang ghi nhận bạn đang đăng nhập nhiều tài khoản để sử dụng. Phải chăng hạn mức miễn phí không đủ với bạn à? Để đảm bảo tốc độ xử lý AI và tài nguyên ổn định cho bạn cùng cộng đồng, bạn hãy chọn duy trì một tài khoản thôi nhé.";
+
+                  const promises = targets.map(async (u) => {
+                    await addDoc(collection(db, "notifications"), {
+                      targetUid: u.uid,
+                      title: "Thư nhắc nhở",
+                      content: notifContent,
+                      type: "warning",
+                      sender: "Ban Quản Trị",
+                      createdAt: nowIso,
+                      hasPoll: false,
+                      requireResponse: false,
+                      countdownSeconds: 10,
+                    });
+
+                    await updateDoc(doc(db, "users", u.uid), {
+                      deviceWarningSentAt: nowIso,
+                      hasDeviceWarning: true
+                    }).catch(() => {});
+                  });
+
+                  await Promise.all(promises);
+                  triggerToast(`Đã dispatch thông báo nhắc nhở tới ${targets.length} tài khoản trong nhóm!`, true);
+                } catch (error) {
+                  console.error("Lỗi khi gửi cảnh báo:", error);
+                  triggerToast("Gửi thông báo cảnh báo thất bại.", false);
+                }
+              };
+
+              // CẤP ĐỘ 3: Khóa các tài khoản clone Free, bảo vệ an toàn cho tài khoản PRO/PLUS
+              const handleSuspendCloneAccounts = async (groupUsers: any[]) => {
+                try {
+                  const paidUsers = groupUsers.filter(u => u.planType === 'pro' || u.planType === 'plus' || u.role === 'admin');
+                  const cloneUsers = groupUsers.filter(u => u.role !== 'admin' && u.planType !== 'pro' && u.planType !== 'plus');
+
+                  if (cloneUsers.length === 0) {
+                    triggerToast("Không có tài khoản Free phụ nào trong nhóm này để khóa.", false);
+                    return;
+                  }
+
+                  const paidEmails = paidUsers.length > 0 ? paidUsers.map(p => p.email).join(', ') : 'Không có';
+                  if (!window.confirm(`Xác nhận khóa ${cloneUsers.length} tài khoản Free phụ trên thiết bị này?\n\n- Tài khoản trả phí được bảo vệ: ${paidEmails}\n- Các tài khoản clone bị khóa: ${cloneUsers.map(c => c.email).join(', ')}`)) {
+                    return;
+                  }
+
+                  const nowIso = new Date().toISOString();
+                  const promises = cloneUsers.map(u => 
+                    updateDoc(doc(db, "users", u.uid), {
+                      status: "suspended",
+                      suspendedAt: nowIso,
+                      suspendedReason: "Dùng nhiều tài khoản trên một thiết bị"
+                    })
                   );
                   await Promise.all(promises);
+                  triggerToast(`Đã khóa ${cloneUsers.length} tài khoản clone Free! Bảo vệ an toàn ${paidUsers.length} tài khoản trả phí.`, true);
+                } catch (error) {
+                  console.error("Lỗi khi khóa clone phụ:", error);
+                  triggerToast("Có lỗi khi khóa tài khoản phụ.", false);
+                }
+              };
+
+              const handleDismissGroup = async (groupUsers: any[]) => {
+                try {
+                  const nowIso = new Date().toISOString();
+                  const promises = groupUsers.map(u => 
+                    updateDoc(doc(db, "users", u.uid), { 
+                      dismissedAlertAt: nowIso,
+                      dismissedAlert: false 
+                    })
+                  );
+                  await Promise.all(promises);
+                  triggerToast("Đã bỏ qua cảnh báo đợt này cho nhóm.", true);
                 } catch (error) {
                   console.error("Lỗi khi bỏ qua cảnh báo nhóm:", error);
+                  triggerToast("Có lỗi khi bỏ qua cảnh báo.", false);
                 }
               };
 
               const handleDismissAll = async () => {
                 setDismissingAll(true);
                 try {
+                  const nowIso = new Date().toISOString();
                   const usersToDismiss = [
                     ...flaggedDeviceGroups.flatMap(([_, group]) => group),
                     ...flaggedIpGroups.flatMap(([_, group]) => group)
                   ];
 
                   const promises = usersToDismiss.map(u => 
-                    updateDoc(doc(db, "users", u.uid), { dismissedAlert: true })
+                    updateDoc(doc(db, "users", u.uid), { 
+                      dismissedAlertAt: nowIso,
+                      dismissedAlert: false 
+                    })
                   );
                   await Promise.all(promises);
+                  triggerToast("Đã bỏ qua tất cả cảnh báo hiện tại.", true);
                 } catch (error) {
                   console.error("Lỗi khi bỏ qua tất cả cảnh báo:", error);
+                  triggerToast("Có lỗi khi bỏ qua cảnh báo.", false);
                 } finally {
                   setDismissingAll(false);
                 }
@@ -6520,7 +6816,8 @@ ${bodyHtml}
                                   <span className="text-xs font-bold text-rose-950 uppercase">Cảnh báo: Trùng dấu vân tay thiết bị</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <span className="text-[9px] font-mono text-rose-700 bg-rose-100/60 px-2 py-0.5 rounded-full font-bold">Fingerprint ID: {fp.substring(0, 16)}...</span>
+                                  <button onClick={() => handleSendSecurityWarning(group, 'device')} className="text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95" title="Gửi thông báo nhắc nhở nhẹ nhàng vào popup của người dùng"><Bell className="w-3 h-3" /><span>Cảnh báo</span></button>
+                                  <button onClick={() => handleSuspendCloneAccounts(group)} className="text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95" title="Khóa các tài khoản clone Free phụ, bảo vệ tài khoản PRO/PLUS"><Lock className="w-3 h-3" /><span>Khóa clone</span></button>
                                   <button
                                     onClick={() => handleDismissGroup(group)}
                                     className="text-[10px] font-bold bg-rose-600/10 hover:bg-rose-600/20 text-rose-700 px-2.5 py-1 rounded-xl transition-all cursor-pointer"
@@ -6578,7 +6875,8 @@ ${bodyHtml}
                                   <span className="text-xs font-bold text-amber-950 uppercase">Ghi nhận: Truy cập chung mạng IP</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-mono text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full font-bold">IP: {ip}</span>
+                                  <button onClick={() => handleSendSecurityWarning(group, 'ip')} className="text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95" title="Gửi thông báo nhắc nhở nhẹ nhàng vào popup của người dùng"><Bell className="w-3 h-3" /><span>Cảnh báo</span></button>
+                                  <button onClick={() => handleSuspendCloneAccounts(group)} className="text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95" title="Khóa các tài khoản clone Free phụ, bảo vệ tài khoản PRO/PLUS"><Lock className="w-3 h-3" /><span>Khóa clone</span></button>
                                   <button
                                     onClick={() => handleDismissGroup(group)}
                                     className="text-[10px] font-bold bg-amber-600/10 hover:bg-amber-600/20 text-amber-700 px-2.5 py-1 rounded-xl transition-all cursor-pointer"
@@ -6862,108 +7160,208 @@ ${bodyHtml}
                  initial={{ opacity: 0, y: -6 }}
                  animate={{ opacity: 1, y: 0 }}
                  transition={{ delay: 0.08, duration: 0.35 }}
-                 className="text-2xl md:text-3xl font-black text-center mb-2 text-[#0D0D0D] tracking-tight"
+                 className="text-2xl md:text-3xl font-black text-center mb-2 mt-4 sm:mt-6 md:mt-4 text-[#0D0D0D] tracking-tight"
                >
                  Nâng cấp gói của bạn
                </motion.h2>
+
+               {/* Billing Toggle (Hàng tháng / Hàng năm) */}
+               <div className="flex items-center justify-center gap-1.5 my-3 bg-slate-200/60 p-1 rounded-full border border-slate-200 select-none">
+                 <button
+                   onClick={() => setPricingBillingCycle('monthly')}
+                   className={"px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer " + (pricingBillingCycle === 'monthly' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800")}
+                 >
+                   Hàng tháng
+                 </button>
+                 <button
+                   onClick={() => setPricingBillingCycle('annual')}
+                   className={"px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 " + (pricingBillingCycle === 'annual' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800")}
+                 >
+                   <span>Hàng năm</span>
+                   <span className="text-[10px] font-black bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full uppercase">Tiết kiệm 50%</span>
+                 </button>
+               </div>
+
                {activePlan !== 'free' && userDoc?.planExpiresAt && (
                  <motion.p 
                    initial={{ opacity: 0 }}
                    animate={{ opacity: 1 }}
                    transition={{ delay: 0.12, duration: 0.35 }}
-                   className="text-xs sm:text-sm text-gray-500 text-center mb-6"
+                   className="text-xs sm:text-sm text-gray-500 text-center mb-4"
                  >
                    Gói {activePlan.toUpperCase()} đã đăng ký đến {new Date(userDoc.planExpiresAt).toLocaleDateString('vi-VN')}. Bạn có thể nâng cấp lên gói cao hơn.
                  </motion.p>
                )}
 
-               {/* Pricing Cards Grid (Hiển thị đầy đủ cả 3 gói cho mọi người dùng) */}
+               {/* Pricing Cards Grid (Free, Plus, Pro) */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full mt-2">
 
-                 {/* Card Trial (Cho phép đăng ký không giới hạn số lần) */}
+                 {/* Card 1: Free (Minimalist Light Gray) */}
                  <motion.div 
+                   layout
                    initial={{ opacity: 0, y: 16 }}
                    animate={{ opacity: 1, y: 0 }}
-                   transition={{ duration: 0.4, delay: 0.14, ease: "easeOut" }}
-                   whileHover={{ y: -6, scale: 1.015 }}
-                   className="bg-white rounded-[26px] p-5 md:p-6 flex flex-col border border-gray-200/90 hover:border-blue-400 hover:shadow-[0_16px_36px_rgba(59,130,246,0.14)] transition-all duration-300 relative group cursor-default"
+                   transition={{ duration: 0.4, delay: 0.12, ease: "easeOut" }}
+                   whileHover={{ y: -5 }}
+                   className="bg-white rounded-[28px] p-6 flex flex-col border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 relative group cursor-default"
                  >
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Trial</h3>
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200/80 px-2.5 py-0.5 rounded-full select-none shadow-3xs">
-                        <Clock className="w-3 h-3 text-blue-500" /> THỜI GIAN CÓ HẠN
+                      <h3 className="text-xl font-bold text-slate-900">Free</h3>
+                    </div>
+                    <p className="text-slate-500 text-[13px] mb-4 min-h-[38px] leading-relaxed">Dành cho người mới bắt đầu làm quen với hệ thống chuyển đổi.</p>
+                    <button 
+                      disabled={true} 
+                      className="w-full py-2.5 rounded-full border border-slate-200 bg-slate-50 text-slate-400 font-medium mb-5 text-[13px] cursor-default select-none"
+                    >
+                      {activePlan === 'free' ? 'Gói đang dùng' : 'Gói cơ bản'}
+                    </button>
+                    <div className="flex items-baseline gap-1.5 mb-5 select-none min-h-[38px]">
+                       <span className="text-3xl font-black text-slate-900 leading-none">đ 0</span>
+                       <span className="text-slate-400 text-xs font-normal">/ tháng</span>
+                    </div>
+                    <div className="space-y-3 flex-1 overflow-y-auto">
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Truy cập giới hạn lượt chuyển đổi LaTeX</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Truy cập giới hạn tạo tài liệu đề thi</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Truy cập giới hạn tính năng Trợ lý AI</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Quyền truy cập giới hạn vào tính năng chuyển đổi LaTeX</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Vẽ hình học phẳng & 3D không giới hạn</span></div>
+                    </div>
+                 </motion.div>
+
+                 {/* Card 2: Plus (ChatGPT Light Blue #F0F7FF) */}
+                 <motion.div 
+                   layout
+                   initial={{ opacity: 0, y: 16 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   transition={{ duration: 0.4, delay: 0.18, ease: "easeOut" }}
+                   whileHover={{ y: -5 }}
+                   className="bg-[#F0F7FF] rounded-[28px] p-6 flex flex-col border border-[#0084FF]/30 shadow-sm hover:shadow-[0_16px_36px_rgba(0,132,255,0.12)] transition-all duration-300 relative group cursor-default"
+                 >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xl font-bold text-slate-900">Plus</h3>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-[#0084FF] bg-[#0084FF]/10 px-2 py-0.5 rounded-full">
+                        {!userDoc?.hasSubscribedPlus ? 'Ưu đãi lần đầu' : 'Khuyên dùng'}
                       </span>
                     </div>
-                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Dành cho người mới làm quen với hệ thống AI số hóa văn bản.</p>
-                    <button disabled={!canRegister('trial')} onClick={() => setSelectedPricingPlan('trial')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-bold hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'trial' ? 'Đã đăng ký' : !canRegister('trial') ? 'Đã có gói cao hơn' : 'Đăng ký dùng thử'}</button>
-                    <div className="flex items-baseline gap-2 mb-5 select-none">
-                       <span className="text-xl font-semibold text-gray-400 line-through">đ 9.000</span>
-                       <span className="text-3xl font-black text-gray-900 leading-none">đ 5.000</span>
-                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ 7 ngày</span>
+                    <p className="text-slate-500 text-[13px] mb-4 min-h-[38px] leading-relaxed">Không chỉ công thức, hãy để AI cùng bạn thao tác toàn bộ văn bản.</p>
+                    <button 
+                      disabled={!canRegister('plus')} 
+                      onClick={() => setSelectedPricingPlan('plus')} 
+                      className="w-full py-2.5 rounded-full bg-[#0084FF] hover:bg-[#0073E6] text-white font-medium transition-all shadow-md shadow-[#0084FF]/25 mb-5 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 fill-current" />
+                      <span>{activePlan === 'plus' ? 'Đã đăng ký' : !canRegister('plus') ? 'Đã có gói cao hơn' : 'Nâng cấp lên gói Plus'}</span>
+                    </button>
+                    
+                    {/* Price Block with Smooth Rolling & Animated Fake Price */}
+                    <div className="flex items-baseline mb-5 select-none min-h-[38px]">
+                      <div className="flex items-baseline gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden">
+                        <AnimatePresence mode="popLayout">
+                          {pricingBillingCycle === 'annual' && (
+                            <motion.span 
+                              key="plus-fake-price"
+                              initial={{ opacity: 0, scale: 0.8, x: -8 }}
+                              animate={{ opacity: 1, scale: 1, x: 0 }}
+                              exit={{ opacity: 0, scale: 0.8, x: -8 }}
+                              transition={{ duration: 0.25 }}
+                              className="text-sm sm:text-base font-normal text-slate-400 line-through shrink-0"
+                            >
+                              đ 156.000
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                        <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none shrink-0">
+                          đ <AnimatedPriceCounter value={pricingBillingCycle === 'annual' ? 78000 : (!userDoc?.hasSubscribedPlus ? 9000 : 13000)} />
+                        </span>
+                        <motion.span 
+                          key={pricingBillingCycle}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-slate-500 text-xs font-normal shrink-0"
+                        >
+                          / {pricingBillingCycle === 'annual' ? 'năm' : 'tháng'}
+                        </motion.span>
+                      </div>
                     </div>
+
                     <div className="space-y-3 flex-1 overflow-y-auto">
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Sử dụng trong 7 ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Không có quảng cáo</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Nhân đôi (x2) hạn mức hệ thống</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 60 LaTeX / ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 20 Đề thi / ngày</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0084FF] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">{pricingBillingCycle === 'annual' ? 'Sử dụng trong 365 ngày (1 năm)' : 'Sử dụng trong 30 ngày'}</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0084FF] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Không có quảng cáo</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0084FF] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Chuyển đổi LaTeX không giới hạn</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0084FF] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Hạn mức tạo đề thi gấp 3 lần (3x)</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0084FF] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Hạn mức Trợ lý AI gấp 2.5 lần (2.5x)</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0084FF] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Hạn mức MarkItDown gấp 5 lần (5x)</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0084FF] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Vẽ hình học phẳng & 3D không giới hạn</span></div>
                     </div>
                  </motion.div>
 
-                 {/* Card Plus */}
+                 {/* Card 3: Pro (Deep Blue Style - Đậm hơn gói Plus) */}
                  <motion.div 
+                   layout
                    initial={{ opacity: 0, y: 16 }}
                    animate={{ opacity: 1, y: 0 }}
-                   transition={{ duration: 0.4, delay: 0.22, ease: "easeOut" }}
-                   whileHover={{ y: -6, scale: 1.015 }}
-                   className="bg-white rounded-[26px] p-5 md:p-6 flex flex-col border border-gray-200/90 relative hover:border-purple-400 hover:shadow-[0_16px_36px_rgba(168,85,247,0.14)] transition-all duration-300 group cursor-default"
-                 >
-                    <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">Plus</h3>
-                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Không chỉ công thức, hãy để AI cùng bạn thao tác toàn bộ văn bản.</p>
-                    <button disabled={!canRegister('plus')} onClick={() => setSelectedPricingPlan('plus')} className="w-full py-2.5 rounded-full border border-gray-300 text-gray-800 font-bold hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-all mb-4 text-[13px] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'plus' ? 'Đã đăng ký' : !canRegister('plus') ? 'Đã có gói cao hơn' : 'Nâng cấp gói Plus'}</button>
-                    <div className="flex items-baseline gap-2 mb-5 select-none">
-                       <span className="text-xl font-semibold text-gray-400 line-through">đ 19.000</span>
-                       <span className="text-3xl font-black text-gray-900 leading-none">đ 12.000</span>
-                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng</span>
-                    </div>
-                    <div className="space-y-3 flex-1 overflow-y-auto">
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Sử dụng trong 30 ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Không có quảng cáo</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Nhân đôi (x2) hạn mức hệ thống</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 60 LaTeX / ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0" /><span className="text-[13px] text-gray-800">Tối đa 20 Đề thi / ngày</span></div>
-                    </div>
-                 </motion.div>
-
-                 {/* Card Pro */}
-                 <motion.div 
-                   initial={{ opacity: 0, y: 16 }}
-                   animate={{ opacity: 1, y: 0 }}
-                   transition={{ duration: 0.4, delay: 0.30, ease: "easeOut" }}
-                   whileHover={{ y: -7, scale: 1.02 }}
-                   className="bg-[#f8faff] lg:bg-white rounded-[26px] p-5 md:p-6 flex flex-col border-2 border-[#3b82f6] shadow-md relative z-10 hover:border-indigo-600 hover:shadow-[0_20px_45px_rgba(79,70,229,0.22)] transition-all duration-300 group cursor-default"
+                   transition={{ duration: 0.4, delay: 0.24, ease: "easeOut" }}
+                   whileHover={{ y: -5 }}
+                   className="bg-[#E6F0FA] rounded-[28px] p-6 flex flex-col border-2 border-[#0055B3]/40 shadow-sm hover:shadow-[0_16px_36px_rgba(0,85,179,0.16)] hover:border-[#0055B3] transition-all duration-300 relative group cursor-default"
                  >
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-xl font-black text-gray-900 group-hover:text-indigo-600 transition-colors">Pro</h3>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-full">Khuyên Dùng</span>
+                      <h3 className="text-xl font-bold text-slate-900 group-hover:text-[#0055B3] transition-colors">Pro</h3>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-[#0055B3] bg-[#0055B3]/10 px-2 py-0.5 rounded-full">
+                        Khuyên dùng
+                      </span>
                     </div>
-                    <p className="text-gray-500 text-[13px] mb-4 min-h-[40px] leading-relaxed">Trải nghiệm không giới hạn.</p>
-                    <button disabled={!canRegister('pro')} onClick={() => setSelectedPricingPlan('pro')} className="w-full py-2.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold transition-all shadow-md shadow-blue-500/25 mb-4 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer">{activePlan === 'pro' ? 'Đã đăng ký' : 'Nâng cấp gói Pro'}</button>
-                    <div className="flex items-baseline gap-2 mb-5 select-none">
-                       <span className="text-xl font-semibold text-gray-400 line-through">đ 29.000</span>
-                       <span className="text-3xl font-black text-indigo-600 leading-none">đ 19.000</span>
-                       <span className="text-gray-500 text-[12px] font-medium mb-0.5">/ tháng</span>
+                    <p className="text-slate-500 text-[13px] mb-4 min-h-[38px] leading-relaxed">Trải nghiệm đỉnh cao, toàn bộ tính năng và hiệu suất không giới hạn.</p>
+                    <button 
+                      disabled={!canRegister('pro')} 
+                      onClick={() => setSelectedPricingPlan('pro')} 
+                      className="w-full py-2.5 rounded-full bg-[#0055B3] hover:bg-[#004494] text-white font-medium transition-all shadow-md shadow-[#0055B3]/25 mb-5 text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 fill-current" />
+                      <span>{activePlan === 'pro' ? 'Đã đăng ký' : 'Nâng cấp lên gói Pro'}</span>
+                    </button>
+                    
+                    {/* Price Block with Smooth Rolling & Animated Fake Price */}
+                    <div className="flex items-baseline mb-5 select-none min-h-[38px]">
+                      <div className="flex items-baseline gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden">
+                        <AnimatePresence mode="popLayout">
+                          {pricingBillingCycle === 'annual' && (
+                            <motion.span 
+                              key="pro-fake-price"
+                              initial={{ opacity: 0, scale: 0.8, x: -8 }}
+                              animate={{ opacity: 1, scale: 1, x: 0 }}
+                              exit={{ opacity: 0, scale: 0.8, x: -8 }}
+                              transition={{ duration: 0.25 }}
+                              className="text-sm sm:text-base font-normal text-slate-400 line-through shrink-0"
+                            >
+                              đ 180.000
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                        <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none shrink-0">
+                          đ <AnimatedPriceCounter value={pricingBillingCycle === 'annual' ? 90000 : 15000} />
+                        </span>
+                        <motion.span 
+                          key={pricingBillingCycle}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-slate-500 text-xs font-normal shrink-0"
+                        >
+                          / {pricingBillingCycle === 'annual' ? 'năm' : 'tháng'}
+                        </motion.span>
+                      </div>
                     </div>
-                    <div className="space-y-3 flex-1 overflow-y-auto pr-1">
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Sử dụng trong 30 ngày</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Không có quảng cáo</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Ưu tiên tốc độ hệ thống</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Hạn mức AI cao nhất</span></div>
-                      <div className="flex gap-2.5 items-start"><CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" /><span className="text-[13px] text-gray-800 font-semibold">Chuyển đổi LaTeX, tạo đề thi, vẽ hình, MarkItDown không giới hạn</span></div>
+
+                    <div className="space-y-3 flex-1 overflow-y-auto">
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0055B3] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">{pricingBillingCycle === 'annual' ? 'Sử dụng trong 365 ngày (1 năm)' : 'Sử dụng trong 30 ngày'}</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0055B3] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Không có quảng cáo</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0055B3] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Ưu tiên tốc độ xử lý cao nhất</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0055B3] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">Hạn mức truy cập AI cao nhất</span></div>
+                      <div className="flex gap-2.5 items-start"><Check className="w-4 h-4 text-[#0055B3] shrink-0 mt-0.5" /><span className="text-[13px] text-slate-600 font-normal">LaTeX, Đề thi, Vẽ hình, MarkItDown không giới hạn</span></div>
                     </div>
                  </motion.div>
-
-               </div>
+</div>
             </motion.div>
           </motion.div>
         )}
@@ -7430,7 +7828,11 @@ ${bodyHtml}
                       type="button"
                       aria-label="Đóng cửa sổ thông báo"
                       onClick={handleCloseNotifications}
-                      className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 hover:rotate-90 transition-all duration-200 cursor-pointer"
+                      className={`p-2 rounded-full transition-all duration-200 ${
+                        noticeCountdown > 0 && !isAdminUser(user, userDoc)
+                          ? "text-slate-300 cursor-not-allowed opacity-40"
+                          : "hover:bg-slate-100 text-slate-400 hover:text-slate-700 hover:rotate-90 cursor-pointer"
+                      }`}
                     >
                       <X className="w-5 h-5 stroke-[2]" />
                     </button>
@@ -7760,10 +8162,15 @@ ${bodyHtml}
 
                     <button
                       type="button"
+                      disabled={noticeCountdown > 0 && !isAdminUser(user, userDoc)}
                       onClick={handleCloseNotifications}
-                      className="px-6 py-2.5 rounded-xl text-xs font-extrabold transition-all duration-200 shadow-sm flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white cursor-pointer active:scale-95 shadow-md hover:shadow-lg"
+                      className={`px-6 py-2.5 rounded-xl text-xs font-extrabold transition-all duration-200 shadow-sm flex items-center gap-2 text-white ${
+                        noticeCountdown > 0 && !isAdminUser(user, userDoc)
+                          ? "bg-slate-400 cursor-not-allowed opacity-60"
+                          : "bg-slate-900 hover:bg-slate-800 cursor-pointer active:scale-95 shadow-md hover:shadow-lg"
+                      }`}
                     >
-                      <span>Đã hiểu &amp; Đóng lại</span>
+                      <span>{noticeCountdown > 0 && !isAdminUser(user, userDoc) ? `Vui lòng đọc (${noticeCountdown}s)` : "Đã hiểu & Đóng lại"}</span>
                     </button>
                   </div>
                 </motion.div>

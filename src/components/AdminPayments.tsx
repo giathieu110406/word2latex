@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { auth } from "../firebase";
+import { getActivePlan } from "../../shared/subscription-policy";
 import { Loader2, Banknote, Search, Sparkles, Gift, X, CheckCircle2, Trash2, AlertTriangle, Info, Copy, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -164,7 +165,10 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
   const enrichedPayments = payments.map(p => {
     const user = allUsers.find(u => u.uid === p.uid);
     const isAdminGrant = p.method === "admin_grant" || Number(p.amount) === 0;
-    return { ...p, user, isAdminGrant };
+    // Tính trạng thái gói hiện tại chuẩn xác theo thời gian thực (hết hạn -> free)
+    const effectivePlan = user ? getActivePlan(user.planType, user.planExpiresAt) : (p.plan ? getActivePlan(p.plan, p.planExpiresAt) : 'free');
+    const isExpired = Boolean(user?.planExpiresAt && Date.now() >= user.planExpiresAt && user.planType !== 'free');
+    return { ...p, user, isAdminGrant, effectivePlan, isExpired };
   });
 
   // Filter
@@ -340,10 +344,10 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
             currentPayments.map((p) => (
               <div
                 key={p.id}
-                className="p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50/70 transition-colors"
+                className="p-2.5 grid grid-cols-12 gap-1.5 items-center hover:bg-slate-50/70 transition-colors"
               >
-                {/* Khách hàng (bấm avatar để xem Mã đơn & Thời gian kích hoạt) */}
-                <div className="flex items-center gap-2 min-w-0 flex-1">
+                {/* Cột 1: Khách hàng (Avatar + Tên/Email) */}
+                <div className="col-span-5 sm:col-span-6 flex items-center gap-2 min-w-0">
                   <button
                     type="button"
                     onClick={() => setSelectedPaymentDetail(p)}
@@ -361,71 +365,75 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
                   </button>
 
                   <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setSelectedPaymentDetail(p)}>
-                    <div className="font-bold text-slate-800 text-xs truncate flex items-center gap-1.5">
+                    <div className="font-bold text-slate-800 text-[11px] sm:text-xs truncate flex items-center gap-1">
                       <span className="truncate">{p.user?.displayName || "Thành viên"}</span>
                       {p.isAdminGrant ? (
-                        <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
+                        <span className="text-[7.5px] font-black uppercase px-1 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
                           Admin
                         </span>
                       ) : (
-                        <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                        <span className="text-[7.5px] font-black uppercase px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
                           PayOS
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-slate-400 truncate">{p.user?.email || `UID: ${p.uid}`}</div>
+                    <div className="text-[9.5px] text-slate-400 truncate">{p.user?.email || `UID: ${p.uid}`}</div>
                   </div>
                 </div>
 
-                {/* Gói & Giá trị + Trạng thái hiện tại */}
-                <div className="flex flex-col items-end shrink-0 gap-0.5 text-right">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${getPlanColor(p.plan)}`}>
-                      {p.plan || 'UNKNOWN'}
+                {/* Cột 2: Gói & Giá trị đứng thẳng một cột tách biệt */}
+                <div className="col-span-4 sm:col-span-3 flex flex-col items-center justify-center text-center px-1">
+                  <span className={`text-[8.5px] font-extrabold px-1.5 py-0.5 rounded border uppercase leading-tight ${getPlanColor(p.plan)}`}>
+                    {p.plan || 'UNKNOWN'}
+                  </span>
+                  <span className="font-black text-[11px] sm:text-xs text-slate-800 mt-0.5 leading-tight">
+                    {p.isAdminGrant ? (
+                      <span className="text-purple-700 font-bold">0 ₫</span>
+                    ) : (
+                      new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(p.amount) || 0)
+                    )}
+                  </span>
+                </div>
+
+                {/* Cột 3: Trạng thái gói hiện tại */}
+                <div className="col-span-3 flex flex-col items-end justify-center text-right shrink-0">
+                  <span className="text-[9px] text-slate-400 font-medium leading-none mb-0.5">Trạng thái:</span>
+                  <span className={`uppercase font-extrabold text-[10px] leading-tight ${getPlanColor(p.effectivePlan).replace('bg-', 'text-').split(' ')[1]}`}>
+                    {p.effectivePlan || 'FREE'}
+                  </span>
+                  {p.isExpired && (
+                    <span className="text-[8px] font-bold text-rose-500 bg-rose-50 px-1 rounded border border-rose-100 mt-0.5">
+                      Đã hết hạn
                     </span>
-                    <span className="font-black text-xs text-slate-800">
-                      {p.isAdminGrant ? (
-                        <span className="text-purple-700 font-bold">0 ₫</span>
-                      ) : (
-                        new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(p.amount) || 0)
-                      )}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 flex items-center gap-1">
-                    <span className="text-slate-400">Trạng thái:</span>
-                    <span className={`uppercase font-bold text-[10px] ${getPlanColor(p.user?.planType || 'free').replace('bg-', 'text-').split(' ')[1]}`}>
-                      {p.user?.planType || 'FREE'}
-                    </span>
-                  </div>
+                  )}
                 </div>
               </div>
             ))
           )}
         </div>
 
-        {/* GIAO DIỆN DESKTOP / TABLET: BẢNG 5 CỘT TRUYỀN THỐNG */}
+        {/* GIAO DIỆN DESKTOP / TABLET: BẢNG 4 CỘT (Ẩn cột Mã Đơn / Kênh, click Avatar xem mã đơn) */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/80 text-[11px] uppercase tracking-wider font-bold text-slate-500 border-b border-slate-200">
-                <th className="py-3 px-4 w-[16%]">Mã Đơn / Kênh</th>
-                <th className="py-3 px-4 w-[24%]">Khách hàng</th>
-                <th className="py-3 px-4 w-[18%]">Gói / Giá trị</th>
-                <th className="py-3 px-4 w-[20%]">Trạng thái gói hiện tại</th>
+                <th className="py-3 px-4 w-[32%]">Khách hàng</th>
+                <th className="py-3 px-4 w-[22%]">Gói / Giá trị</th>
+                <th className="py-3 px-4 w-[24%]">Trạng thái gói hiện tại</th>
                 <th className="py-3 px-4 text-right w-[22%]">Thời gian kích hoạt</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="py-20 text-center">
+                  <td colSpan={4} className="py-20 text-center">
                     <Loader2 className="w-6 h-6 text-indigo-400 animate-spin mx-auto mb-3" />
                     <p className="text-slate-500 font-medium">Đang tải dữ liệu thanh toán...</p>
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={5} className="py-20 text-center text-rose-500">
+                  <td colSpan={4} className="py-20 text-center text-rose-500">
                     <p className="font-semibold text-sm mb-3">{error}</p>
                     <button
                       onClick={fetchPayments}
@@ -437,7 +445,7 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
                 </tr>
               ) : currentPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-20 text-center text-slate-500">
+                  <td colSpan={4} className="py-20 text-center text-slate-500">
                     <Banknote className="w-8 h-8 mx-auto mb-3 opacity-20" />
                     <p className="font-medium">Không tìm thấy giao dịch nào phù hợp.</p>
                   </td>
@@ -472,54 +480,58 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
                         setMouseStartX(null);
                       }}
                     >
-                      {/* Col 1: Mã Đơn / Kênh */}
+                      {/* Col 1: Khách hàng (bấm avatar để xem popup Mã Đơn & Kênh) */}
                       <td className="py-3 px-4">
-                        <div className="font-mono text-xs font-semibold text-slate-700 flex items-center gap-1">
-                          #{p.id}
-                        </div>
-                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                          {p.isAdminGrant ? (
-                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                              <Sparkles className="w-2.5 h-2.5" /> Admin cấp
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              PayOS QR
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Col 2: Khách hàng */}
-                      <td className="py-3 px-4">
-                        {p.user ? (
-                          <div className="flex items-center gap-2.5">
-                            <img src={p.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.user.displayName || p.user.email || 'User')}&background=random`} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
-                            <div className="min-w-0">
-                              <div className="font-bold text-slate-700 truncate text-xs">{p.user.displayName || "Thành viên"}</div>
-                              <div className="text-[10px] text-slate-500 truncate">{p.user.email}</div>
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPaymentDetail(p)}
+                            className="relative shrink-0 rounded-full ring-2 ring-indigo-100/90 hover:ring-indigo-400 active:scale-95 transition-all cursor-pointer"
+                            title="Bấm để xem Mã đơn & Kênh thanh toán"
+                          >
+                            <img
+                              src={p.user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.user?.displayName || p.user?.email || 'User')}&background=random`}
+                              alt=""
+                              className="w-8 h-8 rounded-full object-cover"
+                            />
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-indigo-600 rounded-full flex items-center justify-center text-white ring-1 ring-white">
+                              <Info className="w-2 h-2" />
                             </div>
+                          </button>
+
+                          <div className="min-w-0 cursor-pointer" onClick={() => setSelectedPaymentDetail(p)}>
+                            <div className="font-bold text-slate-700 truncate text-xs flex items-center gap-1.5">
+                              <span className="truncate">{p.user?.displayName || "Thành viên"}</span>
+                              {p.isAdminGrant ? (
+                                <span className="inline-flex items-center gap-0.5 text-[8.5px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
+                                  <Sparkles className="w-2 h-2" /> Admin
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-0.5 text-[8.5px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                  PayOS
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-500 truncate">{p.user?.email || `UID: ${p.uid}`}</div>
                           </div>
-                        ) : (
-                          <div>
-                            <span className="text-xs italic text-slate-400">UID: {p.uid}</span>
-                          </div>
-                        )}
+                        </div>
                       </td>
 
-                      {/* Col 3: Gói / Giá trị */}
+                      {/* Col 2: Gói / Giá trị */}
                       <td className="py-3 px-4">
                         <div className="flex flex-col items-start gap-1">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${getPlanColor(p.plan)}`}>
-                            {p.plan || 'UNKNOWN'}
-                          </span>
-                          <span className="font-black text-slate-800 text-sm">
-                            {p.isAdminGrant ? (
-                              <span className="text-purple-700 font-bold">0 ₫ <span className="text-[10px] font-normal text-slate-400">(Miễn phí)</span></span>
-                            ) : (
-                              new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(p.amount) || 0)
-                            )}
-                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase shrink-0 leading-tight ${getPlanColor(p.plan)}`}>
+                              {p.plan || 'UNKNOWN'}
+                            </span>
+                            <span className="font-black text-slate-800 text-sm leading-tight shrink-0">
+                              {p.isAdminGrant ? (
+                                <span className="text-purple-700 font-bold">0 ₫</span>
+                              ) : (
+                                new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(p.amount) || 0)
+                              )}
+                            </span>
+                          </div>
                           {p.note && (
                             <span className="text-[10px] text-slate-400 italic max-w-[150px] truncate" title={p.note}>
                               {p.note}
@@ -528,12 +540,20 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
                         </div>
                       </td>
 
-                      {/* Col 4: Trạng thái gói hiện tại */}
+                      {/* Col 3: Trạng thái gói hiện tại */}
                       <td className="py-3 px-4">
                         {p.user ? (
                           <div className="text-[11px]">
                             <div className="font-semibold text-slate-700 flex items-center gap-1.5">
-                              Gói hiện tại: <span className={`uppercase font-bold ${getPlanColor(p.user.planType).replace('bg-', 'text-').split(' ')[1]}`}>{p.user.planType || 'FREE'}</span>
+                              Gói hiện tại:{" "}
+                              <span className={`uppercase font-bold ${getPlanColor(p.effectivePlan).replace('bg-', 'text-').split(' ')[1]}`}>
+                                {p.effectivePlan || 'FREE'}
+                              </span>
+                              {p.isExpired && (
+                                <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1 py-0.2 rounded border border-rose-200">
+                                  Đã hết hạn
+                                </span>
+                              )}
                             </div>
                             {p.user.planExpiresAt && p.user.planType !== 'free' && (
                               <div className="text-slate-500 mt-0.5 flex items-center gap-1">
@@ -546,7 +566,7 @@ export const AdminPayments: React.FC<AdminPaymentsProps> = ({ allUsers }) => {
                         )}
                       </td>
 
-                      {/* Col 5: Thời gian kích hoạt & Kéo sang trái lộ thùng rác */}
+                      {/* Col 4: Thời gian kích hoạt & Kéo sang trái lộ thùng rác */}
                       <td className="py-3 px-4 text-right relative overflow-hidden">
                         <div className={`transition-transform duration-200 ${isSwiped ? "-translate-x-12" : "translate-x-0"}`}>
                           <div className="text-sm font-semibold text-slate-700">

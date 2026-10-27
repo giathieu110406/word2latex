@@ -191,11 +191,13 @@ export async function verifyAuthAndApproval(
     }
 
     // 3. Đánh giá trạng thái thành viên
-    if (status === 'rejected') {
+    if (status === 'rejected' || status === 'suspended') {
       return {
         authorized: false,
         status: 403,
-        error: "Tài khoản của bạn đã bị từ chối quyền truy cập hệ thống. Vui lòng liên hệ Admin."
+        error: status === 'suspended'
+          ? "Tài khoản của bạn đã bị tạm khóa do vi phạm chính sách sử dụng nhiều tài khoản trên một thiết bị. Vui lòng liên hệ Admin."
+          : "Tài khoản của bạn đã bị từ chối quyền truy cập hệ thống. Vui lòng liên hệ Admin."
       };
     }
 

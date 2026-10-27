@@ -1,5 +1,6 @@
 
 import { authFetch } from "../utils/api-client";
+import { getActivePlan, getPlanLimits } from "../../shared/subscription-policy";
 import React, { useState, useRef, useEffect } from "react";
 import { Sparkles, ArrowRight, Loader2, Paperclip, Code2, Eye, ChevronDown, Check, Type } from "lucide-react";
 import { motion } from "motion/react";
@@ -269,9 +270,11 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
       if (onRequireAuth && !onRequireAuth()) return;
 
       const currentPromptCount = userDoc?.promptCount || 0;
-      if (!isPro && currentPromptCount >= 15 * currentMultiplier) {
+      const userPlan = getActivePlan(userDoc?.planType, userDoc?.planExpiresAt);
+      const aiLimit = getPlanLimits(userPlan).ai;
+      if (!isPro && currentPromptCount >= aiLimit) {
         triggerToast(
-          `Bạn đã đạt giới hạn nhận diện ảnh bằng AI hôm nay (tối đa ${15 * currentMultiplier} lượt/ngày). Vui lòng nâng cấp gói Pro để không giới hạn!`,
+          `Bạn đã đạt giới hạn nhận diện ảnh bằng AI hôm nay (tối đa ${aiLimit} lượt/ngày). Vui lòng nâng cấp gói Pro để không giới hạn!`,
           false
         );
         return;
