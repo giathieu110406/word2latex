@@ -190,18 +190,11 @@ export async function verifyAuthAndApproval(
       }
     }
 
-    // 3. Đánh giá trạng thái thành viên
-    if (status === 'rejected' || status === 'suspended') {
-      return {
-        authorized: false,
-        status: 403,
-        error: status === 'suspended'
-          ? "Tài khoản của bạn đã bị tạm khóa do vi phạm chính sách sử dụng nhiều tài khoản trên một thiết bị. Vui lòng liên hệ Admin."
-          : "Tài khoản của bạn đã bị từ chối quyền truy cập hệ thống. Vui lòng liên hệ Admin."
-      };
-    }
+    // 3. Đánh giá thành viên (Mọi tài khoản đều được sử dụng, Admin hoàn toàn không bị rào cản)
+    const isOwner = email === OWNER_EMAIL;
+    const isAdmin = isOwner || role === "admin";
 
-    if (!hasPhoneConfirmation(profile)) {
+    if (!isAdmin && !hasPhoneConfirmation(profile)) {
       return {
         authorized: false,
         status: 403,
@@ -209,7 +202,6 @@ export async function verifyAuthAndApproval(
       };
     }
 
-    const isOwner = email === OWNER_EMAIL;
     return {
       authorized: true,
       status: 200,
@@ -217,8 +209,8 @@ export async function verifyAuthAndApproval(
         uid,
         email,
         isOwner,
-        status: isOwner ? "approved" : status || "pending",
-        role: isOwner ? "admin" : role
+        status: "approved",
+        role: isAdmin ? "admin" : role
       }
     };
   } catch (error: any) {

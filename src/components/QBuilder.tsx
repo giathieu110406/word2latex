@@ -1,6 +1,23 @@
 import React from "react";
-import { Sparkles, HelpCircle, FileEdit, Eye, ChevronDown, Check, Type } from "lucide-react";
+import { Sparkles, HelpCircle, FileEdit, Eye, ChevronDown, Check, Type, FileText } from "lucide-react";
 import { motion } from "motion/react";
+
+export type ExamUnit =
+  | { id: "header"; type: "header" }
+  | { id: string; type: "section-title"; title: string }
+  | {
+      id: string;
+      type: "question";
+      q: {
+        id: string;
+        type: string;
+        questionText: string;
+        answerText?: string;
+        columns?: number;
+      };
+      displayNum: number;
+      qType: "trac_nghiem" | "dung_sai" | "tra_loi_ngan" | "tu_luan";
+    };
 
 interface QBuilderProps {
   wordFont: string;
@@ -235,6 +252,348 @@ export const QBuilder: React.FC<QBuilderProps> = ({
       window.removeEventListener("resize", updateHeight);
     };
   }, []);
+
+  const allUnits: ExamUnit[] = React.useMemo(() => {
+    const units: ExamUnit[] = [{ id: "header", type: "header" }];
+
+    if (tracNghiemList.length > 0) {
+      units.push({ id: "sec-trac-nghiem", type: "section-title", title: labelTracNghiem });
+      tracNghiemList.forEach((q, idx) => {
+        units.push({
+          id: `q-tn-${q.id}`,
+          type: "question",
+          q,
+          displayNum: idx + 1,
+          qType: "trac_nghiem",
+        });
+      });
+    }
+
+    if (dungSaiList.length > 0) {
+      units.push({ id: "sec-dung-sai", type: "section-title", title: labelDungSai });
+      dungSaiList.forEach((q, idx) => {
+        units.push({
+          id: `q-ds-${q.id}`,
+          type: "question",
+          q,
+          displayNum: idx + 1,
+          qType: "dung_sai",
+        });
+      });
+    }
+
+    if (traLoiNganList.length > 0) {
+      units.push({ id: "sec-tra-loi-ngan", type: "section-title", title: labelTraLoiNgan });
+      traLoiNganList.forEach((q, idx) => {
+        units.push({
+          id: `q-tln-${q.id}`,
+          type: "question",
+          q,
+          displayNum: idx + 1,
+          qType: "tra_loi_ngan",
+        });
+      });
+    }
+
+    if (tuLuanList.length > 0) {
+      units.push({ id: "sec-tu-luan", type: "section-title", title: labelTuLuan });
+      tuLuanList.forEach((q, idx) => {
+        units.push({
+          id: `q-tl-${q.id}`,
+          type: "question",
+          q,
+          displayNum: idx + 1,
+          qType: "tu_luan",
+        });
+      });
+    }
+
+    return units;
+  }, [
+    tracNghiemList,
+    dungSaiList,
+    traLoiNganList,
+    tuLuanList,
+    labelTracNghiem,
+    labelDungSai,
+    labelTraLoiNgan,
+    labelTuLuan,
+  ]);
+
+  const [previewMode, setPreviewMode] = React.useState<"a4" | "continuous">("a4");
+
+  const [previewContainerWidth, setPreviewContainerWidth] = React.useState<number>(800);
+  const scrollPreviewContainerRef = React.useRef<HTMLDivElement>(null);
+  const measureContainerRef = React.useRef<HTMLDivElement>(null);
+  const [a4Pages, setA4Pages] = React.useState<ExamUnit[][]>([allUnits]);
+
+  React.useEffect(() => {
+    if (!scrollPreviewContainerRef.current) return;
+    const updateW = () => {
+      if (scrollPreviewContainerRef.current) {
+        setPreviewContainerWidth(scrollPreviewContainerRef.current.clientWidth);
+      }
+    };
+    updateW();
+    const ro = new ResizeObserver(updateW);
+    ro.observe(scrollPreviewContainerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  // Luôn luôn tự động co giãn vừa vặn khung hình (Fit to container)
+  const a4Scale = React.useMemo(() => {
+    const usable = Math.max(320, previewContainerWidth - 36);
+    return Math.min(1, Math.round((usable / 794) * 100) / 100);
+  }, [previewContainerWidth]);
+
+  React.useEffect(() => {
+    if (!measureContainerRef.current || allUnits.length === 0) {
+      setA4Pages([allUnits]);
+      return;
+    }
+
+    const elements = measureContainerRef.current.querySelectorAll<HTMLElement>("[data-measure-id]");
+    const heights: Record<string, number> = {};
+    elements.forEach((el) => {
+      const id = el.getAttribute("data-measure-id");
+      if (id) {
+        heights[id] = el.offsetHeight + 18;
+      }
+    });
+
+    const PAGE_BUDGET = 970;
+    const pages: ExamUnit[][] = [[]];
+    let curH = 0;
+
+    for (let i = 0; i < allUnits.length; i++) {
+      const unit = allUnits[i];
+      const h = heights[unit.id] || (unit.type === "header" ? 220 : unit.type === "section-title" ? 45 : 120);
+
+      let extraLookahead = 0;
+      if (unit.type === "section-title" && i + 1 < allUnits.length) {
+        extraLookahead = (heights[allUnits[i + 1].id] || 120) * 0.4;
+      }
+
+      if (pages[pages.length - 1].length > 0 && curH + h + extraLookahead > PAGE_BUDGET) {
+        pages.push([unit]);
+        curH = h;
+      } else {
+        pages[pages.length - 1].push(unit);
+        curH += h;
+      }
+    }
+
+    setA4Pages(pages);
+  }, [
+    allUnits,
+    wordFont,
+    docHeaderStyle,
+    docTitle,
+    docSubtitle,
+    docStudentInfoFormat,
+    docSchoolName,
+    docExamName,
+    docSubjectName,
+    docTimeLimit,
+    docExamCode,
+  ]);
+
+  const renderUnitContent = (unit: ExamUnit) => {
+    if (unit.type === "header") {
+      return docHeaderStyle === "centered" ? (
+        <div className="doc-header-block text-center space-y-2 border-b-2 border-double border-slate-800 pb-4">
+          <h3 className="doc-title-text font-black text-slate-900 tracking-tight uppercase text-center text-sm md:text-base leading-tight">
+            {docTitle || "TIÊU ĐỀ TÀI LIỆU"}
+          </h3>
+          <p className="doc-subtitle-text text-xs font-semibold text-slate-500 italic">
+            {docSubtitle || "Thông tin chi tiết thời gian, phân ban"}
+          </p>
+        </div>
+      ) : (
+        <div className="doc-header-block border-b-4 border-double border-slate-800 pb-4 select-none overflow-x-auto">
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              border: "none",
+            }}
+            className="doc-header-table w-full border-none text-xs md:text-sm"
+          >
+            <tbody>
+              <tr style={{ border: "none" }}>
+                <td
+                  style={{
+                    width: "50%",
+                    verticalAlign: "top",
+                    textAlign: "left",
+                    padding: "4px",
+                    border: "none",
+                  }}
+                  className="w-1/2 align-top text-left p-1"
+                >
+                  <div className="font-bold text-slate-800 space-y-1.5 text-xs md:text-[13px] leading-relaxed">
+                    <div className="whitespace-pre-wrap leading-relaxed text-slate-900">
+                      {docStudentInfoFormat ||
+                        `Họ và tên: ....................................................\nLớp: ................... STT: .........`}
+                    </div>
+                    <div className="text-slate-500 font-bold text-[11px] md:text-xs mt-2 uppercase tracking-wide">
+                      Thời gian làm bài:{" "}
+                      <span className="text-slate-800">{docTimeLimit || "90 phút"}</span>
+                    </div>
+                    {docExamCode && (
+                      <div className="text-slate-800 font-black text-xs md:text-[13px] mt-1.5 bg-slate-100 inline-block px-2 py-0.5 rounded border border-slate-200">
+                        Mã đề: {docExamCode}
+                      </div>
+                    )}
+                  </div>
+                </td>
+                <td
+                  style={{
+                    width: "50%",
+                    verticalAlign: "top",
+                    textAlign: "center",
+                    padding: "4px",
+                    border: "none",
+                  }}
+                  className="w-1/2 align-top text-center p-1 border-l border-slate-200"
+                >
+                  <div className="space-y-1 text-xs md:text-[13px] font-bold text-slate-850 leading-tight">
+                    <div className="uppercase font-black text-slate-900 tracking-wide">
+                      {docSchoolName || "SỞ GIÁO DỤC VÀ ĐÀO TẠO"}
+                    </div>
+                    <div className="uppercase text-[11px] text-slate-500 mt-1">
+                      {docExamName || "KỲ THI THỬ TỐT NGHIỆP"}
+                    </div>
+                    <div className="text-slate-900 font-black text-xs md:text-sm mt-1.5 tracking-tight border-t border-slate-100 pt-1 uppercase">
+                      {docSubjectName || "MÔN THI"}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    if (unit.type === "section-title") {
+      return (
+        <div className="doc-section-header font-black text-slate-900 border-b border-slate-300 pb-1.5 text-left text-xs md:text-sm uppercase tracking-wide flex items-center justify-between">
+          <span className="doc-section-title">{unit.title}</span>
+        </div>
+      );
+    }
+
+    if (unit.type === "question") {
+      const { q, displayNum, qType } = unit;
+      if (qType === "trac_nghiem") {
+        const parsed = parseMultipleChoice(q.questionText);
+        const cleanBody = getCleanQuestionBody(parsed.questionBody);
+        return (
+          <div
+            key={q.id}
+            className="doc-question-item space-y-2 border-l-2 border-slate-100 pl-3 hover:border-indigo-400 transition-colors py-1 text-left"
+          >
+            <div className="flex items-start gap-1">
+              {!hasQuestionPrefix(cleanBody) && (
+                <span className="doc-type-badge font-bold text-slate-900 select-none shrink-0 mr-1">
+                  Câu {displayNum}.
+                </span>
+              )}
+              <div
+                className="text-slate-800 font-normal leading-relaxed overflow-x-auto select-all w-full text-left"
+                dangerouslySetInnerHTML={{
+                  __html: renderContentWithMath(cleanBody),
+                }}
+              />
+            </div>
+
+            {parsed.options.length > 0 && (
+              <div
+                className={`doc-options-container grid gap-2 mt-2 ${
+                  (q.columns || 4) === 4
+                    ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-4"
+                    : (q.columns || 4) === 2
+                    ? "grid-cols-1 sm:grid-cols-2"
+                    : "grid-cols-1"
+                }`}
+                data-columns={q.columns || 4}
+              >
+                {parsed.options.map((opt, oIdx) => (
+                  <div
+                    key={oIdx}
+                    className="doc-option-item min-w-0 flex items-start gap-1.5 py-0.5"
+                  >
+                    <span className="doc-option-label font-bold text-slate-900 shrink-0 select-none">
+                      {opt.label}.
+                    </span>
+                    <div
+                      className="doc-option-text min-w-0 flex-1 text-slate-800 text-left whitespace-normal break-words overflow-x-auto"
+                      dangerouslySetInnerHTML={{
+                        __html: renderContentWithMath(opt.text, false),
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {q.answerText && (
+              <div className="doc-answer-block ml-1 p-3 rounded-xl bg-emerald-50/30 border border-emerald-100 text-slate-700 space-y-1 mt-2.5 animate-fade-in">
+                <span className="doc-answer-title text-[9px] font-black text-emerald-700 uppercase tracking-wider block select-none mb-1">
+                  ĐÁP ÁN & HƯỚNG DẪN GIẢI CHI TIẾT:
+                </span>
+                <div
+                  className="doc-answer-body text-xs md:text-sm font-normal text-slate-600 space-y-1 leading-relaxed overflow-x-auto select-all w-full text-left"
+                  dangerouslySetInnerHTML={{
+                    __html: renderContentWithMath(q.answerText),
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // dung_sai, tra_loi_ngan, tu_luan
+      const cleanText = getCleanQuestionBody(q.questionText);
+      return (
+        <div
+          key={q.id}
+          className="doc-question-item space-y-3 border-l-2 border-slate-100 pl-3 hover:border-indigo-400 transition-colors py-1 text-left"
+        >
+          <div className="flex items-start gap-1">
+            {!hasQuestionPrefix(cleanText) && (
+              <span className="doc-type-badge font-bold text-slate-900 select-none shrink-0 mr-1">
+                Câu {displayNum}.
+              </span>
+            )}
+            <div
+              className="text-slate-800 font-normal leading-relaxed overflow-x-auto select-all w-full text-left"
+              dangerouslySetInnerHTML={{
+                __html: renderContentWithMath(cleanText),
+              }}
+            />
+          </div>
+          {q.answerText && (
+            <div className="doc-answer-block ml-1 p-3 rounded-xl bg-emerald-50/30 border border-emerald-100 text-slate-700 space-y-1 animate-fade-in">
+              <span className="doc-answer-title text-[9px] font-black text-emerald-700 uppercase tracking-wider block select-none mb-1">
+                ĐÁP ÁN & HƯỚNG DẪN GIẢI CHI TIẾT:
+              </span>
+              <div
+                className="doc-answer-body text-xs md:text-sm font-normal text-slate-600 space-y-1 leading-relaxed overflow-x-auto select-all w-full text-left"
+                dangerouslySetInnerHTML={{
+                  __html: renderContentWithMath(q.answerText),
+                }}
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  };
   
   return (
     <div className="bg-white/72 backdrop-blur-lg border border-white/50 shadow-[0_10px_40px_rgba(120,120,180,.08)] rounded-[28px] overflow-hidden flex flex-col w-full h-auto shrink-0">
@@ -1379,6 +1738,24 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   </div>
                 </div>
 
+                {/* Visual A4 Status Bar - Tự động vừa khung, không nút zoom rườm rà */}
+                <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-slate-200/70 select-none">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-white text-indigo-700 border border-slate-200/90 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-black shadow-3xs">
+                      <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Trang A4</span>
+                      {docQuestions.length > 0 && (
+                        <span className="ml-1 text-[11px] font-extrabold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-100">
+                          {a4Pages.length} trang
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-bold bg-slate-100/80 px-2.5 py-1 rounded-lg border border-slate-200/60 shadow-3xs">
+                    Tự động vừa khung ({Math.round(a4Scale * 100)}%)
+                  </span>
+                </div>
+
                 {/* Shuffle confirmation row with warning details and AI toggle */}
                 {showShuffleConfirm && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-col gap-3 animate-fade-in shadow-3xs">
@@ -1439,7 +1816,8 @@ export const QBuilder: React.FC<QBuilderProps> = ({
 
               {/* Document preview container */}
               <div 
-                className="p-2 md:p-4 flex-1 overflow-y-auto overscroll-contain min-h-0 bg-white/30 border-b border-slate-150 select-none flex flex-col items-center"
+                ref={scrollPreviewContainerRef}
+                className="p-3 sm:p-5 md:p-8 flex-1 overflow-y-auto overscroll-contain min-h-0 select-none flex flex-col items-center bg-slate-200/70 border-b border-slate-150 transition-colors scroll-smooth"
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
               >
@@ -1450,364 +1828,72 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                     </p>
                   </div>
                 ) : (
-                  /* Real live paper style rendering target */
+                  /* Dedicated A4 Multi-page Paper View with Smooth Scroll Separation */
                   <div
                     ref={docPreviewRef}
-                    style={{ fontFamily: wordFont }}
-                    className="preview-content bg-white p-6 md:p-10 rounded-2xl shadow-sm border border-slate-200 max-w-full w-full overflow-x-auto overflow-y-hidden leading-relaxed text-sm md:text-base text-slate-850 space-y-6 select-none relative animate-fade-in"
+                    style={{
+                      fontFamily: wordFont,
+                      zoom: a4Scale,
+                    }}
+                    className="preview-content w-full flex flex-col items-center select-none animate-fade-in py-1"
                     onCopy={(e) => e.preventDefault()}
                     onCut={(e) => e.preventDefault()}
                   >
-                    {/* Title header block */}
-                    {docHeaderStyle === "centered" ? (
-                      <div className="doc-header-block text-center space-y-2 border-b-2 border-double border-slate-800 pb-4">
-                        <h3 className="doc-title-text font-black text-slate-900 tracking-tight uppercase text-center text-sm md:text-base leading-tight">
-                          {docTitle || "TIÊU ĐỀ TÀI LIỆU"}
-                        </h3>
-                        <p className="doc-subtitle-text text-xs font-semibold text-slate-500 italic">
-                          {docSubtitle ||
-                            "Thông tin chi tiết thời gian, phân ban"}
-                        </p>
+                    {a4Pages.map((pageUnits, pageIdx) => (
+                      <div
+                        key={pageIdx}
+                        className="a4-page bg-white shadow-2xl shadow-slate-400/25 border border-slate-300/80 rounded-[3px] relative flex flex-col justify-between mb-10 last:mb-2 overflow-hidden select-none transition-all"
+                        style={{
+                          width: "794px",
+                          minHeight: "1123px",
+                          padding: "48px 56px",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div className="a4-page-content flex-1 space-y-5 text-left">
+                          {pageUnits.map((unit) => (
+                            <div key={unit.id} className="a4-unit-item">
+                              {renderUnitContent(unit)}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Page Footer (stripped on Word export via .no-word-export) */}
+                        <div className="no-word-export border-t border-slate-200/90 pt-3 mt-4 flex justify-between items-center text-[11px] text-slate-400 select-none">
+                          <span className="font-semibold text-slate-600">
+                            {docExamCode ? `Mã đề thi: ${docExamCode}` : (docTitle || "ĐỀ THI CHÍNH THỨC")}
+                          </span>
+                          <span className="font-bold text-slate-700 bg-slate-100 px-3 py-0.5 rounded-full border border-slate-200 shadow-3xs">
+                            Trang ${pageIdx + 1} / ${a4Pages.length}
+                          </span>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="doc-header-block border-b-4 border-double border-slate-800 pb-4 select-none overflow-x-auto">
-                        <table
-                          style={{
-                            width: "100%",
-                            borderCollapse: "collapse",
-                            border: "none",
-                          }}
-                          className="doc-header-table w-full border-none text-xs md:text-sm"
-                        >
-                          <tbody>
-                            <tr style={{ border: "none" }}>
-                              <td
-                                style={{
-                                  width: "50%",
-                                  verticalAlign: "top",
-                                  textAlign: "left",
-                                  padding: "4px",
-                                  border: "none",
-                                }}
-                                className="w-1/2 align-top text-left p-1"
-                              >
-                                <div className="font-bold text-slate-800 space-y-1.5 text-xs md:text-[13px] leading-relaxed">
-                                  <div className="whitespace-pre-wrap leading-relaxed text-slate-900">
-                                    {docStudentInfoFormat ||
-                                      `Họ và tên: ....................................................\nLớp: ................... STT: .........`}
-                                  </div>
-                                  <div className="text-slate-500 font-bold text-[11px] md:text-xs mt-2 uppercase tracking-wide">
-                                    Thời gian làm bài:{" "}
-                                    <span className="text-slate-800">{docTimeLimit || "90 phút"}</span>
-                                  </div>
-                                  {docExamCode && (
-                                    <div className="text-slate-800 font-black text-xs md:text-[13px] mt-1.5 bg-slate-100 inline-block px-2 py-0.5 rounded border border-slate-200">
-                                      Mã đề: {docExamCode}
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                              <td
-                                style={{
-                                  width: "50%",
-                                  verticalAlign: "top",
-                                  textAlign: "center",
-                                  padding: "4px",
-                                  border: "none",
-                                }}
-                                className="w-1/2 align-top text-center p-1 border-l border-slate-200"
-                              >
-                                <div className="space-y-1 text-xs md:text-[13px] font-bold text-slate-850 leading-tight">
-                                  <div className="uppercase font-black text-slate-900 tracking-wide">
-                                    {docSchoolName ||
-                                      "SỞ GIÁO DỤC VÀ ĐÀO TẠO"}
-                                  </div>
-                                  <div className="uppercase text-[11px] text-slate-500 mt-1">
-                                    {docExamName ||
-                                      "KỲ THI THỬ TỐT NGHIỆP"}
-                                  </div>
-                                  <div className="text-slate-900 font-black text-xs md:text-sm mt-1.5 tracking-tight border-t border-slate-100 pt-1 uppercase">
-                                    {docSubjectName || "MÔN THI"}
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-
-                    {/* List of Questions inside document */}
-                    <div className="space-y-6 select-none text-left">
-                      {tracNghiemList.length > 0 && (
-                        <div className="space-y-4">
-                          <div className="doc-section-header font-black text-slate-900 border-b border-slate-300 pb-1.5 text-left text-xs md:text-sm uppercase tracking-wide flex items-center justify-between">
-                            <span className="doc-section-title">
-                              {labelTracNghiem}
-                            </span>
-                          </div>
-                          <div className="space-y-5">
-                            {tracNghiemList.map((q, idx) => {
-                              const displayNum = idx + 1;
-                              const parsed = parseMultipleChoice(
-                                q.questionText,
-                              );
-                              const cleanBody = getCleanQuestionBody(
-                                parsed.questionBody,
-                              );
-                              return (
-                                <div
-                                  key={q.id}
-                                  className="doc-question-item space-y-2 border-l-2 border-slate-100 pl-3 hover:border-indigo-400 transition-colors py-1"
-                                >
-                                  <div className="flex items-start gap-1">
-                                    {!hasQuestionPrefix(cleanBody) && (
-                                      <span className="doc-type-badge font-bold text-slate-900 select-none shrink-0 mr-1">
-                                        Câu {displayNum}.
-                                      </span>
-                                    )}
-                                    <div
-                                      className="text-slate-800 font-normal leading-relaxed overflow-x-auto select-all w-full text-left"
-                                      dangerouslySetInnerHTML={{
-                                        __html:
-                                          renderContentWithMath(
-                                            cleanBody,
-                                          ),
-                                      }}
-                                    />
-                                  </div>
-
-                                  {parsed.options.length > 0 && (
-                                    <div
-                                      className={`doc-options-container grid gap-2 mt-2 ${
-                                        (q.columns || 4) === 4
-                                          ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-4"
-                                          : (q.columns || 4) === 2
-                                          ? "grid-cols-1 sm:grid-cols-2"
-                                          : "grid-cols-1"
-                                      }`}
-                                      data-columns={q.columns || 4}
-                                    >
-                                      {parsed.options.map((opt, oIdx) => (
-                                        <div
-                                          key={oIdx}
-                                          className="doc-option-item min-w-0 flex items-start gap-1.5 py-0.5"
-                                        >
-                                          <span className="doc-option-label font-bold text-slate-900 shrink-0 select-none">
-                                            {opt.label}.
-                                          </span>
-                                          <div
-                                            className="doc-option-text min-w-0 flex-1 text-slate-800 text-left whitespace-normal break-words overflow-x-auto"
-                                            dangerouslySetInnerHTML={{
-                                              __html:
-                                                renderContentWithMath(
-                                                  opt.text,
-                                                  false,
-                                                ),
-                                            }}
-                                          />
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  {/* Fallback multiple choice answer key / detailed solution */}
-                                  {q.answerText && (
-                                    <div className="doc-answer-block ml-1 p-3 rounded-xl bg-emerald-50/30 border border-emerald-100 text-slate-700 space-y-1 mt-2.5 animate-fade-in">
-                                      <span className="doc-answer-title text-[9px] font-black text-emerald-700 uppercase tracking-wider block select-none mb-1">
-                                        ĐÁP ÁN & HƯỚNG DẪN GIẢI CHI TIẾT:
-                                      </span>
-                                      <div
-                                        className="doc-answer-body text-xs md:text-sm font-normal text-slate-600 space-y-1 leading-relaxed overflow-x-auto select-all w-full text-left"
-                                        dangerouslySetInnerHTML={{
-                                          __html: renderContentWithMath(
-                                            q.answerText,
-                                          ),
-                                        }}
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {dungSaiList.length > 0 && (
-                        <div className="space-y-4 pt-2">
-                          <div className="doc-section-header font-black text-slate-900 border-b border-slate-300 pb-1.5 text-left text-xs md:text-sm uppercase tracking-wide flex items-center justify-between">
-                            <span className="doc-section-title">
-                              {labelDungSai}
-                            </span>
-                          </div>
-                          <div className="space-y-5">
-                            {dungSaiList.map((q, idx) => {
-                              const displayNum = idx + 1;
-                              const cleanText = getCleanQuestionBody(
-                                q.questionText,
-                              );
-                              return (
-                                <div
-                                  key={q.id}
-                                  className="doc-question-item space-y-3 border-l-2 border-slate-100 pl-3 hover:border-indigo-400 transition-colors py-1"
-                                >
-                                  <div className="flex items-start gap-1">
-                                    {!hasQuestionPrefix(cleanText) && (
-                                      <span className="doc-type-badge font-bold text-slate-900 select-none shrink-0 mr-1">
-                                        Câu {displayNum}.
-                                      </span>
-                                    )}
-                                    <div
-                                      className="text-slate-800 font-normal leading-relaxed overflow-x-auto select-all w-full text-left"
-                                      dangerouslySetInnerHTML={{
-                                        __html:
-                                          renderContentWithMath(
-                                            cleanText,
-                                          ),
-                                      }}
-                                    />
-                                  </div>
-                                  {q.answerText && (
-                                    <div className="doc-answer-block ml-1 p-3 rounded-xl bg-emerald-50/30 border border-emerald-100 text-slate-700 space-y-1 animate-fade-in">
-                                      <span className="doc-answer-title text-[9px] font-black text-emerald-700 uppercase tracking-wider block select-none mb-1">
-                                        ĐÁP ÁN & HƯỚNG DẪN GIẢI CHI TIẾT:
-                                      </span>
-                                      <div
-                                        className="doc-answer-body text-xs md:text-sm font-normal text-slate-600 space-y-1 leading-relaxed overflow-x-auto select-all w-full text-left"
-                                        dangerouslySetInnerHTML={{
-                                          __html: renderContentWithMath(
-                                            q.answerText,
-                                          ),
-                                        }}
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {traLoiNganList.length > 0 && (
-                        <div className="space-y-4 pt-2">
-                          <div className="doc-section-header font-black text-slate-900 border-b border-slate-300 pb-1.5 text-left text-xs md:text-sm uppercase tracking-wide flex items-center justify-between">
-                            <span className="doc-section-title">
-                              {labelTraLoiNgan}
-                            </span>
-                          </div>
-                          <div className="space-y-5">
-                            {traLoiNganList.map((q, idx) => {
-                              const displayNum = idx + 1;
-                              const cleanText = getCleanQuestionBody(
-                                q.questionText,
-                              );
-                              return (
-                                <div
-                                  key={q.id}
-                                  className="doc-question-item space-y-3 border-l-2 border-slate-100 pl-3 hover:border-indigo-400 transition-colors py-1"
-                                >
-                                  <div className="flex items-start gap-1">
-                                    {!hasQuestionPrefix(cleanText) && (
-                                      <span className="doc-type-badge font-bold text-slate-900 select-none shrink-0 mr-1">
-                                        Câu {displayNum}.
-                                      </span>
-                                    )}
-                                    <div
-                                      className="text-slate-800 font-normal leading-relaxed overflow-x-auto select-all w-full text-left"
-                                      dangerouslySetInnerHTML={{
-                                        __html:
-                                          renderContentWithMath(
-                                            cleanText,
-                                          ),
-                                      }}
-                                    />
-                                  </div>
-                                  {q.answerText && (
-                                    <div className="doc-answer-block ml-1 p-3 rounded-xl bg-emerald-50/30 border border-emerald-100 text-slate-700 space-y-1 animate-fade-in">
-                                      <span className="doc-answer-title text-[9px] font-black text-emerald-700 uppercase tracking-wider block select-none mb-1">
-                                        ĐÁP ÁN & HƯỚNG DẪN GIẢI CHI TIẾT:
-                                      </span>
-                                      <div
-                                        className="doc-answer-body text-xs md:text-sm font-normal text-slate-600 space-y-1 leading-relaxed overflow-x-auto select-all w-full text-left"
-                                        dangerouslySetInnerHTML={{
-                                          __html: renderContentWithMath(
-                                            q.answerText,
-                                          ),
-                                        }}
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {tuLuanList.length > 0 && (
-                        <div className="space-y-4 pt-2">
-                          <div className="doc-section-header font-black text-slate-900 border-b border-slate-300 pb-1.5 text-left text-xs md:text-sm uppercase tracking-wide flex items-center justify-between">
-                            <span className="doc-section-title">
-                              {labelTuLuan}
-                            </span>
-                          </div>
-                          <div className="space-y-5">
-                            {tuLuanList.map((q, idx) => {
-                              const displayNum = idx + 1;
-                              const cleanText = getCleanQuestionBody(
-                                q.questionText,
-                              );
-                              return (
-                                <div
-                                  key={q.id}
-                                  className="doc-question-item space-y-3 border-l-2 border-slate-100 pl-3 hover:border-indigo-400 transition-colors py-1"
-                                >
-                                  <div className="flex items-start gap-1">
-                                    {!hasQuestionPrefix(cleanText) && (
-                                      <span className="doc-type-badge font-bold text-slate-900 select-none shrink-0 mr-1">
-                                        Câu {displayNum}.
-                                      </span>
-                                    )}
-                                    <div
-                                      className="text-slate-800 font-normal leading-relaxed overflow-x-auto select-all w-full text-left"
-                                      dangerouslySetInnerHTML={{
-                                        __html:
-                                          renderContentWithMath(
-                                            cleanText,
-                                          ),
-                                      }}
-                                    />
-                                  </div>
-
-                                  {/* If essay / written type, show answer/solution area if it has text */}
-                                  {q.answerText && (
-                                    <div className="doc-answer-block ml-1 p-3 rounded-xl bg-emerald-50/30 border border-emerald-100 text-slate-700 space-y-1 animate-fade-in">
-                                      <span className="doc-answer-title text-[9px] font-black text-emerald-700 uppercase tracking-wider block select-none mb-1">
-                                        ĐÁP ÁN & HƯỚNG DẪN GIẢI CHI TIẾT:
-                                      </span>
-                                      <div
-                                        className="doc-answer-body text-xs md:text-sm font-normal text-slate-600 space-y-1 leading-relaxed overflow-x-auto select-all w-full text-left"
-                                        dangerouslySetInnerHTML={{
-                                          __html: renderContentWithMath(
-                                            q.answerText,
-                                          ),
-                                        }}
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-
+                    ))}
                   </div>
                 )}
+              </div>
+
+              {/* Invisible measurement container for A4 pagination */}
+              <div
+                ref={measureContainerRef}
+                aria-hidden="true"
+                style={{
+                  position: "fixed",
+                  left: "-9999px",
+                  top: 0,
+                  width: "794px",
+                  padding: "48px 56px",
+                  visibility: "hidden",
+                  pointerEvents: "none",
+                  fontFamily: wordFont,
+                  boxSizing: "border-box",
+                }}
+              >
+                {allUnits.map((unit) => (
+                  <div key={unit.id} data-measure-id={unit.id} className="mb-4">
+                    {renderUnitContent(unit)}
+                  </div>
+                ))}
               </div>
 
 

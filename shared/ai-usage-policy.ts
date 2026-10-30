@@ -6,6 +6,7 @@ export function getAiUsageDay(now = new Date()) {
 }
 
 export function getPromptLimit(profile: any, now = Date.now()) {
+  if (profile?.role === 'admin' || profile?.isOwner) return Infinity;
   const plan = getActivePlan(profile.planType, profile.planExpiresAt, now);
   return getPlanLimits(plan).ai;
 }

@@ -680,7 +680,7 @@ export const LatexConverter: React.FC<LatexConverterProps> = ({
                     Dán trực tiếp văn bản hoặc hình ảnh chứa công thức (Ctrl+V) vào đây
                   </p>
                   <p className="text-xs sm:text-sm text-slate-400/70 font-normal leading-relaxed">
-                    Hỗ trợ dán ảnh chụp màn hình công thức, tài liệu Word/PDF, hoặc nhập công thức LaTeX ($x^2$ hoặc $$y = mx+b$$) để chuyển sang Word...
+                    Dùng AI canvas để dán ảnh chụp màn hình công thức, tải lên tài liệu Word/PDF để trích xuất, hoặc nhập công thức LaTeX ($x^2$ hoặc $$y = mx+b$$) để chuyển sang Word ...
                   </p>
                 </div>
               )}

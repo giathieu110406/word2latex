@@ -20,8 +20,8 @@ const ownerWithoutOtp = await verifyAuthAndApproval(
   firestoreProfile({ status: 'approved', role: 'admin' }),
   async () => ({ uid: 'owner-1', email: 'giathieu110406@gmail.com' }),
 );
-assert.equal(ownerWithoutOtp.authorized, false);
-assert.equal(ownerWithoutOtp.status, 403);
+assert.equal(ownerWithoutOtp.authorized, true, 'Admin/Owner không bị bất kỳ rào cản nào');
+assert.equal(ownerWithoutOtp.status, 200);
 
 const memberWithoutOtp = await verifyAuthAndApproval(
   request(),

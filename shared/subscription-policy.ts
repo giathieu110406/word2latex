@@ -29,7 +29,10 @@ export const PLAN_LIMITS = {
 
 export type PlanType = keyof typeof PLAN_LIMITS;
 
-export function getPlanLimits(plan = 'free') {
+export function getPlanLimits(plan = 'free', role?: string) {
+  if (role === 'admin') {
+    return { latex: Infinity, exam: Infinity, ai: Infinity, markitdown: Infinity };
+  }
   return PLAN_LIMITS[(plan as PlanType)] || PLAN_LIMITS.free;
 }
 

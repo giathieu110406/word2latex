@@ -219,6 +219,32 @@ function checkDeviceFreeQuotaExceeded(type: 'latex' | 'prompt' | 'exam'): boolea
   return false;
 }
 
+// Helper tính tổng số lượt sử dụng trong ngày của các tài khoản có chung deviceFingerprint
+function getDeviceSharedDailyUsage(
+  allUsersList: any[],
+  deviceFp: string | undefined,
+  todayStr: string
+): { latex: number; exam: number; prompt: number } {
+  if (!deviceFp) return { latex: 0, exam: 0, prompt: 0 };
+  const sameDeviceUsers = allUsersList.filter(
+    (u) =>
+      u.deviceFingerprint === deviceFp &&
+      u.role !== 'admin' &&
+      u.planType !== 'pro' &&
+      u.planType !== 'plus'
+  );
+  return sameDeviceUsers.reduce(
+    (acc, u) => {
+      const isToday = u.lastLatexResetDate === todayStr;
+      acc.latex += isToday ? Number(u.latexCount) || 0 : 0;
+      acc.exam += isToday ? Number(u.examCount) || 0 : 0;
+      acc.prompt += isToday ? Number(u.promptCount) || 0 : 0;
+      return acc;
+    },
+    { latex: 0, exam: 0, prompt: 0 }
+  );
+}
+
 export default function App() {
   // --- AUTH & CONTROL STATE ---
   const [user, setUser] = useState<FirebaseUser | null>(() => {
@@ -484,7 +510,7 @@ export default function App() {
   useEffect(() => {
     if (!userDoc || !user || isAdminUser(user, userDoc) || !hasPhoneConfirmation(userDoc)) return;
     const today = getTodayStr();
-    const limits = getPlanLimits(activePlan);
+    const limits = getPlanLimits(activePlan, userDoc?.role);
     const reached = userDoc.lastLatexResetDate === today
       ? (['latexCount', 'examCount', 'promptCount'] as const)
           .filter((field) => {
@@ -510,6 +536,8 @@ export default function App() {
   const [generalNoticeTitle, setGeneralNoticeTitle] = useState<string>("");
   const [generalNoticeContent, setGeneralNoticeContent] = useState<string>("");
   const [generalNoticeTarget, setGeneralNoticeTarget] = useState<string>("all");
+  const [generalNoticeSelectedUids, setGeneralNoticeSelectedUids] = useState<string[]>([]);
+  const [noticeUserSearchQuery, setNoticeUserSearchQuery] = useState<string>("");
   const [generalNoticeHasPoll, setGeneralNoticeHasPoll] = useState<boolean>(false);
   const [generalNoticePollQuestion, setGeneralNoticePollQuestion] = useState<string>("");
   const [generalNoticePollOptions, setGeneralNoticePollOptions] = useState<string[]>([
@@ -526,6 +554,7 @@ export default function App() {
   const [editingNoticeTitle, setEditingNoticeTitle] = useState<string>("");
   const [editingNoticeContent, setEditingNoticeContent] = useState<string>("");
   const [editingNoticeTarget, setEditingNoticeTarget] = useState<string>("all");
+  const [editingNoticeSelectedUids, setEditingNoticeSelectedUids] = useState<string[]>([]);
   const [editingNoticeHasPoll, setEditingNoticeHasPoll] = useState<boolean>(false);
   const [editingNoticePollQuestion, setEditingNoticePollQuestion] = useState<string>("");
   const [editingNoticePollOptions, setEditingNoticePollOptions] = useState<string[]>([
@@ -1362,7 +1391,7 @@ export default function App() {
       return;
     }
     const currentPromptCount = userDoc?.promptCount || 0;
-    if (!isApproved && currentPromptCount >= 15 * currentMultiplier) {
+    if (!isAdmin && currentPromptCount >= getPlanLimits(activePlan, userDoc?.role).ai) {
       triggerToast(
         `Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa ${15 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
@@ -1466,7 +1495,7 @@ export default function App() {
 
       if (isAIShuffleEnabled) {
         const currentPromptCount = userDoc?.promptCount || 0;
-        if (!isApproved && currentPromptCount >= 15 * currentMultiplier) {
+        if (!isAdmin && currentPromptCount >= getPlanLimits(activePlan, userDoc?.role).ai) {
           triggerToast(
             `Bạn đã tới giới hạn tính năng AI thay thế số liệu (tối đa ${15 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
             false
@@ -1550,7 +1579,7 @@ export default function App() {
     if (!docPreviewRef.current) return;
 
     try {
-      const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement;
+      const clone = docPreviewRef.current.cloneNode(true) as HTMLDivElement; clone.querySelectorAll('.no-word-export').forEach(el => el.remove());
       prepareWordEquations(clone);
       injectInlineStyles(clone);
       await downloadWordDocument(clone, wordFont, "Tai_Lieu_Tu_Luan_Trac_Nghiem.docx");
@@ -2086,16 +2115,21 @@ export default function App() {
       return;
     }
     const notificationsQuery = collection(db, "notifications");
-    const q = query(
-      notificationsQuery,
-      where("targetUid", "in", ["all", user.uid]),
-    );
     const unsubscribeNotifications = onSnapshot(
-      q,
+      notificationsQuery,
       (querySnap) => {
         const list: any[] = [];
-        querySnap.forEach((doc) => {
-          list.push({ id: doc.id, ...doc.data() });
+        querySnap.forEach((docSnap) => {
+          const data: any = { id: docSnap.id, ...docSnap.data() };
+          // Check access: system-wide, direct single target, or included in targetUids array
+          const isTargeted =
+            data.type === "system" ||
+            data.targetUid === "all" ||
+            data.targetUid === user.uid ||
+            (Array.isArray(data.targetUids) && data.targetUids.includes(user.uid));
+          if (isTargeted) {
+            list.push(data);
+          }
         });
         list.sort((a, b) => {
           const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -2260,19 +2294,32 @@ export default function App() {
       return;
     }
 
+    if (generalNoticeTarget === "custom" && generalNoticeSelectedUids.length === 0) {
+      triggerToast("Vui lòng chọn ít nhất 1 thành viên nhận thông báo.", false);
+      return;
+    }
+
     setIsSendingGeneralNotice(true);
     try {
       let targetEmail = "Tất cả thành viên";
-      if (generalNoticeTarget !== "all") {
-        const found = allUsers.find((u) => u.uid === generalNoticeTarget);
-        targetEmail = found ? found.email || "Người dùng" : "Thành viên được chỉ định";
+      let targetUids: string[] = [];
+
+      if (generalNoticeTarget === "custom") {
+        targetUids = [...generalNoticeSelectedUids];
+        const selectedUsers = allUsers.filter((u) => targetUids.includes(u.uid));
+        if (selectedUsers.length === 1) {
+          targetEmail = selectedUsers[0].displayName ? `${selectedUsers[0].displayName} (${selectedUsers[0].email})` : selectedUsers[0].email || "Thành viên";
+        } else {
+          targetEmail = `${selectedUsers.length} thành viên (${selectedUsers.map((u) => u.displayName || u.email || "Thành viên").slice(0, 2).join(", ")}${selectedUsers.length > 2 ? "..." : ""})`;
+        }
       }
 
       await addDoc(collection(db, "notifications"), {
         title: generalNoticeTitle.trim(),
         content: generalNoticeContent.trim(),
         type: generalNoticeTarget === "all" ? "system" : "user",
-        targetUid: generalNoticeTarget,
+        targetUid: generalNoticeTarget === "all" ? "all" : (targetUids.length === 1 ? targetUids[0] : "multiple"),
+        targetUids: generalNoticeTarget === "all" ? [] : targetUids,
         targetEmail: targetEmail,
         senderName: "Trần Gia Thiều (Admin)",
         createdAt: new Date().toISOString(),
@@ -2289,6 +2336,8 @@ export default function App() {
       setGeneralNoticeTitle("");
       setGeneralNoticeContent("");
       setGeneralNoticeTarget("all");
+      setGeneralNoticeSelectedUids([]);
+      setNoticeUserSearchQuery("");
       setGeneralNoticeHasPoll(false);
       setGeneralNoticePollQuestion("");
       setGeneralNoticePollOptions(["Đồng ý / Hài lòng", "Không đồng ý / Cần cải thiện"]);
@@ -2315,19 +2364,32 @@ export default function App() {
       return;
     }
 
+    if (editingNoticeTarget === "custom" && editingNoticeSelectedUids.length === 0) {
+      triggerToast("Vui lòng chọn ít nhất 1 thành viên nhận thông báo.", false);
+      return;
+    }
+
     setIsUpdatingGeneralNotice(true);
     try {
       let targetEmail = "Tất cả thành viên";
-      if (editingNoticeTarget !== "all") {
-        const found = allUsers.find((u) => u.uid === editingNoticeTarget);
-        targetEmail = found ? found.email || "Người dùng" : "Thành viên được chỉ định";
+      let targetUids: string[] = [];
+
+      if (editingNoticeTarget === "custom") {
+        targetUids = [...editingNoticeSelectedUids];
+        const selectedUsers = allUsers.filter((u) => targetUids.includes(u.uid));
+        if (selectedUsers.length === 1) {
+          targetEmail = selectedUsers[0].displayName ? `${selectedUsers[0].displayName} (${selectedUsers[0].email})` : selectedUsers[0].email || "Thành viên";
+        } else {
+          targetEmail = `${selectedUsers.length} thành viên (${selectedUsers.map((u) => u.displayName || u.email || "Thành viên").slice(0, 2).join(", ")}${selectedUsers.length > 2 ? "..." : ""})`;
+        }
       }
 
       await updateDoc(doc(db, "notifications", editingNotificationId), {
         title: editingNoticeTitle.trim(),
         content: editingNoticeContent.trim(),
         type: editingNoticeTarget === "all" ? "system" : "user",
-        targetUid: editingNoticeTarget,
+        targetUid: editingNoticeTarget === "all" ? "all" : (targetUids.length === 1 ? targetUids[0] : "multiple"),
+        targetUids: editingNoticeTarget === "all" ? [] : targetUids,
         targetEmail: targetEmail,
         hasPoll: !!editingNoticeHasPoll,
         pollQuestion: editingNoticePollQuestion.trim() || editingNoticeTitle.trim(),
@@ -2342,6 +2404,8 @@ export default function App() {
       setEditingNoticeTitle("");
       setEditingNoticeContent("");
       setEditingNoticeTarget("all");
+      setEditingNoticeSelectedUids([]);
+      setNoticeUserSearchQuery("");
       setEditingNoticeHasPoll(false);
       setEditingNoticePollQuestion("");
       setEditingNoticePollOptions(["Đồng ý / Hài lòng", "Không đồng ý / Cần cải thiện"]);
@@ -2481,6 +2545,8 @@ export default function App() {
         setEditingNoticeTitle("");
         setEditingNoticeContent("");
         setEditingNoticeTarget("all");
+        setEditingNoticeSelectedUids([]);
+        setNoticeUserSearchQuery("");
       }
     } catch (e) {
       console.error("Lỗi khi xóa thông báo:", e);
@@ -2548,15 +2614,7 @@ export default function App() {
       }
       await updateDoc(docRef, {
         displayName: editingUser.displayName || "",
-        status: editingUser.status,
-        role: editingUser.role,
-        planType: editingUser.planType || 'free',
-        planExpiresAt: planExpiresAt,
-        latexCount: Number(editingUser.latexCount) || 0,
-        examCount: Number(editingUser.examCount) || 0,
-        promptCount: Number(editingUser.promptCount) || 0,
-        queryCount: Number(editingUser.queryCount) || 0,
-        lastLatexResetDate: editingUser.lastLatexResetDate || getTodayStr(),
+        role: editingUser.role || "user",
       });
       // Ghi nhận vào thanh toán (0đ) nếu cấp gói trả phí
       const origUser = allUsers.find(u => u.uid === editingUser.uid);
@@ -2735,8 +2793,13 @@ export default function App() {
   const incrementLatexCount = async () => {
     logApiUsage("Chuyển đổi LaTeX");
     if (activePlan === 'free') {
-      if (checkDeviceFreeQuotaExceeded('latex')) {
-        triggerToast("Thiết bị này đã sử dụng hết hạn mức LaTeX miễn phí hôm nay (30 lượt). Vui lòng nâng cấp gói để tiếp tục!", false);
+      const today = getTodayStr();
+      const sharedUsage = getDeviceSharedDailyUsage(allUsers, userDoc?.deviceFingerprint, today);
+      const isSharedLocked = !!userDoc?.cloneLimitLocked;
+      const deviceTotalLatex = isSharedLocked ? sharedUsage.latex : (userDoc?.latexCount || 0);
+
+      if (checkDeviceFreeQuotaExceeded('latex') || (isSharedLocked && deviceTotalLatex >= 30)) {
+        triggerToast("Thiết bị này đã sử dụng hết hạn mức LaTeX miễn phí hôm nay (30 lượt dùng chung cho các tài khoản). Vui lòng nâng cấp gói để tiếp tục!", false);
         setSidebarView('pricing');
         return;
       }
@@ -2766,8 +2829,13 @@ export default function App() {
   const incrementExamCount = async () => {
     logApiUsage("Áp dụng đề thi");
     if (activePlan === 'free') {
-      if (checkDeviceFreeQuotaExceeded('exam')) {
-        triggerToast("Thiết bị này đã sử dụng hết hạn mức Soạn đề thi miễn phí hôm nay (10 đề). Vui lòng nâng cấp gói để tiếp tục!", false);
+      const today = getTodayStr();
+      const sharedUsage = getDeviceSharedDailyUsage(allUsers, userDoc?.deviceFingerprint, today);
+      const isSharedLocked = !!userDoc?.cloneLimitLocked;
+      const deviceTotalExam = isSharedLocked ? sharedUsage.exam : (userDoc?.examCount || 0);
+
+      if (checkDeviceFreeQuotaExceeded('exam') || (isSharedLocked && deviceTotalExam >= 10)) {
+        triggerToast("Thiết bị này đã sử dụng hết hạn mức Soạn đề thi miễn phí hôm nay (10 đề dùng chung cho các tài khoản). Vui lòng nâng cấp gói để tiếp tục!", false);
         setSidebarView('pricing');
         return;
       }
@@ -2797,8 +2865,13 @@ export default function App() {
   const incrementPromptCount = async () => {
     logApiUsage("Áp dụng tinh chỉnh AI");
     if (activePlan === 'free') {
-      if (checkDeviceFreeQuotaExceeded('prompt')) {
-        triggerToast("Thiết bị này đã sử dụng hết hạn mức AI miễn phí hôm nay (12 lượt). Vui lòng nâng cấp gói để tiếp tục!", false);
+      const today = getTodayStr();
+      const sharedUsage = getDeviceSharedDailyUsage(allUsers, userDoc?.deviceFingerprint, today);
+      const isSharedLocked = !!userDoc?.cloneLimitLocked;
+      const deviceTotalPrompt = isSharedLocked ? sharedUsage.prompt : (userDoc?.promptCount || 0);
+
+      if (checkDeviceFreeQuotaExceeded('prompt') || (isSharedLocked && deviceTotalPrompt >= 12)) {
+        triggerToast("Thiết bị này đã sử dụng hết hạn mức AI miễn phí hôm nay (12 lượt dùng chung cho các tài khoản). Vui lòng nâng cấp gói để tiếp tục!", false);
         setSidebarView('pricing');
         return;
       }
@@ -2827,8 +2900,13 @@ export default function App() {
 
   const handleMarkItDownUsage = async (isAi?: boolean) => {
     if (activePlan === 'free') {
-      if (checkDeviceFreeQuotaExceeded('prompt')) {
-        triggerToast("Thiết bị này đã sử dụng hết hạn mức AI miễn phí hôm nay. Vui lòng nâng cấp gói để tiếp tục!", false);
+      const today = getTodayStr();
+      const sharedUsage = getDeviceSharedDailyUsage(allUsers, userDoc?.deviceFingerprint, today);
+      const isSharedLocked = !!userDoc?.cloneLimitLocked;
+      const deviceTotalPrompt = isSharedLocked ? sharedUsage.prompt : (userDoc?.promptCount || 0);
+
+      if (checkDeviceFreeQuotaExceeded('prompt') || (isSharedLocked && deviceTotalPrompt >= 12)) {
+        triggerToast("Thiết bị này đã sử dụng hết hạn mức AI miễn phí hôm nay (dùng chung cho các tài khoản trên thiết bị). Vui lòng nâng cấp gói để tiếp tục!", false);
         setSidebarView('pricing');
         return;
       }
@@ -3242,7 +3320,7 @@ ${cleanedBody}
   // Convert and Qbuild share the same renderer, including Word equation metadata.
   useEffect(() => {
     if (!inputText.trim()) {
-      setProcessedHtml('<p class="text-slate-400 italic font-medium">Kết quả học thuật sẽ hiển thị trực quan tại đây...</p>');
+      setProcessedHtml('<p class="text-slate-400 italic font-medium">Kết quả học thuật sẽ hiển thị trực quan tại đây...</p><p class="text-slate-400/80 text-xs sm:text-sm mt-1.5 italic">Sao chép mã LaTeX ở mục tải PDF.</p>');
       setOverleafCode("");
       return;
     }
@@ -3331,7 +3409,7 @@ ${cleanedBody}
     // Nếu có từ 2 câu trở lên, chạy tính năng "Dán thông minh" ẩn danh (nếu không bypass)
     if (!bypassAutoProcess && cauCount >= 2) {
       const currentPromptCount = userDoc?.promptCount || 0;
-      if (!isApproved && currentPromptCount >= 15 * currentMultiplier) {
+      if (!isAdmin && currentPromptCount >= getPlanLimits(activePlan, userDoc?.role).ai) {
         triggerToast(
           `Bạn đã tới giới hạn tính năng dán thông minh (AI) (tối đa ${15 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
           false,
@@ -3420,7 +3498,7 @@ ${cleanedBody}
     }
 
     const currentLatexCount = userDoc?.latexCount || 0;
-    if (!isApproved && currentLatexCount >= 30 * currentMultiplier) {
+    if (!isAdmin && currentLatexCount >= getPlanLimits(activePlan, userDoc?.role).latex) {
       triggerToast(
         `Bạn đã đạt giới hạn tính năng tải tài liệu trong ngày (tối đa ${30 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
@@ -4202,7 +4280,7 @@ ${bodyHtml}
     }
 
     const currentPromptCount = userDoc?.promptCount || 0;
-    if (!isApproved && currentPromptCount >= 15 * currentMultiplier) {
+    if (!isAdmin && currentPromptCount >= getPlanLimits(activePlan, userDoc?.role).ai) {
       triggerToast(
         `Bạn đã tới giới hạn tính năng Trợ lý AI Canvas (tối đa ${15 * currentMultiplier} lượt/ngày). Hãy liên hệ Admin qua email giathieu110406@gmail.com để được cấp quyền không giới hạn!`,
         false,
@@ -4381,8 +4459,8 @@ ${bodyHtml}
 
   // Determine user constraints
   const isOwner = checkIsOwnerEmail(user);
-  const isApproved = isOwner || userDoc?.status === "approved";
-  const isRejected = !isApproved && (userDoc?.status === "rejected" || userDoc?.status === "suspended");
+  const isAdmin = isOwner || isAdminUser(user, userDoc); const isApproved = true;
+  const isRejected = false;
   const isEmailVerified = Boolean(
     isEmailOtpVerified(userDoc) ||
     userDoc?.emailOtpVerifiedAt ||
@@ -4945,8 +5023,8 @@ ${bodyHtml}
                   const name = (u.displayName || "").toLowerCase();
                   const email = (u.email || u.providerData?.[0]?.email || "").toLowerCase();
                   const query = userSearchQuery.toLowerCase();
-                  const userStatus = u.status || 'pending';
-                  if (filterStatus !== 'all' && userStatus !== filterStatus) return false;
+
+
                   return name.includes(query) || email.includes(query);
                 })
                 .sort((a, b) => {
@@ -4992,98 +5070,43 @@ ${bodyHtml}
                     </div>
                   </div>
 
-                  {/* Stats Cards: Trên mobile dạng 2 hàng thẻ nhỏ (hàng trên 3, hàng dưới 2), trên desktop 5 cột 1 hàng */}
-                  <div className="flex flex-col gap-2 mb-4 sm:mb-6">
-                    {/* Hàng 1 trên mobile (3 chỉ số): Tổng thành viên, Đang hoạt động, Chờ duyệt */}
-                    <div className="grid grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
-                      <SpotlightCard spotlightColor="rgba(99, 102, 241, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
-                        <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-3">
-                          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-indigo-50/70 flex items-center justify-center shrink-0">
-                            <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm sm:text-base lg:text-lg font-black text-slate-800"><SlidingNumber value={totalMembers} /></div>
-                            <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">Tổng thành viên</div>
-                          </div>
+                  {/* Stats Cards: Đúng 3 chỉ số theo yêu cầu: Tổng thành viên, Số lượng đã tích hôm nay, AI hôm nay */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 mb-4 sm:mb-6">
+                    <SpotlightCard spotlightColor="rgba(99, 102, 241, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50/80 flex items-center justify-center shrink-0 border border-indigo-100/50">
+                          <Users className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
                         </div>
-                      </SpotlightCard>
+                        <div className="min-w-0">
+                          <div className="text-base sm:text-xl font-black text-slate-800"><SlidingNumber value={totalMembers} /></div>
+                          <div className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider truncate">Tổng số thành viên</div>
+                        </div>
+                      </div>
+                    </SpotlightCard>
 
-                      <SpotlightCard spotlightColor="rgba(16, 185, 129, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
-                        <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-3">
-                          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-50/70 flex items-center justify-center shrink-0">
-                            <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" strokeWidth={3} />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm sm:text-base lg:text-lg font-black text-slate-800"><SlidingNumber value={activeMembers} /></div>
-                            <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">Hoạt động</div>
-                          </div>
+                    <SpotlightCard spotlightColor="rgba(37, 99, 235, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-50/80 flex items-center justify-center shrink-0 border border-blue-100/50">
+                          <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                         </div>
-                      </SpotlightCard>
+                        <div className="min-w-0">
+                          <div className="text-base sm:text-xl font-black text-slate-800"><SlidingNumber value={totalLatexCount} /></div>
+                          <div className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider truncate">Số lượng đã tích hôm nay</div>
+                        </div>
+                      </div>
+                    </SpotlightCard>
 
-                      <SpotlightCard spotlightColor="rgba(245, 158, 11, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
-                        <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-3">
-                          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-50/70 flex items-center justify-center shrink-0">
-                            <UserCog className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm sm:text-base lg:text-lg font-black text-slate-800"><SlidingNumber value={pendingMembers} /></div>
-                            <div className="text-[8px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">Chờ duyệt</div>
-                          </div>
+                    <SpotlightCard spotlightColor="rgba(225, 29, 72, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 shadow-2xs hover:shadow-xs transition-all duration-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-rose-50/80 flex items-center justify-center shrink-0 border border-rose-100/50">
+                          <span className="font-black text-rose-600 text-xs sm:text-sm tracking-tight">AI</span>
                         </div>
-                      </SpotlightCard>
-
-                      {/* Hiển thị trên desktop cho 5 cột */}
-                      <SpotlightCard spotlightColor="rgba(37, 99, 235, 0.15)" className="hidden lg:block bg-white/60 border border-white/60 rounded-2xl p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-blue-50/70 flex items-center justify-center shrink-0">
-                            <FileText className="w-4 h-4 text-blue-600" />
-                          </div>
-                          <div>
-                            <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalLatexCount} /></div>
-                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">LaTeX hôm nay</div>
-                          </div>
+                        <div className="min-w-0">
+                          <div className="text-base sm:text-xl font-black text-slate-800"><SlidingNumber value={totalPromptCount} /></div>
+                          <div className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider truncate">AI hôm nay</div>
                         </div>
-                      </SpotlightCard>
-
-                      <SpotlightCard spotlightColor="rgba(225, 29, 72, 0.15)" className="hidden lg:block bg-white/60 border border-white/60 rounded-2xl p-3.5 shadow-2xs hover:shadow-xs transition-all duration-200">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-rose-50/70 flex items-center justify-center shrink-0">
-                            <span className="font-black text-rose-600 text-xs tracking-tight">AI</span>
-                          </div>
-                          <div>
-                            <div className="text-lg font-black text-slate-800"><SlidingNumber value={totalPromptCount} /></div>
-                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">AI hôm nay</div>
-                          </div>
-                        </div>
-                      </SpotlightCard>
-                    </div>
-
-                    {/* Hàng 2 trên mobile (2 chỉ số): LaTeX hôm nay & AI hôm nay */}
-                    <div className="grid grid-cols-2 lg:hidden gap-2 sm:gap-3">
-                      <SpotlightCard spotlightColor="rgba(37, 99, 235, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-2xs hover:shadow-xs transition-all duration-200">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50/70 flex items-center justify-center shrink-0">
-                            <FileText className="w-3.5 h-3.5 text-blue-600" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm sm:text-base font-black text-slate-800"><SlidingNumber value={totalLatexCount} /></div>
-                            <div className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">LaTeX hôm nay</div>
-                          </div>
-                        </div>
-                      </SpotlightCard>
-
-                      <SpotlightCard spotlightColor="rgba(225, 29, 72, 0.15)" className="bg-white/60 border border-white/60 rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-2xs hover:shadow-xs transition-all duration-200">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-50/70 flex items-center justify-center shrink-0">
-                            <span className="font-black text-rose-600 text-[10px] tracking-tight">AI</span>
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm sm:text-base font-black text-slate-800"><SlidingNumber value={totalPromptCount} /></div>
-                            <div className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-wider truncate">AI hôm nay</div>
-                          </div>
-                        </div>
-                      </SpotlightCard>
-                    </div>
+                      </div>
+                    </SpotlightCard>
                   </div>
 
                   {/* Table Card */}
@@ -5105,27 +5128,6 @@ ${bodyHtml}
                         />
                       </div>
 
-                      {/* Hàng 2: Nút Bộ lọc căn phải */}
-                      <div className="flex justify-end w-full relative">
-                        <div className="relative shrink-0">
-                          <button
-                            onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                            className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-white border border-[#E8EBF3] hover:bg-[#F9F9FF] rounded-full text-xs font-bold text-slate-600 transition-all duration-200 shadow-2xs cursor-pointer active:scale-95"
-                          >
-                            <Filter className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Bộ lọc</span>
-                            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                          </button>
-                          {showFilterDropdown && (
-                            <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-[#EEF2F7] rounded-2xl shadow-xl z-50 overflow-hidden py-1">
-                              <button onClick={() => { setFilterStatus('all'); setShowFilterDropdown(false); setMemberPage(1); }} className={`w-full text-left px-4 py-2.5 text-xs hover:bg-slate-50 transition-colors ${filterStatus === 'all' ? 'text-[#6B5CFF] font-bold bg-[#F3F1FF]' : 'text-slate-700 font-medium'}`}>Tất cả trạng thái</button>
-                              <button onClick={() => { setFilterStatus('approved'); setShowFilterDropdown(false); setMemberPage(1); }} className={`w-full text-left px-4 py-2.5 text-xs hover:bg-slate-50 transition-colors ${filterStatus === 'approved' ? 'text-[#6B5CFF] font-bold bg-[#F3F1FF]' : 'text-slate-700 font-medium'}`}>Đang hoạt động</button>
-                              <button onClick={() => { setFilterStatus('pending'); setShowFilterDropdown(false); setMemberPage(1); }} className={`w-full text-left px-4 py-2.5 text-xs hover:bg-slate-50 transition-colors ${filterStatus === 'pending' ? 'text-[#6B5CFF] font-bold bg-[#F3F1FF]' : 'text-slate-700 font-medium'}`}>Chờ duyệt</button>
-                              <button onClick={() => { setFilterStatus('rejected'); setShowFilterDropdown(false); setMemberPage(1); }} className={`w-full text-left px-4 py-2.5 text-xs hover:bg-slate-50 transition-colors ${filterStatus === 'rejected' ? 'text-[#6B5CFF] font-bold bg-[#F3F1FF]' : 'text-slate-700 font-medium'}`}>Đã khóa</button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
                     </div>
 
                     {/* GIAO DIỆN MOBILE: CHỈ HIỆN 3 THÔNG SỐ: THÀNH VIÊN (AVATAR+TÊN), SỐ LƯỢT SỬ DỤNG, THAO TÁC */}
@@ -5136,9 +5138,9 @@ ${bodyHtml}
                         const { style: avatarStyle, char: avatarChar } = getInitialsStyle(u.displayName, u.email);
 
                         return (
-                          <div key={u.uid} className="p-2.5 sm:p-3 flex items-center justify-between gap-2 hover:bg-[#FCFCFF]/60 transition-colors">
-                            {/* 1. Thành viên: Avatar + Tên (ẨN UID mã định danh) */}
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div key={u.uid} className="px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-[#FCFCFF]/60 transition-colors">
+                            {/* 1. Thành viên: Avatar + Tên bên góc trái */}
+                            <div className="flex items-center gap-2 min-w-0 w-[42%] shrink-0">
                               <div 
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -5154,7 +5156,7 @@ ${bodyHtml}
                                   <span>{avatarChar}</span>
                                 )}
                               </div>
-                              <div className="min-w-0 flex-1">
+                              <div className="min-w-0 flex-1 pr-1">
                                 <div className="font-extrabold text-[#1E2432] text-xs truncate flex items-center gap-1">
                                   <span className="truncate">{u.displayName || "Thành viên"}</span>
                                   {isSelf && (
@@ -5164,22 +5166,22 @@ ${bodyHtml}
                               </div>
                             </div>
 
-                            {/* 2. Số lượt sử dụng */}
-                            <div className="flex flex-col items-center shrink-0 px-1 text-center">
-                              <div className="text-[11px] font-extrabold text-slate-800">
+                            {/* 2. Số lượt sử dụng: Căn chính giữa hàng */}
+                            <div className="flex flex-col items-center justify-center flex-1 px-1 text-center min-w-0">
+                              <div className="text-[11px] font-extrabold text-slate-800 whitespace-nowrap">
                                 <span className="text-indigo-600 font-black">{usage.latex}</span>
                                 <span className="text-slate-300 font-normal"> / </span>
                                 <span className="text-purple-600 font-black">{usage.prompt}</span>
                                 <span className="text-slate-300 font-normal"> / </span>
                                 <span className="text-blue-600 font-black">{usage.exam}</span>
                               </div>
-                              <div className="text-[8px] font-bold text-slate-400 tracking-tight">
+                              <div className="text-[8px] font-bold text-slate-400 tracking-tight whitespace-nowrap">
                                 LaTeX • AI • Đề
                               </div>
                             </div>
 
-                            {/* 3. Thao tác (Chỉnh sửa & Xóa) */}
-                            <div className="flex items-center gap-1 shrink-0">
+                            {/* 3. Thao tác (Chỉnh sửa & Xóa): Góc phải */}
+                            <div className="flex items-center justify-end gap-1 shrink-0 w-[58px]">
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -5294,7 +5296,7 @@ ${bodyHtml}
                                       u.planType === 'trial' ? 'bg-[#FFFBEB] text-[#F59E0B] border border-[#fef3c7]' :
                                       'bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]'
                                     }`}>
-                                      {u.planType && u.planType !== 'free' ? u.planType : 'User'}
+                                      {u.role === 'admin' ? 'ADMIN' : (u.planType && u.planType !== 'free' ? u.planType.toUpperCase() : 'FREE')}
                                     </span>
                                   </div>
                                 </td>
@@ -5302,7 +5304,7 @@ ${bodyHtml}
                                   {(() => {
                                     const usage = getUserTodayUsage(u);
                                     const activePlan = getActivePlan(u.planType, u.planExpiresAt);
-                                    const limits = getPlanLimits(activePlan);
+                                    const limits = getPlanLimits(activePlan, u.role);
                                     const formatLimit = (val: number) => val === Infinity ? '∞' : val;
                                     return (
                                       <div className="flex flex-col gap-1 text-[11px] text-slate-500 font-medium">
@@ -5483,21 +5485,14 @@ ${bodyHtml}
                                 <div className="text-[13px] font-medium text-slate-500 mt-0.5">{selectedUserDetails.email || "Không có email"}</div>
 
                                 <div className="flex items-center gap-1.5 mt-3">
-                                  {selectedUserDetails.status === "approved" ? (
-                                    <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E6F9EE] text-[#10B981] border border-emerald-100">
-                                      Đang hoạt động
-                                    </span>
-                                  ) : selectedUserDetails.status === "pending" ? (
-                                    <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFFBEB] text-[#F59E0B] border border-amber-100">
-                                      Chờ duyệt
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#FFF1F2] text-[#F43F5E] border border-rose-100">
-                                      Bị khóa
-                                    </span>
-                                  )}
-                                  <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
-                                    {selectedUserDetails.role === "admin" ? "ADMIN" : "USER"}
+                                  <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                                    selectedUserDetails.role === "admin"
+                                      ? "bg-indigo-600 text-white shadow-3xs"
+                                      : (selectedUserDetails.planType && selectedUserDetails.planType !== "free")
+                                      ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                      : "bg-slate-100 text-slate-600 border border-slate-200"
+                                  }`}>
+                                    {selectedUserDetails.role === "admin" ? "ADMIN" : (selectedUserDetails.planType ? selectedUserDetails.planType.toUpperCase() : "FREE")}
                                   </span>
                                 </div>
                               </div>
@@ -5611,53 +5606,76 @@ ${bodyHtml}
                           </div>
 
                           <div className="flex flex-col gap-4">
-                            <div className="flex flex-col gap-1.5">
-                              <label className="text-xs font-bold text-[#1E2432]">Họ và tên</label>
-                              <input
-                                type="text"
-                                value={newMemberName}
-                                onChange={(e) => setNewMemberName(e.target.value)}
-                                placeholder="Nhập họ và tên..."
-                                className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF] focus:ring-4 focus:ring-[#6B5CFF]/10"
-                              />
-                            </div>
+                            {/* Họ và tên & Vai trò trên cùng 1 hàng */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-bold text-[#1E2432]">Họ và tên</label>
+                                <input
+                                  type="text"
+                                  value={editingUser.displayName || ""}
+                                  onChange={(e) => setEditingUser({ ...editingUser, displayName: e.target.value })}
+                                  placeholder="Nhập họ và tên..."
+                                  className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF] focus:ring-4 focus:ring-[#6B5CFF]/10"
+                                />
+                              </div>
 
-                            <div className="flex flex-col gap-1.5">
-                              <label className="text-xs font-bold text-[#1E2432]">Địa chỉ Email</label>
-                              <input
-                                type="email"
-                                value={newMemberEmail}
-                                onChange={(e) => setNewMemberEmail(e.target.value)}
-                                placeholder="name@domain.com"
-                                className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF] focus:ring-4 focus:ring-[#6B5CFF]/10"
-                              />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
                               <div className="flex flex-col gap-1.5">
                                 <label className="text-xs font-bold text-[#1E2432]">Vai trò</label>
                                 <select
-                                  value={newMemberRole}
-                                  onChange={(e) => setNewMemberRole(e.target.value)}
+                                  value={editingUser.role || "user"}
+                                  onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
                                   className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
                                 >
                                   <option value="user">User</option>
                                   <option value="admin">Admin</option>
                                 </select>
                               </div>
+                            </div>
 
-                              <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-bold text-[#1E2432]">Trạng thái</label>
-                                <select
-                                  value={newMemberStatus}
-                                  onChange={(e) => setNewMemberStatus(e.target.value)}
-                                  className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                >
-                                  <option value="approved">Hoạt động</option>
-                                  <option value="pending">Chờ duyệt</option>
-                                  <option value="rejected">Bị khóa</option>
-                                </select>
-                              </div>
+                            {/* Hạn mức sử dụng (Lượt đã dùng) - Hiển thị theo hệ thống, không chỉnh sửa */}
+                            <div className="border-t border-[#EEF2F7] pt-3 flex flex-col gap-3">
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức sử dụng (Lượt đã dùng)</span>
+
+                              {(() => {
+                                const editingActivePlan = getActivePlan(editingUser.planType, editingUser.planExpiresAt);
+                                const editingLimits = getPlanLimits(editingActivePlan, editingUser.role);
+                                const formatLimit = (val: number) => val === Infinity ? 'Không giới hạn' : val;
+                                return (
+                                  <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-bold text-[#1E2432]">LaTeX (Tối đa {formatLimit(editingLimits.latex)})</label>
+                                        <div className="w-full bg-slate-50 border border-[#E8EBF3] rounded-xl px-4 py-2 text-xs font-bold text-slate-700 select-all cursor-default">
+                                          {editingUser.latexCount !== undefined ? editingUser.latexCount : 0}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-bold text-[#1E2432]">Đề thi (Tối đa {formatLimit(editingLimits.exam)})</label>
+                                        <div className="w-full bg-slate-50 border border-[#E8EBF3] rounded-xl px-4 py-2 text-xs font-bold text-slate-700 select-all cursor-default">
+                                          {editingUser.examCount !== undefined ? editingUser.examCount : 0}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-bold text-[#1E2432]">AI / Dán thông minh (Tối đa {formatLimit(editingLimits.ai)})</label>
+                                        <div className="w-full bg-slate-50 border border-[#E8EBF3] rounded-xl px-4 py-2 text-xs font-bold text-slate-700 select-all cursor-default">
+                                          {editingUser.promptCount !== undefined ? editingUser.promptCount : 0}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-bold text-[#1E2432]">Tổng yêu cầu</label>
+                                        <div className="w-full bg-slate-50 border border-[#E8EBF3] rounded-xl px-4 py-2 text-xs font-bold text-slate-700 select-all cursor-default">
+                                          {editingUser.queryCount !== undefined ? editingUser.queryCount : 0}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -5714,18 +5732,19 @@ ${bodyHtml}
                           </div>
 
                           <div className="flex flex-col gap-4">
-                            <div className="flex flex-col gap-1.5">
-                              <label className="text-xs font-bold text-[#1E2432]">Họ và tên</label>
-                              <input
-                                type="text"
-                                value={editingUser.displayName || ""}
-                                onChange={(e) => setEditingUser({ ...editingUser, displayName: e.target.value })}
-                                placeholder="Nhập họ và tên..."
-                                className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF] focus:ring-4 focus:ring-[#6B5CFF]/10"
-                              />
-                            </div>
+                            {/* Họ và tên & Vai trò trên cùng 1 hàng */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-bold text-[#1E2432]">Họ và tên</label>
+                                <input
+                                  type="text"
+                                  value={editingUser.displayName || ""}
+                                  onChange={(e) => setEditingUser({ ...editingUser, displayName: e.target.value })}
+                                  placeholder="Nhập họ và tên..."
+                                  className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF] focus:ring-4 focus:ring-[#6B5CFF]/10"
+                                />
+                              </div>
 
-                            <div className="grid grid-cols-2 gap-4">
                               <div className="flex flex-col gap-1.5">
                                 <label className="text-xs font-bold text-[#1E2432]">Vai trò</label>
                                 <select
@@ -5737,94 +5756,55 @@ ${bodyHtml}
                                   <option value="admin">Admin</option>
                                 </select>
                               </div>
-
-                              <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-bold text-[#1E2432]">Trạng thái</label>
-                                <select
-                                  value={editingUser.status || "pending"}
-                                  onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value })}
-                                  className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                >
-                                  <option value="approved">Hoạt động</option>
-                                  <option value="pending">Chờ duyệt</option>
-                                  <option value="rejected">Bị khóa</option>
-                                </select>
-                              </div>
                             </div>
 
+                            {/* Hạn mức sử dụng - Chỉ hiển thị theo hệ thống (Read-only) */}
                             <div className="border-t border-[#EEF2F7] pt-3 flex flex-col gap-3">
-                              <div className="flex flex-col gap-1.5 mt-2">
-                              <label className="text-xs font-bold text-[#1E2432]">Gói đăng ký</label>
-                              <select
-                                value={editingUser.planType || "free"}
-                                onChange={(e) => setEditingUser({ ...editingUser, planType: e.target.value })}
-                                className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                              >
-                                <option value="free">Miễn phí (Free)</option>
-                                <option value="trial">Dùng thử (Trial)</option>
-                                <option value="plus">Gói Cơ bản (Plus)</option>
-                                <option value="pro">Gói Chuyên nghiệp (Pro)</option>
-                              </select>
-                            </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức sử dụng (Lượt đã dùng)</span>
+                                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Hệ thống đếm</span>
+                              </div>
 
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Hạn mức sử dụng (Lượt đã dùng)</span>
+                              {(() => {
+                                const editingActivePlan = getActivePlan(editingUser.planType, editingUser.planExpiresAt);
+                                const editingLimits = getPlanLimits(editingActivePlan, editingUser.role);
+                                const formatLimit = (val: number) => val === Infinity ? 'Không giới hạn' : val;
+                                return (
+                                  <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-bold text-[#1E2432]">LaTeX (Tối đa {formatLimit(editingLimits.latex)})</label>
+                                        <div className="w-full bg-slate-50 border border-[#E8EBF3] rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 select-all cursor-default">
+                                          {editingUser.latexCount !== undefined ? editingUser.latexCount : 0}
+                                        </div>
+                                      </div>
 
-                            {(() => {
-                              const editingActivePlan = getActivePlan(editingUser.planType, editingUser.planExpiresAt);
-                              const editingLimits = getPlanLimits(editingActivePlan);
-                              const formatLimit = (val: number) => val === Infinity ? 'Không giới hạn' : val;
-                              return (
-                                <>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="flex flex-col gap-1.5">
-                                      <label className="text-xs font-bold text-[#1E2432]">LaTeX (Tối đa {formatLimit(editingLimits.latex)})</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={editingUser.latexCount !== undefined ? editingUser.latexCount : 0}
-                                        onChange={(e) => setEditingUser({ ...editingUser, latexCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                      />
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-bold text-[#1E2432]">Đề thi (Tối đa {formatLimit(editingLimits.exam)})</label>
+                                        <div className="w-full bg-slate-50 border border-[#E8EBF3] rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 select-all cursor-default">
+                                          {editingUser.examCount !== undefined ? editingUser.examCount : 0}
+                                        </div>
+                                      </div>
                                     </div>
 
-                                    <div className="flex flex-col gap-1.5">
-                                      <label className="text-xs font-bold text-[#1E2432]">Đề thi (Tối đa {formatLimit(editingLimits.exam)})</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={editingUser.examCount !== undefined ? editingUser.examCount : 0}
-                                        onChange={(e) => setEditingUser({ ...editingUser, examCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                      />
-                                    </div>
-                                  </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-bold text-[#1E2432]">AI / Dán thông minh (Tối đa {formatLimit(editingLimits.ai)})</label>
+                                        <div className="w-full bg-slate-50 border border-[#E8EBF3] rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 select-all cursor-default">
+                                          {editingUser.promptCount !== undefined ? editingUser.promptCount : 0}
+                                        </div>
+                                      </div>
 
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="flex flex-col gap-1.5">
-                                      <label className="text-xs font-bold text-[#1E2432]">AI / Dán thông minh (Tối đa {formatLimit(editingLimits.ai)})</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={editingUser.promptCount !== undefined ? editingUser.promptCount : 0}
-                                        onChange={(e) => setEditingUser({ ...editingUser, promptCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                      />
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-bold text-[#1E2432]">Tổng yêu cầu</label>
+                                        <div className="w-full bg-slate-50 border border-[#E8EBF3] rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 select-all cursor-default">
+                                          {editingUser.queryCount !== undefined ? editingUser.queryCount : 0}
+                                        </div>
+                                      </div>
                                     </div>
-
-                                    <div className="flex flex-col gap-1.5">
-                                      <label className="text-xs font-bold text-[#1E2432]">Tổng yêu cầu</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={editingUser.queryCount !== undefined ? editingUser.queryCount : 0}
-                                        onChange={(e) => setEditingUser({ ...editingUser, queryCount: Math.max(0, parseInt(e.target.value) || 0) })}
-                                        className="w-full bg-white border border-[#E8EBF3] hover:border-[#6B5CFF]/50 rounded-xl px-4 py-2 text-xs font-semibold text-slate-700 outline-none transition-all duration-200 focus:border-[#6B5CFF]"
-                                      />
-                                    </div>
-                                  </div>
-                                </>
-                              );
-                            })()}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -6093,26 +6073,156 @@ ${bodyHtml}
                     </div>
 
                     <div className="space-y-4">
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                         <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Đối tượng nhận:</label>
-                        <select
-                          value={editingNotificationId ? editingNoticeTarget : generalNoticeTarget}
-                          onChange={(e) => {
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (editingNotificationId) {
+                                setEditingNoticeTarget("all");
+                              } else {
+                                setGeneralNoticeTarget("all");
+                              }
+                            }}
+                            className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                              (editingNotificationId ? editingNoticeTarget : generalNoticeTarget) === "all"
+                                ? "bg-indigo-50 border-indigo-300 text-indigo-700 shadow-3xs"
+                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            <span>📢</span> Toàn hệ thống
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (editingNotificationId) {
+                                setEditingNoticeTarget("custom");
+                              } else {
+                                setGeneralNoticeTarget("custom");
+                              }
+                            }}
+                            className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                              (editingNotificationId ? editingNoticeTarget : generalNoticeTarget) === "custom"
+                                ? "bg-indigo-50 border-indigo-300 text-indigo-700 shadow-3xs"
+                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            <span>👥</span> Chọn thành viên {((editingNotificationId ? editingNoticeSelectedUids : generalNoticeSelectedUids).length > 0) ? `(${(editingNotificationId ? editingNoticeSelectedUids : generalNoticeSelectedUids).length})` : ""}
+                          </button>
+                        </div>
+
+                        {/* Custom multi-select members picker */}
+                        {(editingNotificationId ? editingNoticeTarget : generalNoticeTarget) === "custom" && (() => {
+                          const currentSelected = editingNotificationId ? editingNoticeSelectedUids : generalNoticeSelectedUids;
+                          const setSelected = (updater: string[] | ((prev: string[]) => string[])) => {
                             if (editingNotificationId) {
-                              setEditingNoticeTarget(e.target.value);
+                              setEditingNoticeSelectedUids(updater);
                             } else {
-                              setGeneralNoticeTarget(e.target.value);
+                              setGeneralNoticeSelectedUids(updater);
                             }
-                          }}
-                          className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-400 hover:border-slate-300 rounded-xl px-3 py-2.5 text-xs outline-none transition-all cursor-pointer font-semibold text-slate-750"
-                        >
-                          <option value="all">📢 Phát sóng toàn hệ thống</option>
-                          {allUsers.map((u) => (
-                            <option key={u.uid} value={u.uid}>
-                              👤 {u.displayName || "Thành viên"} ({u.email})
-                            </option>
-                          ))}
-                        </select>
+                          };
+                          const filteredUsers = allUsers.filter((u) => {
+                            const q = noticeUserSearchQuery.toLowerCase().trim();
+                            if (!q) return true;
+                            return (
+                              (u.displayName || "").toLowerCase().includes(q) ||
+                              (u.email || "").toLowerCase().includes(q)
+                            );
+                          });
+
+                          return (
+                            <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-2.5 space-y-2">
+                              {/* Selected Chips */}
+                              {currentSelected.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pb-1">
+                                  {currentSelected.map((uid) => {
+                                    const u = allUsers.find((userItem) => userItem.uid === uid);
+                                    return (
+                                      <span
+                                        key={uid}
+                                        className="inline-flex items-center gap-1 bg-indigo-100/80 text-indigo-800 text-[11px] font-semibold px-2 py-0.5 rounded-lg border border-indigo-200"
+                                      >
+                                        <span className="truncate max-w-[120px]">{u?.displayName || u?.email || "Thành viên"}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelected((prev) => prev.filter((id) => id !== uid))}
+                                          className="text-indigo-400 hover:text-indigo-700 ml-0.5 cursor-pointer"
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Search box */}
+                              <div className="relative">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                                <input
+                                  type="text"
+                                  value={noticeUserSearchQuery}
+                                  onChange={(e) => setNoticeUserSearchQuery(e.target.value)}
+                                  placeholder="Tìm kiếm thành viên theo tên hoặc email..."
+                                  className="w-full bg-white border border-slate-200 focus:border-indigo-400 rounded-lg pl-8 pr-3 py-1.5 text-xs outline-none font-medium placeholder:text-slate-400 text-slate-700"
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                                <span>Đã chọn: <b className="text-indigo-600 font-bold">{currentSelected.length}</b> người</span>
+                                {currentSelected.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelected([])}
+                                    className="text-rose-500 hover:text-rose-700 font-semibold cursor-pointer"
+                                  >
+                                    Bỏ chọn tất cả
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* User List with Checkboxes */}
+                              <div className="max-h-36 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
+                                {filteredUsers.map((u) => {
+                                  const isChecked = currentSelected.includes(u.uid);
+                                  return (
+                                    <label
+                                      key={u.uid}
+                                      className={`flex items-center gap-2.5 px-3 py-2 text-xs cursor-pointer hover:bg-slate-50 transition-colors ${isChecked ? "bg-indigo-50/40" : ""}`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setSelected((prev) => [...prev, u.uid]);
+                                          } else {
+                                            setSelected((prev) => prev.filter((id) => id !== u.uid));
+                                          }
+                                        }}
+                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-bold text-slate-750 truncate text-[11px] leading-tight">
+                                          {u.displayName || "Thành viên"}
+                                        </p>
+                                        <p className="text-[10px] text-slate-400 truncate leading-tight font-mono">
+                                          {u.email}
+                                        </p>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                                {filteredUsers.length === 0 && (
+                                  <div className="p-3 text-center text-slate-400 text-[11px] italic">
+                                    Không tìm thấy thành viên phù hợp
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       <div className="space-y-1.5">
@@ -6344,6 +6454,8 @@ ${bodyHtml}
                               setEditingNoticeTitle("");
                               setEditingNoticeContent("");
                               setEditingNoticeTarget("all");
+                              setEditingNoticeSelectedUids([]);
+                              setNoticeUserSearchQuery("");
                               setEditingNoticeHasPoll(false);
                               setEditingNoticePollQuestion("");
                               setEditingNoticePollOptions(["Đồng ý / Hài lòng", "Không đồng ý / Cần cải thiện"]);
@@ -6390,6 +6502,7 @@ ${bodyHtml}
                           : "N/A";
 
                         const isSystem = n.type === "system" || n.targetUid === "all";
+                        const targetCount = Array.isArray(n.targetUids) ? n.targetUids.length : (n.targetUid && n.targetUid !== "all" ? 1 : 0);
                         const allNVotes = getAllVotesForNotif(n, allUsers, user?.uid, userDoc);
                         const voteCount = Object.keys(allNVotes).length;
                         const isPollStopped = !!(n.isPollClosed || n.pollClosed || n.pollStatus === "closed");
@@ -6415,7 +6528,7 @@ ${bodyHtml}
                                         : "bg-blue-50 text-blue-700 border border-blue-200"
                                     }`}
                                   >
-                                    {isSystem ? "Hệ thống" : "Cá nhân"}
+                                    {isSystem ? "Hệ thống" : (targetCount > 1 ? `Nhóm (${targetCount})` : "Cá nhân")}
                                   </span>
                                   {n.hasPoll && (
                                     <span
@@ -6477,7 +6590,16 @@ ${bodyHtml}
                                       setEditingNotificationId(n.id);
                                       setEditingNoticeTitle(n.title || "");
                                       setEditingNoticeContent(n.content || "");
-                                      setEditingNoticeTarget(n.targetUid || "all");
+                                      const hasTargetUids = Array.isArray(n.targetUids) && n.targetUids.length > 0;
+                                      const isTargetAll = n.type === "system" || n.targetUid === "all";
+                                      if (isTargetAll) {
+                                        setEditingNoticeTarget("all");
+                                        setEditingNoticeSelectedUids([]);
+                                      } else {
+                                        setEditingNoticeTarget("custom");
+                                        setEditingNoticeSelectedUids(hasTargetUids ? n.targetUids : (n.targetUid ? [n.targetUid] : []));
+                                      }
+                                      setNoticeUserSearchQuery("");
                                       setEditingNoticeHasPoll(!!n.hasPoll);
                                       setEditingNoticePollQuestion(n.pollQuestion || n.title || "");
                                       setEditingNoticePollOptions(
@@ -6678,35 +6800,47 @@ ${bodyHtml}
                 }
               };
 
-              // CẤP ĐỘ 3: Khóa các tài khoản clone Free, bảo vệ an toàn cho tài khoản PRO/PLUS
+              // CẤP ĐỘ 2: Khóa gộp hạn mức các tài khoản Free theo thiết bị, bảo vệ an toàn tuyệt đối cho tài khoản VIP/PRO/PLUS/Admin
               const handleSuspendCloneAccounts = async (groupUsers: any[]) => {
                 try {
                   const paidUsers = groupUsers.filter(u => u.planType === 'pro' || u.planType === 'plus' || u.role === 'admin');
                   const cloneUsers = groupUsers.filter(u => u.role !== 'admin' && u.planType !== 'pro' && u.planType !== 'plus');
 
                   if (cloneUsers.length === 0) {
-                    triggerToast("Không có tài khoản Free phụ nào trong nhóm này để khóa.", false);
+                    triggerToast("Không có tài khoản Free nào trong nhóm này để khóa hạn mức.", false);
                     return;
                   }
 
                   const paidEmails = paidUsers.length > 0 ? paidUsers.map(p => p.email).join(', ') : 'Không có';
-                  if (!window.confirm(`Xác nhận khóa ${cloneUsers.length} tài khoản Free phụ trên thiết bị này?\n\n- Tài khoản trả phí được bảo vệ: ${paidEmails}\n- Các tài khoản clone bị khóa: ${cloneUsers.map(c => c.email).join(', ')}`)) {
+                  const isAnyLocked = cloneUsers.some(u => !!u.cloneLimitLocked);
+                  const newLockState = !isAnyLocked;
+
+                  const confirmMsg = newLockState
+                    ? `Xác nhận KHÓA HẠN MỨC DÙNG CHUNG cho ${cloneUsers.length} tài khoản Free trên thiết bị này?\n\n- Tài khoản VIP/Admin được bảo toàn độc lập: ${paidEmails}\n- Các tài khoản bị trói chung 1 hạn mức: ${cloneUsers.map(c => c.email).join(', ')}\n\n(Sau khi khóa, tất cả các tài khoản này trên thiết bị sẽ cộng dồn chung số lượt dùng hàng ngày, không thể lách hạn mức)`
+                    : `Mở khóa hạn mức dùng chung cho ${cloneUsers.length} tài khoản Free này?`;
+
+                  if (!window.confirm(confirmMsg)) {
                     return;
                   }
 
                   const nowIso = new Date().toISOString();
                   const promises = cloneUsers.map(u => 
                     updateDoc(doc(db, "users", u.uid), {
-                      status: "suspended",
-                      suspendedAt: nowIso,
-                      suspendedReason: "Dùng nhiều tài khoản trên một thiết bị"
+                      cloneLimitLocked: newLockState,
+                      cloneLimitLockedAt: newLockState ? nowIso : null,
+                      cloneLimitReason: newLockState ? "Khóa gộp hạn mức theo thiết bị" : null
                     })
                   );
                   await Promise.all(promises);
-                  triggerToast(`Đã khóa ${cloneUsers.length} tài khoản clone Free! Bảo vệ an toàn ${paidUsers.length} tài khoản trả phí.`, true);
+                  triggerToast(
+                    newLockState
+                      ? `Đã khóa gộp hạn mức ${cloneUsers.length} tài khoản Free! Bảo vệ an toàn ${paidUsers.length} tài khoản VIP.`
+                      : `Đã mở khóa hạn mức dùng chung cho nhóm tài khoản.`,
+                    true
+                  );
                 } catch (error) {
-                  console.error("Lỗi khi khóa clone phụ:", error);
-                  triggerToast("Có lỗi khi khóa tài khoản phụ.", false);
+                  console.error("Lỗi khi khóa hạn mức clone:", error);
+                  triggerToast("Có lỗi khi thiết lập hạn mức tài khoản.", false);
                 }
               };
 
@@ -6815,14 +6949,15 @@ ${bodyHtml}
                                   <AlertTriangle className="w-4 h-4 text-rose-600" />
                                   <span className="text-xs font-bold text-rose-950 uppercase">Cảnh báo: Trùng dấu vân tay thiết bị</span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <button onClick={() => handleSendSecurityWarning(group, 'device')} className="text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95" title="Gửi thông báo nhắc nhở nhẹ nhàng vào popup của người dùng"><Bell className="w-3 h-3" /><span>Cảnh báo</span></button>
-                                  <button onClick={() => handleSuspendCloneAccounts(group)} className="text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95" title="Khóa các tài khoản clone Free phụ, bảo vệ tài khoản PRO/PLUS"><Lock className="w-3 h-3" /><span>Khóa clone</span></button>
+                                <div className="flex items-center gap-1.5 flex-nowrap shrink-0 overflow-x-auto">
+                                  <button onClick={() => handleSendSecurityWarning(group, 'device')} className="text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap active:scale-95" title="Gửi thông báo nhắc nhở nhẹ nhàng vào popup của người dùng"><Bell className="w-3 h-3 shrink-0" /><span>Cảnh báo</span></button>
+                                  <button onClick={() => handleSuspendCloneAccounts(group)} className={`text-[10px] font-bold px-2 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap active:scale-95 ${group.some(u => !!u.cloneLimitLocked) ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-rose-600 hover:bg-rose-700 text-white"}`} title="Khóa gộp hạn mức các tài khoản Free theo thiết bị, bảo vệ tài khoản VIP"><Lock className="w-3 h-3 shrink-0" /><span>{group.some(u => !!u.cloneLimitLocked) ? "Mở khóa" : "Khóa clone"}</span></button>
                                   <button
                                     onClick={() => handleDismissGroup(group)}
-                                    className="text-[10px] font-bold bg-rose-600/10 hover:bg-rose-600/20 text-rose-700 px-2.5 py-1 rounded-xl transition-all cursor-pointer"
+                                    className="text-[10px] font-bold bg-rose-600/10 hover:bg-rose-600/20 text-rose-700 px-2 py-1 rounded-xl transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                    title="Bỏ qua cảnh báo nhóm này"
                                   >
-                                    Bỏ qua cảnh báo nhóm này
+                                    Bỏ qua
                                   </button>
                                 </div>
                               </div>
@@ -6834,7 +6969,15 @@ ${bodyHtml}
                                         <img src={u.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${u.displayName || u.email}&backgroundColor=c7d2fe`} alt="" className="w-full h-full object-cover"/>
                                       </div>
                                       <div>
-                                        <div className="text-xs font-bold text-slate-800">{u.displayName} <span className="font-normal text-slate-500">({u.role === "admin" ? "Admin" : "Thành viên"})</span></div>
+                                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+  <span>{u.displayName}</span>
+  <span className="font-normal text-slate-500">({u.role === "admin" ? "Admin" : (u.planType === "pro" || u.planType === "plus" ? u.planType.toUpperCase() : "Free")})</span>
+  {u.cloneLimitLocked && (
+    <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[9px] font-bold px-1.5 py-0.2 rounded">
+      Khóa chung hạn mức
+    </span>
+  )}
+</div>
                                         <div className="text-[10px] text-slate-500 font-medium">{u.email}</div>
                                       </div>
                                     </div>
@@ -6874,14 +7017,15 @@ ${bodyHtml}
                                   <Info className="w-4 h-4 text-amber-600" />
                                   <span className="text-xs font-bold text-amber-950 uppercase">Ghi nhận: Truy cập chung mạng IP</span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <button onClick={() => handleSendSecurityWarning(group, 'ip')} className="text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95" title="Gửi thông báo nhắc nhở nhẹ nhàng vào popup của người dùng"><Bell className="w-3 h-3" /><span>Cảnh báo</span></button>
-                                  <button onClick={() => handleSuspendCloneAccounts(group)} className="text-[10px] font-bold bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 active:scale-95" title="Khóa các tài khoản clone Free phụ, bảo vệ tài khoản PRO/PLUS"><Lock className="w-3 h-3" /><span>Khóa clone</span></button>
+                                <div className="flex items-center gap-1.5 flex-nowrap shrink-0 overflow-x-auto">
+                                  <button onClick={() => handleSendSecurityWarning(group, 'ip')} className="text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap active:scale-95" title="Gửi thông báo nhắc nhở nhẹ nhàng vào popup của người dùng"><Bell className="w-3 h-3 shrink-0" /><span>Cảnh báo</span></button>
+                                  <button onClick={() => handleSuspendCloneAccounts(group)} className={`text-[10px] font-bold px-2 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1 shrink-0 whitespace-nowrap active:scale-95 ${group.some(u => !!u.cloneLimitLocked) ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-rose-600 hover:bg-rose-700 text-white"}`} title="Khóa gộp hạn mức các tài khoản Free theo thiết bị, bảo vệ tài khoản VIP"><Lock className="w-3 h-3 shrink-0" /><span>{group.some(u => !!u.cloneLimitLocked) ? "Mở khóa" : "Khóa clone"}</span></button>
                                   <button
                                     onClick={() => handleDismissGroup(group)}
-                                    className="text-[10px] font-bold bg-amber-600/10 hover:bg-amber-600/20 text-amber-700 px-2.5 py-1 rounded-xl transition-all cursor-pointer"
+                                    className="text-[10px] font-bold bg-amber-600/10 hover:bg-amber-600/20 text-amber-700 px-2 py-1 rounded-xl transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                    title="Bỏ qua cảnh báo IP này"
                                   >
-                                    Bỏ qua cảnh báo IP này
+                                    Bỏ qua
                                   </button>
                                 </div>
                               </div>
@@ -6893,7 +7037,15 @@ ${bodyHtml}
                                         <img src={u.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${u.displayName || u.email}&backgroundColor=c7d2fe`} alt="" className="w-full h-full object-cover"/>
                                       </div>
                                       <div>
-                                        <div className="text-xs font-bold text-slate-800">{u.displayName} <span className="font-normal text-slate-500">({u.role === "admin" ? "Admin" : "Thành viên"})</span></div>
+                                        <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+  <span>{u.displayName}</span>
+  <span className="font-normal text-slate-500">({u.role === "admin" ? "Admin" : (u.planType === "pro" || u.planType === "plus" ? u.planType.toUpperCase() : "Free")})</span>
+  {u.cloneLimitLocked && (
+    <span className="bg-rose-100 text-rose-700 border border-rose-200 text-[9px] font-bold px-1.5 py-0.2 rounded">
+      Khóa chung hạn mức
+    </span>
+  )}
+</div>
                                         <div className="text-[10px] text-slate-500 font-medium">{u.email}</div>
                                       </div>
                                     </div>

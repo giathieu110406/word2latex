@@ -14,7 +14,7 @@ export async function reservePromptUsage(db: any, user: { uid: string; isOwner: 
     const profile = snapshot.data();
     const reset = profile.lastLatexResetDate !== day;
     const count = reset ? 0 : Number(profile.promptCount || 0);
-    if (!user.isOwner && profile.status !== 'approved' && count >= getPromptLimit(profile)) {
+    if (!user.isOwner && profile.role !== 'admin' && count >= getPromptLimit(profile)) {
       throw new PromptQuotaError(429, 'Bạn đã hết lượt tinh chỉnh AI của tài khoản hôm nay. Vẽ thủ công vẫn không giới hạn.');
     }
     tx.update(ref, {
