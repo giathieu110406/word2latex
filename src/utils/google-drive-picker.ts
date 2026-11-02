@@ -65,8 +65,9 @@ export async function openGoogleDriveFilePicker(options?: {
   const clientId =
     options?.clientId ||
     (import.meta as any).env?.VITE_GOOGLE_DRIVE_CLIENT_ID ||
+    (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID ||
     localStorage.getItem('W2L_GOOGLE_CLIENT_ID') ||
-    '';
+    '341505323323-sg7ja2vt64llqulf988nu7r85kdd6d9e.apps.googleusercontent.com';
 
   await ensureGooglePickerScripts();
 
@@ -79,7 +80,7 @@ export async function openGoogleDriveFilePicker(options?: {
     accessToken = await new Promise((resolve, reject) => {
       const tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/drive.readonly',
+        scope: 'https://www.googleapis.com/auth/drive.file',
         callback: (response: any) => {
           if (response.error !== undefined) {
             reject(new Error(response.error));
