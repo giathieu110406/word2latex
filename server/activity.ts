@@ -42,6 +42,7 @@ export const AI_ACTIONS: Record<string,string> = {
   'parse-exam':'Soạn đề thi (AI)','smart-paste-parse':'Dán AI','fix-logic':'Chuyển đổi LaTeX',
   'gemini-canvas':'AI Canvas','shuffle-ai':'AI thay thế số liệu','chat-ai':'AI hỏi đáp',
   markitdown:'MarkItDown AI','extract-text':'Trích xuất văn bản',reconstruct:'AI Vẽ hình',
+  'ocr-exam-image':'Quét đề thi OCR (AI)',
 };
 
 export function withActivity(handler: any, actionForRequest: (req:any)=>string | undefined,

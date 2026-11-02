@@ -1,4 +1,14 @@
 import { renderLatexContent, maskProtectedContent, parseMultipleChoice, applySmartFormatting, convertTabTableToMarkdown } from './utils/latex-content';
+import {
+  compressImageFileToDataUrl,
+  cropRegionsFromImageDataUrl,
+  maskImagesForAi,
+  registerImageAsset,
+} from './utils/qbuilder-image';
+import {
+  chunkQuestionsForAi,
+  splitAndClassifyExamText,
+} from './utils/smart-paste-pipeline';
 import { logApiUsage, startFeatureTracking, flushFeatureTracking } from "./utils/logger";
 import { authFetch } from "./utils/api-client";
 import React, { useState, useRef, useEffect } from "react";
@@ -27,6 +37,7 @@ import { canRegisterPlan, getActivePlan, getUpgradeVisibility, getPlanLimits } f
 import { getAiUsageDay } from "../shared/ai-usage-policy";
 import { PhoneConfirmationHistory } from "./components/PhoneConfirmationHistory";
 import { DrawingWorkspace } from "./components/DrawingWorkspace";
+import { PdfEditorWorkspace } from "./components/PdfEditorWorkspace";
 import { UserPaymentHistoryModal } from "./components/UserPaymentHistoryModal";
 import { ImagePreviewModal } from "./components/modals/ImagePreviewModal";
 import { CommandPaletteModal } from "./components/CommandPaletteModal";
@@ -956,6 +967,8 @@ export default function App() {
   const [smartPasteText, setSmartPasteText] = useState<string>("");
   const [smartPasteStep, setSmartPasteStep] = useState<1 | 2>(1);
   const [isSmartPasteParsing, setIsSmartPasteParsing] = useState<boolean>(false);
+  const [isOcrExamLoading, setIsOcrExamLoading] = useState<boolean>(false);
+  const ocrExamFileInputRef = useRef<HTMLInputElement | null>(null);
   const [parsedPreviewQuestions, setParsedPreviewQuestions] = useState<any[]>([]);
   const [docTitle, setDocTitle] = useState<string>(
     "ĐỀ KIỂM TRA ĐỊNH KỲ MÔN TOÁN SỐ HỌC & GIẢI TÍCH",
@@ -1385,6 +1398,98 @@ export default function App() {
     }
   };
 
+  const buildPreviewListFromHybridPipeline = (text: string): any[] => {
+    const hybridItems = splitAndClassifyExamText(text, newQuestionType, newTracNghiemColumns);
+    if (hybridItems.length > 0) {
+      return hybridItems.map((item, idx) => {
+        let qText = getCleanQuestionBody(item.question);
+        if (item.type === "trac_nghiem_dung_sai" && item.statements && item.statements.length > 0) {
+          const stmtLines = item.statements.map((s) => `${s.label}) ${s.content}`).join("\n");
+          qText = `${qText}\n${stmtLines}`.trim();
+        }
+        let aText = getCleanAnswerBody(item.answer);
+        if (item.type === "trac_nghiem_tra_loi_ngan" && item.shortAnswer && !aText) {
+          aText = `Đáp án: ${item.shortAnswer}`;
+        }
+        return {
+          id: `q_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 7)}`,
+          type: item.type,
+          questionText: qText,
+          answerText: aText,
+          columns: item.type === "trac_nghiem" ? (item.columns || newTracNghiemColumns) : undefined,
+        };
+      });
+    }
+    return parseMultipleQuestionsTextToPreview(text);
+  };
+
+  const handleOcrExamImageUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    if (!requireAuthOrVerified()) return;
+    setIsOcrExamLoading(true);
+    try {
+      const blocks: string[] = [];
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        const compressed = await compressImageFileToDataUrl(file);
+        const commaIdx = compressed.dataUrl.indexOf(",");
+        const base64Data = commaIdx >= 0 ? compressed.dataUrl.slice(commaIdx + 1) : compressed.dataUrl;
+
+        const res = await authFetch("/api/ai?action=ocr-exam-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image: base64Data,
+            mimeType: "image/png",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Không thể OCR ảnh đề thi.");
+        }
+
+        let extractedText: string = data.text || "";
+        const diagrams: { placeholder: string; label?: string; box_2d: [number, number, number, number] }[] =
+          Array.isArray(data.diagrams) ? data.diagrams : [];
+
+        if (diagrams.length > 0) {
+          const validBoxes = diagrams.filter(
+            (d) => Array.isArray(d.box_2d) && d.box_2d.length === 4,
+          );
+          const croppedAssets = await cropRegionsFromImageDataUrl(
+            compressed.dataUrl,
+            validBoxes.map((d, i) => ({
+              id: `diag_${i}`,
+              box_2d: d.box_2d,
+              label: d.label || `Hình vẽ ${i + 1}`,
+            })),
+          );
+          validBoxes.forEach((d, idx) => {
+            const asset = croppedAssets[`diag_${idx}`];
+            if (asset && d.placeholder) {
+              extractedText = extractedText
+                .split(d.placeholder)
+                .join(`\n![${asset.name || `Hình vẽ ${idx + 1}`}](img:${asset.id})\n`);
+            }
+          });
+        }
+        blocks.push(extractedText.trim());
+      }
+
+      if (blocks.length > 0) {
+        const joined = blocks.join("\n\n");
+        setSmartPasteText((prev) => (prev.trim() ? `${prev.trim()}\n\n${joined}` : joined));
+        triggerToast("Đã quét OCR đề thi (LaTeX + Bảng + Tự cắt hình vẽ) thành công!", true);
+      }
+    } catch (err: any) {
+      console.error("Lỗi OCR ảnh đề thi:", err);
+      triggerToast(err.message || "Lỗi khi quét ảnh đề thi bằng AI.", false);
+    } finally {
+      setIsOcrExamLoading(false);
+      if (ocrExamFileInputRef.current) ocrExamFileInputRef.current.value = "";
+    }
+  };
+
   const handleSmartPasteProcess = async () => {
     if (!smartPasteText.trim()) {
       triggerToast("Nội dung dán không được để trống!", false);
@@ -1401,11 +1506,28 @@ export default function App() {
 
     if (smartPasteStep === 1) {
       setIsSmartPasteParsing(true);
+      const maskedImages = maskImagesForAi(smartPasteText);
+      const preParsed = splitAndClassifyExamText(
+        maskedImages.maskedText,
+        newQuestionType,
+        newTracNghiemColumns,
+      );
+      const textForAi =
+        preParsed.length > 1
+          ? preParsed
+              .map(
+                (item, idx) =>
+                  `Câu ${item.number || idx + 1} [${item.type}]:\n${item.question}${
+                    item.answer ? `\nLời giải: ${item.answer}` : ""
+                  }`,
+              )
+              .join("\n\n")
+          : maskedImages.maskedText;
       try {
         const response = await authFetch("/api/ai?action=smart-paste-parse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: smartPasteText }),
+          body: JSON.stringify({ text: textForAi }),
         });
 
         if (!response.ok) {
@@ -1419,8 +1541,8 @@ export default function App() {
           const previewList = data.questions.map((q: any) => ({
             id: q.id || "q_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
             type: q.type || "trac_nghiem",
-            questionText: getCleanQuestionBody(q.questionRawText || ""),
-            answerText: getCleanAnswerBody(q.answerRawText || ""),
+            questionText: getCleanQuestionBody(maskedImages.restoreImages(q.questionRawText || "")),
+            answerText: getCleanAnswerBody(maskedImages.restoreImages(q.answerRawText || "")),
             columns: q.type === "trac_nghiem" ? newTracNghiemColumns : undefined,
           }));
           setParsedPreviewQuestions(previewList);
@@ -1428,7 +1550,7 @@ export default function App() {
           triggerToast("Đã phân tách thông minh bằng AI thành công! Hãy xem trước kết quả.", true);
         } else {
           // Fallback to client-side heuristic parser
-          const previewList = parseMultipleQuestionsTextToPreview(smartPasteText);
+          const previewList = buildPreviewListFromHybridPipeline(smartPasteText);
           if (previewList.length === 0) {
             triggerToast("Không nhận diện được câu hỏi nào. Vui lòng kiểm tra lại định dạng!", false);
             return;
@@ -1440,7 +1562,7 @@ export default function App() {
       } catch (error: any) {
         console.error("Lỗi dán thông minh AI:", error);
         // Fallback to client-side heuristic parser
-        const previewList = parseMultipleQuestionsTextToPreview(smartPasteText);
+        const previewList = buildPreviewListFromHybridPipeline(smartPasteText);
         if (previewList.length === 0) {
           triggerToast("Không thể phân tách nội dung. Vui lòng kiểm tra lại định dạng!", false);
           return;
@@ -2768,7 +2890,7 @@ export default function App() {
         rating: feedbackRating,
         feedbackImage: feedbackImage || "",
         createdAt: new Date().toISOString(),
-        version: "v4.4",
+        version: "v4.5",
       });
       triggerToast("Cám ơn bạn đã gửi ý kiến đóng góp!", true);
       setFeedbackText("");
@@ -3059,7 +3181,17 @@ export default function App() {
         }
         return content;
       }
+      case "img": {
+        const src = (element.getAttribute("src") || "").trim();
+        const alt = (element.getAttribute("alt") || "Hình minh họa").trim();
+        if (src.startsWith("data:image/")) {
+          const asset = registerImageAsset(src, 50, alt);
+          return `\n![${asset.name || alt}](img:${asset.id})\n`;
+        }
+        return "";
+      }
       case "ul":
+        return `\n${childContent.trim()}\n`;
       case "ol":
         return `\n${content.trim()}\n`;
       case "blockquote":
@@ -3265,7 +3397,17 @@ export default function App() {
       }
       case "li":
         return `  \\item ${childContent.trim()}\n`;
+      case "img": {
+        const src = (element.getAttribute("src") || "").trim();
+        const alt = (element.getAttribute("alt") || "Hình minh họa").trim();
+        if (src.startsWith("data:image/")) {
+          const asset = registerImageAsset(src, 50, alt);
+          return `\n![${asset.name || alt}](img:${asset.id})\n`;
+        }
+        return "";
+      }
       case "ul":
+        return `\n${childContent.trim()}\n`;
         return `\n\\begin{itemize}\n${childContent.trim()}\n\\end{itemize}\n`;
       case "ol":
         return `\n\\begin{enumerate}\n${childContent.trim()}\n\\end{enumerate}\n`;
@@ -3345,7 +3487,43 @@ ${cleanedBody}
     setter: (val: string) => void,
     bypassAutoProcess?: boolean,
   ) => {
+    const clipboardFiles = Array.from(e.clipboardData?.files || []).filter((f) =>
+      f.type.startsWith("image/"),
+    );
     const htmlData = e.clipboardData.getData("text/html");
+    const hasInlineDataImg = /<img[^>]+src=["']data:image\//i.test(htmlData || "");
+
+    if (clipboardFiles.length > 0 && !hasInlineDataImg) {
+      e.preventDefault();
+      const textEl = e.currentTarget;
+      const start = textEl.selectionStart ?? textEl.value.length;
+      const end = textEl.selectionEnd ?? start;
+      const originalVal = textEl.value;
+
+      (async () => {
+        try {
+          const tokens: string[] = [];
+          for (const file of clipboardFiles) {
+            const compressed = await compressImageFileToDataUrl(file);
+            const asset = registerImageAsset(compressed.dataUrl, 50, "Hình minh họa");
+            tokens.push(`![${asset.name || "Hình minh họa"}](img:${asset.id})`);
+          }
+          if (tokens.length > 0) {
+            const inserted = tokens.join("\n");
+            const prefix = originalVal.slice(0, start);
+            const suffix = originalVal.slice(end);
+            const sepBefore = prefix && !prefix.endsWith("\n") && !prefix.endsWith(" ") ? "\n" : "";
+            const sepAfter = suffix && !suffix.startsWith("\n") ? "\n" : "";
+            setter(`${prefix}${sepBefore}${inserted}${sepAfter}${suffix}`);
+            triggerToast(`Đã dán ${tokens.length} hình ảnh vào khung nhập!`, true);
+          }
+        } catch (err) {
+          console.error("Lỗi dán ảnh trực tiếp:", err);
+          triggerToast("Không thể xử lý ảnh từ bộ nhớ tạm.", false);
+        }
+      })();
+      return;
+    }
     let markdown = "";
 
     if (htmlData) {
@@ -4547,7 +4725,7 @@ ${bodyHtml}
     );
   }
 
-  const isWorkspaceFullscreen = sidebarView === 'latex' || sidebarView === 'drawing' || sidebarView === 'markitdown';
+  const isWorkspaceFullscreen = sidebarView === 'latex' || sidebarView === 'drawing' || sidebarView === 'markitdown' || sidebarView === 'pdf-editor';
 
   return (
     <div 
@@ -4658,6 +4836,15 @@ ${bodyHtml}
                       )}
                       <Layout className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">MarkItDown AI</span>
                   </button>
+                  {isAdminUser(user, userDoc) && (
+                    <button onClick={() => handleSidebarNav('pdf-editor')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'pdf-editor' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                        {sidebarView === 'pdf-editor' && (
+                          <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                        )}
+                        <FileText className="w-4 h-4 shrink-0 text-blue-600" /> <span className="truncate whitespace-nowrap">Biên tập PDF</span>
+                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-md shrink-0">ADMIN</span>
+                    </button>
+                  )}
               </div>
 
 
@@ -7585,6 +7772,19 @@ ${bodyHtml}
           />
         )}
 
+        {sidebarView === 'pdf-editor' && (
+          isAdminUser(user, userDoc) ? (
+            <PdfEditorWorkspace triggerToast={triggerToast} />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+              <div className="max-w-md bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 className="text-lg font-bold text-slate-800 mb-2">Tính năng đang được hoàn thiện</h3>
+                <p className="text-sm text-slate-500">Tính năng Biên tập PDF hiện đang trong chế độ thử nghiệm nội bộ dành cho Quản trị viên.</p>
+              </div>
+            </div>
+          )
+        )}
+
         {/* Smart Paste Modal */}
         <AnimatePresence>
           {showSmartPasteModal && (
@@ -7618,6 +7818,39 @@ ${bodyHtml}
                       <p className="text-sm text-slate-600 font-medium leading-relaxed">
                         Hãy dán nguyên bản toàn bộ phản hồi từ AI (bao gồm cả đề bài, các đáp án và lời giải). Hệ thống sẽ tự động phân tách và sắp xếp chúng vào đúng các ô nhập liệu cho bạn. Các định dạng in đậm, in nghiêng và LaTeX sẽ được giữ nguyên.
                       </p>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="text-xs text-slate-500 font-medium">
+                            Hỗ trợ dán ảnh trực tiếp (Ctrl+V) hoặc quét ảnh đề thi có công thức & hình vẽ:
+                          </span>
+                          <div>
+                            <input
+                              ref={ocrExamFileInputRef}
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => handleOcrExamImageUpload(e.target.files)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => ocrExamFileInputRef.current?.click()}
+                              disabled={isOcrExamLoading || isSmartPasteParsing}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {isOcrExamLoading ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                                  <span>Đang OCR & cắt hình...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Image className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>Quét ảnh đề thi (OCR + Tự cắt hình)</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
                       <textarea
                         value={smartPasteText}
                         onChange={(e) => setSmartPasteText(e.target.value)}
@@ -8654,7 +8887,7 @@ ${bodyHtml}
               Trần Gia Thiều - <a href="mailto:Giathieu110406@gmail.com" className="text-slate-800 hover:text-indigo-600">Giathieu110406@gmail.com</a>
             </p>
             <p className="text-slate-500 font-medium whitespace-nowrap">
-              © Word2LaTeX · Phiên bản v4.4
+              © Word2LaTeX · Phiên bản v4.5
             </p>
           </div>
 
@@ -8666,7 +8899,7 @@ ${bodyHtml}
                 Trần Gia Thiều - <a href="mailto:Giathieu110406@gmail.com" className="hover:text-indigo-600">Giathieu110406@gmail.com</a>
               </strong>
               <span> · </span>
-              <span>Phiên bản v4.4</span>
+              <span>Phiên bản v4.5</span>
             </p>
             <p className="text-[11px] text-slate-400 font-medium px-2">
               © Word2LaTeX · Số hóa công thức LaTeX · Tự động hóa xây dựng đề thi · Chính xác & Tốc độ.
@@ -8680,6 +8913,7 @@ ${bodyHtml}
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
         onNavigate={(view) => handleSidebarNav(view)}
+        isAdmin={isAdminUser(user, userDoc)}
         onOpenPricing={() => setSidebarView('pricing')}
         onOpenFeedback={() => setIsFeedbackOpen(true)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}

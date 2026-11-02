@@ -1,6 +1,7 @@
 import React from "react";
 import { Sparkles, HelpCircle, FileEdit, Eye, ChevronDown, Check, Type, FileText } from "lucide-react";
 import { motion } from "motion/react";
+import { QuestionImageBar } from "./ui/QuestionImageBar";
 
 export type ExamUnit =
   | { id: "header"; type: "header" }
@@ -183,6 +184,10 @@ export const QBuilder: React.FC<QBuilderProps> = ({
   const [isHeaderOpen, setIsHeaderOpen] = React.useState(false);
   const [isFontDropdownOpen, setIsFontDropdownOpen] = React.useState<boolean>(false);
   const fontDropdownRef = React.useRef<HTMLDivElement>(null);
+  const tnQuestionRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const tnAnswerRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const otherQuestionRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const otherAnswerRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -1004,6 +1009,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         1. Đề bài & các tùy chọn A, B, C, D <span className="text-rose-500 font-bold">*</span>
                       </span>
                       <textarea
+                        ref={tnQuestionRef}
                         value={tracNghiemText}
                         onChange={(e) =>
                           setTracNghiemText(e.target.value)
@@ -1015,6 +1021,12 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         placeholder="VD: Cho hàm số $y=x+1$, tìm điểm giao với trục hoành.\nA. $(1;0)$\nB. $(-1;0)$\nC. $(0;1)$\nD. $(0;-1)$"
                         className="w-full flex-1 bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed overflow-y-auto transition-all shadow-3xs"
                       />
+                      <QuestionImageBar
+                        value={tracNghiemText}
+                        onChange={setTracNghiemText}
+                        textareaRef={tnQuestionRef}
+                        label="Hình đề bài"
+                      />
                     </div>
 
                     {/* Right Frame: Answer and Solution */}
@@ -1023,6 +1035,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         2. Đáp án
                       </span>
                       <textarea
+                        ref={tnAnswerRef}
                         value={tracNghiemAnswerText}
                         onChange={(e) =>
                           setTracNghiemAnswerText(e.target.value)
@@ -1033,6 +1046,12 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         rows={4}
                         placeholder="VD: Chọn B. Giao điểm với trục hoành có $y = 0 \implies x + 1 = 0 \implies x = -1$."
                         className="w-full flex-1 bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed overflow-y-auto transition-all shadow-3xs"
+                      />
+                      <QuestionImageBar
+                        value={tracNghiemAnswerText}
+                        onChange={setTracNghiemAnswerText}
+                        textareaRef={tnAnswerRef}
+                        label="Hình lời giải"
                       />
                     </div>
                   </div>
@@ -1112,6 +1131,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         1. Nội dung câu hỏi <span className="text-rose-500 font-bold">*</span>
                       </span>
                       <textarea
+                        ref={otherQuestionRef}
                         value={newQuestionType === "trac_nghiem_dung_sai" ? dungSaiText : newQuestionType === "trac_nghiem_tra_loi_ngan" ? traLoiNganText : tuLuanQuestionText}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -1132,6 +1152,16 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         }
                         className="w-full bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed transition-all shadow-3xs"
                       />
+                      <QuestionImageBar
+                        value={newQuestionType === "trac_nghiem_dung_sai" ? dungSaiText : newQuestionType === "trac_nghiem_tra_loi_ngan" ? traLoiNganText : tuLuanQuestionText}
+                        onChange={(val) => {
+                          if (newQuestionType === "trac_nghiem_dung_sai") setDungSaiText(val);
+                          else if (newQuestionType === "trac_nghiem_tra_loi_ngan") setTraLoiNganText(val);
+                          else setTuLuanQuestionText(val);
+                        }}
+                        textareaRef={otherQuestionRef}
+                        label="Hình đề bài"
+                      />
                     </div>
 
                     {/* Right Frame: Answer Text - OPTIONAL */}
@@ -1140,6 +1170,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                         2. Đáp án
                       </span>
                       <textarea
+                        ref={otherAnswerRef}
                         value={newQuestionType === "trac_nghiem_dung_sai" ? dungSaiAnswerText : newQuestionType === "trac_nghiem_tra_loi_ngan" ? traLoiNganAnswerText : tuLuanAnswerText}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -1159,6 +1190,16 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                           "VD: Nhập nội dung hướng dẫn giải chi tiết..."
                         }
                         className="w-full bg-white/40/20 border border-slate-200 rounded-xl p-3.5 text-xs md:text-sm text-slate-800 focus:ring-2 focus:ring-indigo-150 focus:border-indigo-400 focus:bg-white outline-none font-normal leading-relaxed transition-all shadow-3xs"
+                      />
+                      <QuestionImageBar
+                        value={newQuestionType === "trac_nghiem_dung_sai" ? dungSaiAnswerText : newQuestionType === "trac_nghiem_tra_loi_ngan" ? traLoiNganAnswerText : tuLuanAnswerText}
+                        onChange={(val) => {
+                          if (newQuestionType === "trac_nghiem_dung_sai") setDungSaiAnswerText(val);
+                          else if (newQuestionType === "trac_nghiem_tra_loi_ngan") setTraLoiNganAnswerText(val);
+                          else setTuLuanAnswerText(val);
+                        }}
+                        textareaRef={otherAnswerRef}
+                        label="Hình lời giải"
                       />
                     </div>
                   </div>

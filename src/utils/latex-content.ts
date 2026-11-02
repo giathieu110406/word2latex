@@ -1,5 +1,6 @@
 import katex from 'katex';
 import { marked } from 'marked';
+import { resolveImageTokensToMarkdown } from './qbuilder-image';
 export interface ProtectedRange {
     start: number;
     end: number;
@@ -363,6 +364,7 @@ export function renderLatexContent(text: string, smartNewline = true, promoteSta
     }
     // Restore URLs with linkification for bare ones just before passing to marked.parse
     mdText = restoreUrls(mdText, urls, false);
+    mdText = resolveImageTokensToMarkdown(mdText);
     // Parse Markdown synchronously using marked with breaks and gfm enabled
     let htmlContent = "";
     try {

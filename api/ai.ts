@@ -237,6 +237,8 @@ NHIỆM VỤ CỦA BẠN:
 
 HƯỚNG DẪN CỰC KỲ QUAN TRỌNG:
 - TUYỆT ĐỐI GIỮ NGUYÊN BẢN (RAW TEXT): Không tự ý viết lại câu chữ, không sửa đổi ký hiệu, không sửa LaTeX (giữ nguyên $...$ hoặc $$...$$), không tóm tắt, không bổ sung từ ngữ mới. Bạn chỉ được phép cắt các chuỗi ký tự thô từ văn bản gốc của người dùng đưa vào đúng hai trường tương ứng.
+- BẢO TOÀN PLACEHOLDER ẢNH: Nếu trong câu hỏi hoặc lời giải có các token dạng [[IMG_1]], [[IMG_2]], ![...](img:...) thì BẮT BUỘC giữ nguyên chính xác từng ký tự ở đúng vị trí của nó.
+- GỘP BẢNG ĐÁP ÁN CUỐI ĐỀ: Nếu văn bản có phần BẢNG ĐÁP ÁN (ví dụ 1.A 2.B) hoặc LỜI GIẢI CHI TIẾT ở cuối văn bản, hãy ghép chính xác đáp án và lời giải đó vào trường "answerRawText" của câu hỏi tương ứng (ví dụ "Đáp án đúng: A\\n..." cho câu 1).
 - KHÔNG TRỘN LẪN: Phần đáp án/lời giải/hướng dẫn giải phải được tách riêng hoàn toàn sang "answerRawText", không được để lẫn lộn trong "questionRawText".`;
 
     const systemInstruction = await getDynamicSystemPrompt("qbuilder", "smart-paste-parse", defaultPrompt);
@@ -757,6 +759,95 @@ Quy tắc bắt buộc:
       }, 2, 1500, { temperature: 0, topK: 1, topP: 1.0 });
   
       return res.json({ success: true, text: response.text });
+    }
+
+    if (action === 'ocr-exam-image') {
+      const { image, mimeType } = req.body;
+      if (!image || !mimeType) {
+        return res.status(400).json({ error: "Thiếu dữ liệu hình ảnh đề thi" });
+      }
+
+      console.log("[Gemini API] Đang OCR đề thi (LaTeX + Bảng + Tọa độ hình vẽ)...");
+
+      const ocrPrompt = `Bạn là hệ thống OCR đề thi Toán - Lý - Hóa - Tin học chuyên sâu.
+Hãy trích xuất TOÀN BỘ nội dung trong ảnh đề thi này sang định dạng Markdown + LaTeX chuẩn xác.
+
+QUY TẮC BẮT BUỘC:
+1. CÔNG THỨC TOÁN HỌC:
+   - Mọi biểu thức toán, phân số, căn thức, hệ phương trình, ma trận, tích phân, giới hạn, ký hiệu hình học phải bọc trong LaTeX chuẩn: inline dùng $...$, công thức khối đứng riêng dòng dùng $$...$$.
+2. BẢNG BIỂU:
+   - Mọi bảng số liệu, bảng giá trị phải chuyển thành bảng GFM Markdown chuẩn (| Cột 1 | Cột 2 |).
+3. HÌNH VẼ MINH HỌA / ĐỒ THỊ / BẢNG BIẾN THIÊN CÓ MŨI TÊN:
+   - Nếu trong đề có hình học không gian, hình phẳng, đồ thị hàm số, mạch điện, hoặc bảng biến thiên có mũi tên chéo:
+   - Đặt đúng placeholder \`[[DIAGRAM_1]]\`, \`[[DIAGRAM_2]]\`... ngay tại vị trí xuất hiện hình vẽ trong trường "text".
+   - Đồng thời trả về danh sách "diagrams" chứa tọa độ khung bao (bounding box) theo thang chuẩn hóa 0..1000: [ymin, xmin, ymax, xmax] bao trọn hình vẽ đó (bao gồm cả các nhãn điểm A, B, C, S, O, x, y quanh hình).
+4. BẢO TOÀN CẤU TRÚC ĐỀ:
+   - Giữ nguyên thứ tự các câu (Câu 1:, Câu 2:...), các phương án A. B. C. D. hoặc a) b) c) d), và phần BẢNG ĐÁP ÁN / LỜI GIẢI nếu có trong ảnh.`;
+
+      const response = await generateContentWithRetry({
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: image,
+              },
+            },
+            { text: ocrPrompt },
+          ],
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              text: {
+                type: Type.STRING,
+                description: "Toàn bộ văn bản đề thi đã OCR kèm LaTeX ($...$), bảng GFM và các token [[DIAGRAM_1]], [[DIAGRAM_2]]...",
+              },
+              diagrams: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    placeholder: {
+                      type: Type.STRING,
+                      description: "Tên token tương ứng trong text, ví dụ [[DIAGRAM_1]]",
+                    },
+                    label: {
+                      type: Type.STRING,
+                      description: "Mô tả ngắn hình vẽ, ví dụ: Hình chóp S.ABCD hoặc Đồ thị hàm số",
+                    },
+                    box_2d: {
+                      type: Type.ARRAY,
+                      items: { type: Type.NUMBER },
+                      description: "Tọa độ [ymin, xmin, ymax, xmax] chuẩn hóa từ 0 đến 1000",
+                    },
+                  },
+                  required: ["placeholder", "box_2d"],
+                },
+              },
+            },
+            required: ["text", "diagrams"],
+          },
+        },
+      }, 2, 1500, { temperature: 0, topK: 1, topP: 1.0 });
+
+      const responseText = response.text?.trim() || "{}";
+      const parsed = JSON.parse(responseText);
+      logAIInteraction(
+        (req as any).verifiedActivityAuth.user.uid,
+        "qbuilder",
+        "[OCR Exam Image]",
+        responseText,
+        response.usageMetadata
+      );
+
+      return res.json({
+        success: true,
+        text: parsed.text || "",
+        diagrams: Array.isArray(parsed.diagrams) ? parsed.diagrams : [],
+      });
     }
 
     return res.status(400).json({ error: "Action không hợp lệ hoặc chưa được hỗ trợ" });

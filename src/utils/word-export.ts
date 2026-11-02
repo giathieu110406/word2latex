@@ -1,8 +1,13 @@
 import katex from 'katex';
 import JSZip from 'jszip';
+import { parseImageDimensionsFromBase64 } from './qbuilder-image';
 
 const MATH_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/math';
 const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const WP_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const PIC_NS = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 const MML_NS = 'http://www.w3.org/1998/Math/MathML';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const escapeXml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
@@ -313,17 +318,85 @@ function officeEquation(el: HTMLElement): string {
   parseXml(omml);
   return omml;
 }
-function inline(node: Node, style: TextStyle, font: string): string {
+
+interface DocxMediaItem {
+  rId: string;
+  fileName: string;
+  extension: string;
+  contentType: string;
+  bytes: Uint8Array;
+}
+
+interface DocxMediaCollector {
+  items: DocxMediaItem[];
+  nextId: number;
+}
+
+const MAX_PAGE_WIDTH_EMU = 5_715_000;
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const clean = base64.replace(/\s+/g, '');
+  if (typeof Buffer !== 'undefined') {
+    return new Uint8Array(Buffer.from(clean, 'base64'));
+  }
+  const binary = atob(clean);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function officeImage(el: HTMLElement, media?: DocxMediaCollector): string {
+  const src = (el.getAttribute('src') || '').trim();
+  const dataMatch = src.match(/^data:(image\/(png|jpeg|jpg|gif|webp));base64,([\s\S]+)$/i);
+  if (!dataMatch || !media) {
+    throw new Error('Nội dung ảnh (image) chưa hỗ trợ xuất Word dạng văn bản.');
+  }
+  const rawMime = dataMatch[1].toLowerCase();
+  const subtype = dataMatch[2].toLowerCase();
+  const base64 = dataMatch[3];
+  const extension = subtype === 'jpeg' ? 'jpg' : subtype;
+  const contentType = rawMime === 'image/jpg' ? 'image/jpeg' : rawMime;
+  const bytes = base64ToUint8Array(base64);
+
+  const parsedDims = parseImageDimensionsFromBase64(src);
+  const attrW = Number(el.getAttribute('data-natural-width') || el.getAttribute('width') || 0);
+  const attrH = Number(el.getAttribute('data-natural-height') || el.getAttribute('height') || 0);
+  const naturalW = Math.max(1, attrW || parsedDims.width || 400);
+  const naturalH = Math.max(1, attrH || parsedDims.height || 300);
+
+  const widthPctAttr = Number(el.getAttribute('data-width-pct') || 0);
+  const styleWidthMatch = (el.getAttribute('style') || '').match(/width\s*:\s*(\d+(?:\.\d+)?)%/i);
+  const pct = widthPctAttr > 0 ? widthPctAttr : styleWidthMatch ? Number(styleWidthMatch[1]) : 0;
+
+  let cx = pct > 0
+    ? Math.round(MAX_PAGE_WIDTH_EMU * (Math.min(100, Math.max(10, pct)) / 100))
+    : Math.min(MAX_PAGE_WIDTH_EMU, Math.round(naturalW * 9525));
+  cx = Math.max(95250, Math.min(MAX_PAGE_WIDTH_EMU, cx));
+  const cy = Math.max(95250, Math.round(cx * (naturalH / naturalW)));
+
+  const idNum = media.nextId++;
+  const rId = `rIdImg${idNum}`;
+  const fileName = `image${idNum}.${extension}`;
+  media.items.push({ rId, fileName, extension, contentType, bytes });
+
+  const alt = escapeXml(el.getAttribute('alt') || `Image ${idNum}`);
+  return `<w:r><w:drawing><wp:inline xmlns:wp="${WP_NS}" distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${idNum}" name="${alt}" descr="${alt}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="${A_NS}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="${A_NS}"><a:graphicData uri="${PIC_NS}"><pic:pic xmlns:pic="${PIC_NS}"><pic:nvPicPr><pic:cNvPr id="${idNum}" name="${escapeXml(fileName)}" descr="${alt}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="${REL_NS}" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+}
+
+function inline(node: Node, style: TextStyle, font: string, media?: DocxMediaCollector): string {
   if (node.nodeType === Node.TEXT_NODE) return wordRun(style.pre ? node.textContent || '' : (node.textContent || '').replace(/\s+/g, ' '), style, font);
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
   const el = node as HTMLElement;
   if (el.classList.contains('word-equation')) return officeEquation(el);
   const tag = el.tagName.toLowerCase();
-  if (['img', 'svg', 'canvas', 'iframe', 'video', 'audio', 'object', 'math'].includes(tag)) throw new Error(`Nội dung ${tag === 'img' ? 'ảnh (image)' : tag} chưa hỗ trợ xuất Word dạng văn bản.`);
+  if (tag === 'img') return officeImage(el, media);
+  if (['svg', 'canvas', 'iframe', 'video', 'audio', 'object', 'math'].includes(tag)) throw new Error(`Nội dung ${tag} chưa hỗ trợ xuất Word dạng văn bản.`);
   if (['script', 'style', 'button'].includes(tag)) return '';
   if (tag === 'br') return '<w:r><w:br/></w:r>';
   const nextStyle = styles(el, style);
-  return Array.from(el.childNodes).map(child => inline(child, nextStyle, font)).join('');
+  return Array.from(el.childNodes).map(child => inline(child, nextStyle, font, media)).join('');
 }
 const blockTags = new Set('p div h1 h2 h3 h4 h5 h6 blockquote pre section article header footer ul ol li table hr'.split(' '));
 function isBlock(node: Node): boolean {
@@ -334,7 +407,7 @@ function paragraph(content: string, style: TextStyle): string {
   return `<w:p><w:pPr><w:spacing w:after="80" w:line="276" w:lineRule="auto"/><w:jc w:val="${align}"/></w:pPr>${content}</w:p>`;
 }
 
-function blocks(root: HTMLElement, font: string, inherited: TextStyle = {}): string {
+function blocks(root: HTMLElement, font: string, inherited: TextStyle = {}, media?: DocxMediaCollector): string {
   const style = styles(root, inherited);
   let output = '';
   let pending = '';
@@ -342,7 +415,7 @@ function blocks(root: HTMLElement, font: string, inherited: TextStyle = {}): str
   for (const node of Array.from(root.childNodes)) {
     if (!isBlock(node)) {
       if (!pending && node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) continue;
-      pending += inline(node, style, font);
+      pending += inline(node, style, font, media);
       continue;
     }
     flush();
@@ -351,16 +424,18 @@ function blocks(root: HTMLElement, font: string, inherited: TextStyle = {}): str
     const tag = el.tagName.toLowerCase();
     if (el.classList.contains('word-equation')) {
       output += paragraph(`<m:oMathPara><m:oMathParaPr><m:jc m:val="center"/></m:oMathParaPr>${officeEquation(el)}</m:oMathPara>`, { ...nextStyle, align: 'center' });
-    } else if (tag === 'table') output += table(el, font, nextStyle);
+    } else if (tag === 'img') {
+      output += paragraph(officeImage(el, media), { ...nextStyle, align: nextStyle.align || 'center' });
+    } else if (tag === 'table') output += table(el, font, nextStyle, media);
     else if (tag === 'hr') output += '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:color="808080"/></w:pBdr></w:pPr></w:p>';
-    else if (Array.from(el.childNodes).some(isBlock)) output += blocks(el, font, style);
-    else output += paragraph(inline(el, style, font), nextStyle);
+    else if (Array.from(el.childNodes).some(isBlock)) output += blocks(el, font, style, media);
+    else output += paragraph(inline(el, style, font, media), nextStyle);
   }
   flush();
   return output;
 }
 
-function table(el: HTMLElement, font: string, style: TextStyle): string {
+function table(el: HTMLElement, font: string, style: TextStyle, media?: DocxMediaCollector): string {
   const rows = Array.from(el.querySelectorAll('tr')).filter(row => row.closest('table') === el);
   const columns = Math.max(1, ...rows.map(row => Array.from(row.children).reduce((count, cell) => count + Number(cell.getAttribute('colspan') || 1), 0)));
   const width = Math.floor(9638 / columns);
@@ -372,7 +447,7 @@ function table(el: HTMLElement, font: string, style: TextStyle): string {
     if (Number(td.getAttribute('rowspan') || 1) > 1) throw new Error('Bảng có ô gộp theo chiều dọc chưa hỗ trợ xuất Word.');
     const span = Number(td.getAttribute('colspan') || 1);
     const cellStyle = styles(td, style);
-    const body = blocks(td, font, { ...cellStyle, bold: td.tagName.toLowerCase() === 'th' || cellStyle.bold });
+    const body = blocks(td, font, { ...cellStyle, bold: td.tagName.toLowerCase() === 'th' || cellStyle.bold }, media);
     return `<w:tc><w:tcPr><w:tcW w:w="${width * span}" w:type="dxa"/>${span > 1 ? `<w:gridSpan w:val="${span}"/>` : ''}${cellStyle.background ? `<w:shd w:val="clear" w:fill="${cellStyle.background}"/>` : ''}<w:vAlign w:val="top"/></w:tcPr>${body || '<w:p/>'}${body.endsWith('</w:tbl>') ? '<w:p/>' : ''}</w:tc>`;
   }).join('')}</w:tr>`).join('');
   return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>${borders}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${Array.from({ length: columns }, () => `<w:gridCol w:w="${width}"/>`).join('')}</w:tblGrid>${content}</w:tbl>`;
@@ -380,20 +455,35 @@ function table(el: HTMLElement, font: string, style: TextStyle): string {
 
 export async function buildWordDocx(root: HTMLElement, font: string): Promise<Blob> {
   font = officeFont(font);
-  const body = blocks(root, font);
+  const media: DocxMediaCollector = { items: [], nextId: 1 };
+  const body = blocks(root, font, {}, media);
   const zip = new JSZip();
   const declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const extDefaults = new Map<string, string>();
+  for (const item of media.items) {
+    extDefaults.set(item.extension, item.contentType);
+  }
+  const mediaDefaultXml = Array.from(extDefaults.entries())
+    .map(([ext, ct]) => `<Default Extension="${escapeXml(ext)}" ContentType="${escapeXml(ct)}"/>`)
+    .join('');
+  const mediaRelsXml = media.items
+    .map(item => `<Relationship Id="${escapeXml(item.rId)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${escapeXml(item.fileName)}"/>`)
+    .join('');
+  const docNamespaces = `xmlns:w="${WORD_NS}" xmlns:m="${MATH_NS}"${media.items.length > 0 ? ` xmlns:r="${REL_NS}" xmlns:wp="${WP_NS}" xmlns:a="${A_NS}" xmlns:pic="${PIC_NS}"` : ''}`;
   const parts: Record<string, string> = {
-    '[Content_Types].xml': '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/></Types>',
+    '[Content_Types].xml': `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaDefaultXml}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/></Types>`,
     '_rels/.rels': '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
-    'word/_rels/document.xml.rels': '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>',
-    'word/document.xml': `<w:document xmlns:w="${WORD_NS}" xmlns:m="${MATH_NS}"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`,
+    'word/_rels/document.xml.rels': `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>${mediaRelsXml}</Relationships>`,
+    'word/document.xml': `<w:document ${docNamespaces}><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`,
     'word/styles.xml': `<w:styles xmlns:w="${WORD_NS}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${escapeXml(font)}" w:hAnsi="${escapeXml(font)}"/><w:sz w:val="26"/><w:lang w:val="vi-VN"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`,
     'word/settings.xml': `<w:settings xmlns:w="${WORD_NS}" xmlns:m="${MATH_NS}"><w:view w:val="print"/><w:zoom w:percent="100"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat><m:mathPr><m:mathFont m:val="Cambria Math"/><m:dispDef/></m:mathPr></w:settings>`,
   };
   for (const [name, content] of Object.entries(parts)) {
     parseXml(content);
     zip.file(name, declaration + content);
+  }
+  for (const item of media.items) {
+    zip.file(`word/media/${item.fileName}`, item.bytes, { binary: true });
   }
   const bytes = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
   return new Blob([bytes], { type: DOCX_MIME });

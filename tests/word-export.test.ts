@@ -338,3 +338,29 @@ test('legacy copy uses the synchronous copy event even when modern clipboard is 
     delete (navigator as any).clipboard;
   }
 });
+
+test('DOCX embeds data:image/png into word/media, registers relationships, and emits wp:inline drawing while still rejecting external URLs', async () => {
+  const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const root = fixture(`<p>Cho hình vẽ sau:</p><p><img src="${tinyPng}" alt="Hình chóp" data-width-pct="50" data-natural-width="400" data-natural-height="200" /></p>`);
+
+  const blob = await buildWordDocx(root, 'Times New Roman');
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+
+  const mediaFiles = Object.keys(zip.files).filter(name => name.startsWith('word/media/') && !zip.files[name].dir);
+  assert.equal(mediaFiles.length, 1);
+  assert.equal(mediaFiles[0], 'word/media/image1.png');
+
+  const contentTypes = await zip.file('[Content_Types].xml')!.async('string');
+  xml(contentTypes);
+  assert.match(contentTypes, /Extension="png"\s+ContentType="image\/png"/);
+
+  const rels = await zip.file('word/_rels/document.xml.rels')!.async('string');
+  xml(rels);
+  assert.match(rels, /Id="rIdImg1"[^>]*Target="media\/image1\.png"/);
+
+  const docXml = await zip.file('word/document.xml')!.async('string');
+  xml(docXml);
+  assert.match(docXml, /<w:drawing>/);
+  assert.match(docXml, /<wp:inline/);
+  assert.match(docXml, /r:embed="rIdImg1"/);
+});

@@ -19,6 +19,7 @@ export interface CommandPaletteModalProps {
   onOpenPricing?: () => void;
   onOpenFeedback?: () => void;
   onOpenNotifications?: () => void;
+  isAdmin?: boolean;
 }
 
 export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
@@ -27,7 +28,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onNavigate,
   onOpenPricing,
   onOpenFeedback,
-  onOpenNotifications
+  onOpenNotifications,
+  isAdmin = false
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -81,6 +83,18 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         onClose();
       }
     },
+    ...(isAdmin ? [{
+      id: "pdf-editor",
+      title: "Trình Biên Tập PDF",
+      desc: "Ghép, cắt, xoay, sắp xếp trang, thêm trang trống, Watermark & Làm phẳng PDF",
+      icon: FileText,
+      textColor: "text-indigo-600",
+      bgLight: "bg-indigo-50",
+      action: () => {
+        onNavigate("pdf-editor");
+        onClose();
+      }
+    }] : []),
     {
       id: "pricing",
       title: "Bảng Giá & Gói Dịch Vụ",
