@@ -10,7 +10,6 @@ import {
   ZoomIn,
   ChevronDown,
   Upload,
-  HardDrive,
   Check,
   ArrowRight,
   ArrowUpAZ,
@@ -55,7 +54,12 @@ import {
   exportEditedPdf,
 } from '../utils/pdf-service';
 import { renderPdfPageThumbnail } from '../utils/pdf-thumbnail';
-import { openGoogleDriveFilePicker } from '../utils/google-drive-picker';
+import {
+  isWordFile,
+  isPowerPointFile,
+  convertWordToPdfBuffer,
+  convertPowerPointToPdfBuffer,
+} from '../utils/office-to-pdf';
 
 export interface PdfEditorWorkspaceProps {
   triggerToast?: (msg: string, success?: boolean) => void;
@@ -471,19 +475,11 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     setFlattenOnExport,
   } = usePdfEditorStore();
 
-  const [uploadDropdownOpen, setUploadDropdownOpen] = useState(false);
   const [topAddDropdownOpen, setTopAddDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const [watermarkModalOpen, setWatermarkModalOpen] = useState(false);
   const [splitModalOpen, setSplitModalOpen] = useState(false);
   const [splitRangeInput, setSplitRangeInput] = useState('');
-  const [googleConfigModalOpen, setGoogleConfigModalOpen] = useState(false);
-  const [googleClientIdInput, setGoogleClientIdInput] = useState(
-    () => localStorage.getItem('W2L_GOOGLE_CLIENT_ID') || ''
-  );
-  const [googleApiKeyInput, setGoogleApiKeyInput] = useState(
-    () => localStorage.getItem('W2L_GOOGLE_API_KEY') || ''
-  );
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [previewHighResUrl, setPreviewHighResUrl] = useState<string>('');
@@ -589,6 +585,12 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
           lower.endsWith('.jpeg')
         ) {
           buffer = await convertImageFileToPdfBuffer(f);
+        } else if (isWordFile(f.name, f.type)) {
+          notify(`Đang chuyển đổi tệp Word "${f.name}" sang trang PDF...`);
+          buffer = await convertWordToPdfBuffer(f, f.name);
+        } else if (isPowerPointFile(f.name, f.type)) {
+          notify(`Đang chuyển đổi slide "${f.name}" sang trang PDF...`);
+          buffer = await convertPowerPointToPdfBuffer(f, f.name);
         } else {
           buffer = await f.arrayBuffer();
         }
@@ -604,7 +606,10 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
         });
       } catch (err) {
         console.error('Error loading file:', f.name, err);
-        notify(`Không thể đọc tệp "${f.name}". Vui lòng chọn PDF hoặc Ảnh hợp lệ.`, false);
+        notify(
+          `Không thể đọc tệp "${f.name}". Vui lòng kiểm tra định dạng PDF, Word, PowerPoint hoặc Ảnh.`,
+          false
+        );
       }
     }
 
@@ -620,46 +625,10 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     pageIndex?: number;
   }) => {
     setInsertTarget(target || null);
-    setUploadDropdownOpen(false);
     setTopAddDropdownOpen(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
-    }
-  };
-
-  const handleGoogleDrivePick = async () => {
-    setUploadDropdownOpen(false);
-    setTopAddDropdownOpen(false);
-    try {
-      const picked = await openGoogleDriveFilePicker();
-      if (picked.length === 0) return;
-
-      const loadedFiles: PdfSourceFile[] = [];
-      let colorIdx = files.length;
-      for (const item of picked) {
-        const meta = await parsePdfBufferMetadata(item.buffer);
-        loadedFiles.push({
-          id: `gdrive_${item.id}_${Date.now()}`,
-          name: item.name,
-          size: item.sizeBytes || item.buffer.byteLength,
-          rawData: item.buffer,
-          totalPages: meta.totalPages,
-          colorBadge: getBadgeColor(colorIdx++),
-        });
-      }
-      addFiles(
-        loadedFiles,
-        insertTarget?.fileIndex,
-        insertTarget?.pageIndex
-      );
-      notify(`Đã tải ${loadedFiles.length} tệp từ Google Drive!`);
-    } catch (err: any) {
-      if (err?.message === 'MISSING_GOOGLE_CREDENTIALS') {
-        setGoogleConfigModalOpen(true);
-      } else {
-        notify(err?.message || 'Lỗi kết nối Google Drive', false);
-      }
     }
   };
 
@@ -774,7 +743,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".pdf,application/pdf,image/png,image/jpeg,.jpg,.jpeg,.png"
+        accept=".pdf,application/pdf,image/png,image/jpeg,.jpg,.jpeg,.png,.docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,.pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint"
         className="hidden"
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
@@ -855,54 +824,18 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
                   </svg>
                 </div>
 
-                {/* Split Button: CHỌN CÁC TỆP | Dropdown Arrow */}
-                <div className="relative inline-flex rounded-lg shadow-md">
-                  <button
-                    type="button"
-                    onClick={() => triggerDeviceFilePicker()}
-                    className="px-5 py-3.5 bg-white hover:bg-slate-50 text-slate-900 font-bold text-xs sm:text-sm rounded-l-lg flex items-center gap-2.5 transition-colors cursor-pointer"
-                  >
-                    <FilePlus2 className="w-4 h-4 text-slate-800" />
-                    <span>CHỌN CÁC TỆP</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setUploadDropdownOpen((v) => !v)}
-                    aria-label="Mở menu chọn nguồn tệp"
-                    className="px-3.5 py-3.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-r-lg border-l border-slate-300 flex items-center justify-center transition-colors cursor-pointer"
-                  >
-                    <ChevronDown
-                      className={`w-4 h-4 transition-transform ${
-                        uploadDropdownOpen ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
-
-                  {/* Dropdown Menu: Từ thiết bị / Từ Google Drive */}
-                  {uploadDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-1.5 w-56 bg-white rounded-lg shadow-xl border border-slate-200 py-1.5 z-50 text-sm text-slate-700 font-medium">
-                      <button
-                        type="button"
-                        onClick={() => triggerDeviceFilePicker()}
-                        className="w-full px-4 py-2.5 text-left hover:bg-slate-100 flex items-center gap-3 cursor-pointer"
-                      >
-                        <Upload className="w-4 h-4 text-slate-600" />
-                        <span>Từ thiết bị</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleGoogleDrivePick}
-                        className="w-full px-4 py-2.5 text-left hover:bg-slate-100 flex items-center gap-3 cursor-pointer"
-                      >
-                        <HardDrive className="w-4 h-4 text-emerald-600" />
-                        <span>Từ Google Drive</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
+                {/* Single Direct Button: CHỌN CÁC TỆP TỪ THƯ MỤC */}
+                <button
+                  type="button"
+                  onClick={() => triggerDeviceFilePicker()}
+                  className="px-6 py-3.5 bg-white hover:bg-slate-50 text-slate-900 font-bold text-xs sm:text-sm rounded-xl flex items-center gap-2.5 transition-all shadow-md hover:shadow-lg cursor-pointer transform active:scale-95"
+                >
+                  <FilePlus2 className="w-4 h-4 text-slate-800" />
+                  <span>CHỌN CÁC TỆP TỪ THƯ MỤC</span>
+                </button>
 
                 <p className="mt-3 text-white/90 text-xs sm:text-sm font-medium">
-                  hoặc thả các tệp PDF, hình ảnh ở đây
+                  hoặc kéo thả các tệp PDF, Word, PowerPoint, Ảnh ở đây
                 </p>
               </div>
             </div>
@@ -910,7 +843,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
             {/* Feature Highlights below Upload Box (Giống Hình 1 & Hình 2) */}
             <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6 mt-8 text-sm text-slate-600">
               <p className="leading-relaxed">
-                Gộp các tệp PDF, cắt trang, xoay chiều, sắp xếp thứ tự, đóng dấu
+                Gộp các tệp PDF, Word, PowerPoint, ảnh, cắt trang, xoay chiều, sắp xếp thứ tự, đóng dấu
                 Watermark và làm phẳng PDF trực tiếp trên trình duyệt với độ bảo
                 mật tuyệt đối.
               </p>
@@ -934,7 +867,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
                     <Check className="w-3.5 h-3.5 stroke-[3]" />
                   </span>
                   <span>
-                    Hỗ trợ tải tệp từ Thiết bị & Google Drive, kèm Watermark và Làm phẳng PDF
+                    Hỗ trợ tải tệp từ Thiết bị (PDF, Word, PowerPoint, Ảnh), kèm Watermark và Làm phẳng PDF
                   </span>
                 </div>
               </div>
@@ -998,17 +931,8 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
                       className="w-full px-3.5 py-2 text-left hover:bg-blue-50 flex items-center gap-2.5 cursor-pointer"
                     >
                       <Upload className="w-4 h-4 text-blue-600" />
-                      <span>Tải tệp từ thiết bị</span>
+                      <span>Tải tệp từ thư mục</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleGoogleDrivePick}
-                      className="w-full px-3.5 py-2 text-left hover:bg-blue-50 flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <HardDrive className="w-4 h-4 text-emerald-600" />
-                      <span>Tải từ Google Drive</span>
-                    </button>
-                    <div className="my-1 border-t border-slate-100" />
                     <button
                       type="button"
                       onClick={() => {
@@ -1656,99 +1580,6 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg cursor-pointer"
               >
                 Áp dụng cắt PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ====================================================================
-          MODAL 4: GOOGLE DRIVE CREDENTIALS SETUP (Khi chưa cấu hình API Key)
-      ==================================================================== */}
-      {googleConfigModalOpen && (
-        <div
-          onClick={() => setGoogleConfigModalOpen(false)}
-          className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-5 space-y-4"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Settings2 className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-bold text-slate-800 text-base">
-                  Kết nối Google Drive Picker
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setGoogleConfigModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Để mở hộp thoại chọn tệp trực tiếp từ Google Drive (Client-side),
-              vui lòng nhập <strong>Google OAuth Client ID</strong> và{' '}
-              <strong>Google Picker API Key</strong> (hoặc cấu hình trong{' '}
-              <code>VITE_GOOGLE_DRIVE_CLIENT_ID</code>).
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Google OAuth Client ID
-                </label>
-                <input
-                  type="text"
-                  value={googleClientIdInput}
-                  onChange={(e) => setGoogleClientIdInput(e.target.value)}
-                  placeholder="xxxx.apps.googleusercontent.com"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Google API Key (Picker API)
-                </label>
-                <input
-                  type="text"
-                  value={googleApiKeyInput}
-                  onChange={(e) => setGoogleApiKeyInput(e.target.value)}
-                  placeholder="AIzaSy..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setGoogleConfigModalOpen(false)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
-              >
-                Đóng
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  localStorage.setItem(
-                    'W2L_GOOGLE_CLIENT_ID',
-                    googleClientIdInput.trim()
-                  );
-                  localStorage.setItem(
-                    'W2L_GOOGLE_API_KEY',
-                    googleApiKeyInput.trim()
-                  );
-                  setGoogleConfigModalOpen(false);
-                  handleGoogleDrivePick();
-                }}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg cursor-pointer"
-              >
-                Lưu & Mở Google Drive
               </button>
             </div>
           </div>
