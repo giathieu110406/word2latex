@@ -5069,6 +5069,17 @@ ${bodyHtml}
               document.body
             )}
 
+            {/* Privacy & Terms Links */}
+            <div className="flex items-center justify-center gap-3 py-1.5 px-2 text-[11px] text-slate-400 border-t border-slate-100/80 mb-1">
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 hover:underline transition-colors">
+                Chính sách bảo mật
+              </a>
+              <span>•</span>
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 hover:underline transition-colors">
+                Điều khoản
+              </a>
+            </div>
+
             {/* User Profile trigger button - Nhỏ gọn ôm sát viền bo cong */}
             <button
               type="button"
