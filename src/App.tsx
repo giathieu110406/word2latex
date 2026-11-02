@@ -41,6 +41,7 @@ import { PdfEditorWorkspace } from "./components/PdfEditorWorkspace";
 import { UserPaymentHistoryModal } from "./components/UserPaymentHistoryModal";
 import { ImagePreviewModal } from "./components/modals/ImagePreviewModal";
 import { CommandPaletteModal } from "./components/CommandPaletteModal";
+import { PolicyTermsModal } from "./components/modals/PolicyTermsModal";
 import { ScreenAnnotator } from "./components/ScreenAnnotator";
 
 // Firebase integrations
@@ -295,6 +296,7 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
   const [isPaymentHistoryModalOpen, setIsPaymentHistoryModalOpen] = useState<boolean>(false);
+  const [policyModalTab, setPolicyModalTab] = useState<'privacy' | 'terms' | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const userMenuDropdownRef = useRef<HTMLDivElement>(null);
   const [userMenuPosition, setUserMenuPosition] = useState<{ left: number; bottom: number; width?: number; isMobile: boolean }>({ left: 0, bottom: 0, isMobile: false });
@@ -4836,15 +4838,13 @@ ${bodyHtml}
                       )}
                       <Layout className="w-4 h-4 shrink-0 text-indigo-500" /> <span className="truncate whitespace-nowrap">MarkItDown AI</span>
                   </button>
-                  {isAdminUser(user, userDoc) && (
-                    <button onClick={() => handleSidebarNav('pdf-editor')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'pdf-editor' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
-                        {sidebarView === 'pdf-editor' && (
-                          <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
-                        )}
-                        <FileText className="w-4 h-4 shrink-0 text-blue-600" /> <span className="truncate whitespace-nowrap">Biên tập PDF</span>
-                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-md shrink-0">ADMIN</span>
-                    </button>
-                  )}
+                  <button onClick={() => handleSidebarNav('pdf-editor')} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-sm transition-all relative ${sidebarView === 'pdf-editor' ? 'text-indigo-700 font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'}`}>
+                      {sidebarView === 'pdf-editor' && (
+                        <motion.div layoutId="active-nav-indicator" className="absolute inset-0 bg-indigo-50/90 rounded-xl -z-10 shadow-3xs" transition={{ type: "spring", stiffness: 450, damping: 35 }} />
+                      )}
+                      <FileText className="w-4 h-4 shrink-0 text-blue-600" /> <span className="truncate whitespace-nowrap">Biên tập PDF</span>
+                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-md shrink-0">MỚI</span>
+                  </button>
               </div>
 
 
@@ -5069,15 +5069,23 @@ ${bodyHtml}
               document.body
             )}
 
-            {/* Privacy & Terms Links */}
+            {/* Privacy & Terms Links - Mở Modal In-App không rời trang */}
             <div className="flex items-center justify-center gap-3 py-1.5 px-2 text-[11px] text-slate-400 border-t border-slate-100/80 mb-1">
-              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 hover:underline transition-colors">
+              <button
+                type="button"
+                onClick={() => setPolicyModalTab('privacy')}
+                className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer"
+              >
                 Chính sách bảo mật
-              </a>
+              </button>
               <span>•</span>
-              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 hover:underline transition-colors">
+              <button
+                type="button"
+                onClick={() => setPolicyModalTab('terms')}
+                className="hover:text-indigo-600 hover:underline transition-colors cursor-pointer"
+              >
                 Điều khoản
-              </a>
+              </button>
             </div>
 
             {/* User Profile trigger button - Nhỏ gọn ôm sát viền bo cong */}
@@ -7784,16 +7792,7 @@ ${bodyHtml}
         )}
 
         {sidebarView === 'pdf-editor' && (
-          isAdminUser(user, userDoc) ? (
-            <PdfEditorWorkspace triggerToast={triggerToast} />
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-              <div className="max-w-md bg-white p-8 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Tính năng đang được hoàn thiện</h3>
-                <p className="text-sm text-slate-500">Tính năng Biên tập PDF hiện đang trong chế độ thử nghiệm nội bộ dành cho Quản trị viên.</p>
-              </div>
-            </div>
-          )
+          <PdfEditorWorkspace triggerToast={triggerToast} />
         )}
 
         {/* Smart Paste Modal */}
@@ -9000,6 +8999,13 @@ ${bodyHtml}
         isOpen={isPaymentHistoryModalOpen}
         onClose={() => setIsPaymentHistoryModalOpen(false)}
         triggerToast={triggerToast}
+      />
+
+      {/* In-App Privacy Policy & Terms Modal */}
+      <PolicyTermsModal
+        isOpen={!!policyModalTab}
+        initialTab={policyModalTab || 'privacy'}
+        onClose={() => setPolicyModalTab(null)}
       />
 
       {/* Phone / Email Verification Modal (When opened from preview or profile) */}

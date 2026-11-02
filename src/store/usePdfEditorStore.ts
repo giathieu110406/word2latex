@@ -30,13 +30,18 @@ export interface FileSegment {
   pageIds: string[];
 }
 
+export type WatermarkType = 'text' | 'image';
+
 export interface WatermarkConfig {
   enabled: boolean;
+  type?: WatermarkType; // 'text' | 'image'
   text: string;
   opacity: number; // 0.1 to 1.0
   fontSize: number;
   color: string; // hex
   diagonal: boolean;
+  imageDataUrl?: string; // base64 data url for image/stamp watermark
+  imageScale?: number; // 10 to 100 (%)
 }
 
 export type EditorTabMode = 'files' | 'pages';
@@ -87,6 +92,8 @@ interface PdfEditorState {
   selectAllPages: (select: boolean) => void;
   rotateSelectedPages: (deltaDegrees?: number) => void;
   deleteSelectedPages: () => void;
+  batchDeletePages: (pageIds: string[]) => void;
+  keepOnlyPages: (pageIds: string[]) => void;
 
   // Preview & Export Settings
   setPreviewPageId: (pageId: string | null) => void;
@@ -121,11 +128,13 @@ function normalizeRotation(deg: number): number {
 
 const initialWatermark: WatermarkConfig = {
   enabled: false,
+  type: 'text',
   text: 'BẢN QUYỀN / CONFIDENTIAL',
   opacity: 0.25,
   fontSize: 42,
   color: '#EF4444',
   diagonal: true,
+  imageScale: 40,
 };
 
 export const usePdfEditorStore = create<PdfEditorState>((set, get) => ({
@@ -559,6 +568,35 @@ export const usePdfEditorStore = create<PdfEditorState>((set, get) => ({
         pages: nextPages,
         files: nextFiles,
         selectedPageIds: [],
+        previewPageId: selectedSet.has(state.previewPageId || '') ? null : state.previewPageId,
+      };
+    }),
+
+  batchDeletePages: (pageIds) =>
+    set((state) => {
+      const toDeleteSet = new Set(pageIds);
+      const nextPages = state.pages.filter((p) => !toDeleteSet.has(p.id));
+      const activeFileIds = new Set(nextPages.map((p) => p.sourceFileId));
+      const nextFiles = state.files.filter((f) => activeFileIds.has(f.id));
+      return {
+        pages: nextPages,
+        files: nextFiles,
+        selectedPageIds: state.selectedPageIds.filter((id) => !toDeleteSet.has(id)),
+        previewPageId: toDeleteSet.has(state.previewPageId || '') ? null : state.previewPageId,
+      };
+    }),
+
+  keepOnlyPages: (pageIds) =>
+    set((state) => {
+      const keepSet = new Set(pageIds);
+      const nextPages = state.pages.filter((p) => keepSet.has(p.id));
+      const activeFileIds = new Set(nextPages.map((p) => p.sourceFileId));
+      const nextFiles = state.files.filter((f) => activeFileIds.has(f.id));
+      return {
+        pages: nextPages,
+        files: nextFiles,
+        selectedPageIds: state.selectedPageIds.filter((id) => keepSet.has(id)),
+        previewPageId: keepSet.has(state.previewPageId || '') ? state.previewPageId : null,
       };
     }),
 

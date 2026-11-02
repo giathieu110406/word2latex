@@ -83,7 +83,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         onClose();
       }
     },
-    ...(isAdmin ? [{
+    {
       id: "pdf-editor",
       title: "Trình Biên Tập PDF",
       desc: "Ghép, cắt, xoay, sắp xếp trang, thêm trang trống, Watermark & Làm phẳng PDF",
@@ -94,7 +94,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         onNavigate("pdf-editor");
         onClose();
       }
-    }] : []),
+    },
     {
       id: "pricing",
       title: "Bảng Giá & Gói Dịch Vụ",

@@ -26,6 +26,8 @@ import {
   Download,
   Loader2,
   Settings2,
+  Image as ImageIcon,
+  Type as TypeIcon,
 } from 'lucide-react';
 import {
   DndContext,
@@ -205,6 +207,7 @@ interface SortablePageCardProps {
   pageNumber: number;
   sourceFile?: PdfSourceFile;
   isSelected: boolean;
+  watermark?: import('../store/usePdfEditorStore').WatermarkConfig;
   onToggleSelect: () => void;
   onPreview: () => void;
   onRotate: () => void;
@@ -217,6 +220,7 @@ const SortablePageCard: React.FC<SortablePageCardProps> = ({
   pageNumber,
   sourceFile,
   isSelected,
+  watermark,
   onToggleSelect,
   onPreview,
   onRotate,
@@ -341,6 +345,40 @@ const SortablePageCard: React.FC<SortablePageCardProps> = ({
           <div className="flex flex-col items-center justify-center text-slate-400 gap-1.5">
             <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
             <span className="text-[11px]">Đang dựng trang...</span>
+          </div>
+        )}
+
+        {/* Live Watermark Overlay trên từng trang */}
+        {watermark?.enabled && (
+          <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none select-none p-2 z-10">
+            {watermark.type === 'image' && watermark.imageDataUrl ? (
+              <img
+                src={watermark.imageDataUrl}
+                alt="Watermark"
+                style={{
+                  maxWidth: `${watermark.imageScale || 40}%`,
+                  maxHeight: `${watermark.imageScale || 40}%`,
+                  opacity: watermark.opacity ?? 0.25,
+                  transform: watermark.diagonal ? 'rotate(-35deg)' : 'none',
+                  objectFit: 'contain',
+                }}
+              />
+            ) : watermark.text?.trim() ? (
+              <span
+                style={{
+                  transform: watermark.diagonal ? 'rotate(-35deg)' : 'none',
+                  color: watermark.color || '#EF4444',
+                  opacity: watermark.opacity ?? 0.25,
+                  fontSize: `${Math.max(10, Math.round((watermark.fontSize || 42) * 0.35))}px`,
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  lineHeight: 1.2,
+                  wordBreak: 'break-word',
+                }}
+              >
+                {watermark.text}
+              </span>
+            ) : null}
           </div>
         )}
       </div>
@@ -470,6 +508,8 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     selectAllPages,
     rotateSelectedPages,
     deleteSelectedPages,
+    batchDeletePages,
+    keepOnlyPages,
     setPreviewPageId,
     setWatermark,
     setFlattenOnExport,
@@ -478,7 +518,10 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
   const [topAddDropdownOpen, setTopAddDropdownOpen] = useState(false);
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const [watermarkModalOpen, setWatermarkModalOpen] = useState(false);
+  const [flattenModalOpen, setFlattenModalOpen] = useState(false);
+  const [watermarkTab, setWatermarkTab] = useState<'text' | 'image'>(watermark.type || 'text');
   const [splitModalOpen, setSplitModalOpen] = useState(false);
+  const [splitModalSelectedIds, setSplitModalSelectedIds] = useState<string[]>([]);
   const [splitRangeInput, setSplitRangeInput] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -489,6 +532,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const watermarkImageInputRef = useRef<HTMLInputElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -496,6 +540,17 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
   const notify = (msg: string, ok = true) => {
     if (triggerToast) triggerToast(msg, ok);
   };
+
+  // Đồng bộ danh sách trang chọn trong modal Cắt PDF khi mở
+  useEffect(() => {
+    if (splitModalOpen) {
+      if (activeTab === 'pages' && selectedPageIds.length > 0) {
+        setSplitModalSelectedIds([...selectedPageIds]);
+      } else {
+        setSplitModalSelectedIds(pages.map((p) => p.id));
+      }
+    }
+  }, [splitModalOpen]);
 
   // Render thumbnails lazily when pages/files are added
   useEffect(() => {
@@ -646,12 +701,10 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     }
   };
 
-  // Split / Keep page ranges (Cắt / Trích xuất PDF)
-  const handleApplySplitRange = () => {
-    if (!splitRangeInput.trim()) return;
-    // Parse e.g. "1-3, 5, 7-9" (1-based)
-    const keepIndices = new Set<number>();
-    const parts = splitRangeInput.split(',');
+  // Helper phân tích chuỗi khoảng trang "1-3, 5, 8-10"
+  const parsePageIndicesFromInput = (input: string): Set<number> => {
+    const indices = new Set<number>();
+    const parts = input.split(',');
     for (const part of parts) {
       const trimmed = part.trim();
       if (!trimmed) continue;
@@ -661,32 +714,172 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
         const e = parseInt(endStr, 10);
         if (Number.isFinite(s) && Number.isFinite(e)) {
           for (let k = Math.min(s, e); k <= Math.max(s, e); k++) {
-            keepIndices.add(k - 1);
+            if (k >= 1 && k <= pages.length) indices.add(k - 1);
           }
         }
       } else {
         const num = parseInt(trimmed, 10);
-        if (Number.isFinite(num)) {
-          keepIndices.add(num - 1);
+        if (Number.isFinite(num) && num >= 1 && num <= pages.length) {
+          indices.add(num - 1);
         }
       }
     }
+    return indices;
+  };
 
-    if (keepIndices.size === 0) {
-      notify('Định dạng khoảng trang không hợp lệ (Ví dụ: 1-3, 5)', false);
+  // 1. Chỉ giữ lại khoảng trang nhập vào
+  const handleSplitKeepRange = () => {
+    const indices = parsePageIndicesFromInput(splitRangeInput);
+    if (indices.size === 0) {
+      notify('Vui lòng nhập khoảng trang hợp lệ (Ví dụ: 1-3, 5)', false);
       return;
     }
-
-    const toDeleteIds = pages
-      .filter((_, idx) => !keepIndices.has(idx))
-      .map((p) => p.id);
-
-    for (const id of toDeleteIds) {
-      deletePage(id);
-    }
+    const idsToKeep = pages.filter((_, idx) => indices.has(idx)).map((p) => p.id);
+    keepOnlyPages(idsToKeep);
     setSplitModalOpen(false);
     setSplitRangeInput('');
-    notify(`Đã cắt giữ lại ${keepIndices.size} trang theo yêu cầu!`);
+    notify(`Đã giữ lại ${idsToKeep.length} trang, đã cắt bỏ các trang khác!`);
+  };
+
+  // 2. Cắt bỏ khoảng trang nhập vào
+  const handleSplitRemoveRange = () => {
+    const indices = parsePageIndicesFromInput(splitRangeInput);
+    if (indices.size === 0) {
+      notify('Vui lòng nhập khoảng trang hợp lệ (Ví dụ: 1-3, 5)', false);
+      return;
+    }
+    const idsToRemove = pages.filter((_, idx) => indices.has(idx)).map((p) => p.id);
+    batchDeletePages(idsToRemove);
+    setSplitModalOpen(false);
+    setSplitRangeInput('');
+    notify(`Đã cắt bỏ ${idsToRemove.length} trang được chọn!`);
+  };
+
+  // 3. Tách & Tải ngay file PDF từ danh sách trang chỉ định
+  const handleSplitDownloadDirect = async (targetPages: VirtualPage[]) => {
+    if (targetPages.length === 0) {
+      notify('Không có trang nào để xuất!', false);
+      return;
+    }
+    setSplitModalOpen(false);
+    setIsExporting(true);
+    setExportProgress(10);
+    try {
+      const pdfBytes = await exportEditedPdf({
+        files,
+        pages: targetPages,
+        watermark,
+        flatten: flattenOnExport,
+        onProgress: (p) => setExportProgress(p),
+      });
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Cat_PDF_${targetPages.length}_trang_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notify(`Đã tách và tải ${targetPages.length} trang PDF thành công!`);
+    } catch (err: any) {
+      console.error('Error split download:', err);
+      notify(err?.message || 'Lỗi khi tách và tải PDF', false);
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+    }
+  };
+
+  // 4. Làm phẳng & Tải về ngay lập tức
+  const handleFlattenAndDownload = async () => {
+    if (pages.length === 0) {
+      notify('Không có trang nào để làm phẳng!', false);
+      return;
+    }
+    setIsExporting(true);
+    setExportProgress(15);
+    try {
+      const pdfBytes = await exportEditedPdf({
+        files,
+        pages,
+        watermark,
+        flatten: true,
+        onProgress: (p) => setExportProgress(p),
+      });
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const baseName = files[0]?.name?.replace(/\.pdf$/i, '') || 'tai-lieu';
+      a.href = url;
+      a.download = `${baseName}-da-lam-phang.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setFlattenModalOpen(false);
+      notify('Làm phẳng và tải về tệp PDF thành công!');
+    } catch (err: any) {
+      console.error('Flatten download error:', err);
+      notify(err?.message || 'Có lỗi xảy ra khi làm phẳng PDF', false);
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+    }
+  };
+
+  // 5. Làm phẳng & Cập nhật trực tiếp vào Workspace
+  const handleFlattenAndApplyToWorkspace = async () => {
+    if (pages.length === 0) {
+      notify('Không có trang nào để làm phẳng!', false);
+      return;
+    }
+    setIsExporting(true);
+    setExportProgress(15);
+    try {
+      const pdfBytes = await exportEditedPdf({
+        files,
+        pages,
+        watermark,
+        flatten: true,
+        onProgress: (p) => setExportProgress(p),
+      });
+
+      const meta = await parsePdfBufferMetadata(pdfBytes.buffer as ArrayBuffer);
+      const flattenedFileId = `file_flat_${Date.now()}`;
+      const baseName = (files[0]?.name?.replace(/\.pdf$/i, '') || 'tai-lieu') + '-flattened';
+      const newFile: PdfSourceFile = {
+        id: flattenedFileId,
+        name: `${baseName}.pdf`,
+        size: pdfBytes.byteLength,
+        rawData: pdfBytes.buffer as ArrayBuffer,
+        totalPages: meta.totalPages,
+        colorBadge: '#0D9488',
+      };
+
+      usePdfEditorStore.setState({
+        files: [newFile],
+        pages: Array.from({ length: meta.totalPages }, (_, idx) => ({
+          id: `page_${flattenedFileId}_${idx}`,
+          sourceFileId: flattenedFileId,
+          originalPageIndex: idx,
+          rotation: 0,
+          isBlank: false,
+        })),
+        selectedFileIds: [],
+        selectedPageIds: [],
+        previewPageId: null,
+        flattenOnExport: true,
+      });
+      setFlattenModalOpen(false);
+      notify('Đã làm phẳng và cập nhật toàn bộ tài liệu tĩnh vào không gian làm việc!');
+    } catch (err: any) {
+      console.error('Flatten apply workspace error:', err);
+      notify(err?.message || 'Có lỗi khi làm phẳng tài liệu', false);
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+    }
   };
 
   // Export final PDF
@@ -1040,17 +1233,17 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
 
               <button
                 type="button"
-                onClick={() => setFlattenOnExport(!flattenOnExport)}
+                onClick={() => setFlattenModalOpen(true)}
                 className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
                   flattenOnExport
-                    ? 'bg-rose-50 border-rose-300 text-rose-700'
+                    ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-2xs'
                     : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
                 }`}
-                title="Làm phẳng tập tin PDF (Khóa form & lớp chú thích)"
+                title="Làm phẳng tập tin PDF (Khóa cứng biểu mẫu, chú thích & bảo vệ nội dung cố định)"
               >
                 <Layers className="w-3.5 h-3.5 text-rose-500" />
                 <span className="hidden sm:inline">Làm phẳng</span>
-                {flattenOnExport && <Check className="w-3.5 h-3.5 text-rose-600" />}
+                {flattenOnExport && <Check className="w-3.5 h-3.5 text-rose-600 stroke-[3]" />}
               </button>
             </div>
 
@@ -1257,6 +1450,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
                             pageNumber={idx + 1}
                             sourceFile={srcFile}
                             isSelected={selectedPageIds.includes(page.id)}
+                            watermark={watermark}
                             onToggleSelect={() => toggleSelectPage(page.id)}
                             onPreview={() => setPreviewPageId(page.id)}
                             onRotate={() => rotatePage(page.id, 90)}
@@ -1305,7 +1499,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
             </button>
 
             {/* Preview Canvas Container */}
-            <div className="bg-white rounded-xl shadow-2xl p-4 max-h-[75vh] overflow-auto flex items-center justify-center">
+            <div className="relative bg-white rounded-xl shadow-2xl p-4 max-h-[75vh] overflow-auto flex items-center justify-center">
               {currentPreviewPage.isBlank ? (
                 <div className="w-[420px] h-[580px] border border-dashed border-slate-300 flex items-center justify-center text-slate-400">
                   Trang trống (A4)
@@ -1323,6 +1517,40 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
               ) : (
                 <div className="w-[420px] h-[580px] flex items-center justify-center">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                </div>
+              )}
+
+              {/* Watermark Overlay in High-Res Preview */}
+              {watermark?.enabled && (
+                <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none select-none p-6 z-10">
+                  {watermark.type === 'image' && watermark.imageDataUrl ? (
+                    <img
+                      src={watermark.imageDataUrl}
+                      alt="Watermark"
+                      style={{
+                        maxWidth: `${watermark.imageScale || 40}%`,
+                        maxHeight: `${watermark.imageScale || 40}%`,
+                        opacity: watermark.opacity ?? 0.25,
+                        transform: watermark.diagonal ? 'rotate(-35deg)' : 'none',
+                        objectFit: 'contain',
+                      }}
+                    />
+                  ) : watermark.text?.trim() ? (
+                    <span
+                      style={{
+                        transform: watermark.diagonal ? 'rotate(-35deg)' : 'none',
+                        color: watermark.color || '#EF4444',
+                        opacity: watermark.opacity ?? 0.25,
+                        fontSize: `${watermark.fontSize || 42}px`,
+                        fontWeight: 700,
+                        textAlign: 'center',
+                        lineHeight: 1.2,
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {watermark.text}
+                    </span>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1394,7 +1622,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
       )}
 
       {/* ====================================================================
-          MODAL 2: WATERMARK SETTINGS MODAL
+          MODAL 2: WATERMARK SETTINGS MODAL (Đóng dấu Văn bản & Con dấu / Logo)
       ==================================================================== */}
       {watermarkModalOpen && (
         <div
@@ -1403,124 +1631,398 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-5 space-y-4"
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Stamp className="w-5 h-5 text-teal-600" />
-                <h3 className="font-bold text-slate-800 text-base">
-                  Cấu hình Watermark PDF
-                </h3>
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-teal-50 text-teal-600 rounded-xl">
+                  <Stamp className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">
+                    Cấu hình Watermark PDF
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Đóng dấu bản quyền bằng Chữ tiếng Việt hoặc Con dấu/Logo
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setWatermarkModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-sm font-semibold text-slate-700">
-                Bật đóng dấu Watermark khi xuất PDF
+            {/* Switch Mode: Chữ văn bản vs Con dấu hình ảnh */}
+            <div className="flex p-1 bg-slate-100 rounded-xl gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setWatermarkTab('text');
+                  setWatermark({ type: 'text' });
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  watermarkTab === 'text'
+                    ? 'bg-white text-teal-700 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <TypeIcon className="w-4 h-4" />
+                <span>Chữ tiếng Việt</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setWatermarkTab('image');
+                  setWatermark({ type: 'image' });
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  watermarkTab === 'image'
+                    ? 'bg-white text-teal-700 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4" />
+                <span>Con dấu / Logo hình ảnh</span>
+              </button>
+            </div>
+
+            <label className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl cursor-pointer">
+              <span className="text-xs sm:text-sm font-semibold text-slate-700">
+                Kích hoạt Watermark trên toàn bộ tài liệu
               </span>
               <input
                 type="checkbox"
                 checked={watermark.enabled}
                 onChange={(e) => setWatermark({ enabled: e.target.checked })}
-                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500"
-              />
+                className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
+              >
+              </input>
             </label>
 
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Nội dung chữ Watermark
-                </label>
+            {/* TAB 1: TEXT WATERMARK */}
+            {watermarkTab === 'text' && (
+              <div className="space-y-3.5">
+                {/* Mẫu gán nhanh */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Mẫu đóng dấu nhanh:
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: 'BẢN SAO', text: 'BẢN SAO', color: '#EF4444', diagonal: true },
+                      { label: 'MẬT', text: 'MẬT - CONFIDENTIAL', color: '#DC2626', diagonal: true },
+                      { label: 'ĐÃ DUYỆT', text: 'ĐÃ PHÊ DUYỆT', color: '#059669', diagonal: false },
+                      { label: 'BẢN NHÁP', text: 'BẢN NHÁP / DRAFT', color: '#D97706', diagonal: true },
+                      { label: 'MẪU THỬ', text: 'MẪU THỬ / SAMPLE', color: '#2563EB', diagonal: true },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() =>
+                          setWatermark({
+                            text: preset.text,
+                            color: preset.color,
+                            diagonal: preset.diagonal,
+                            enabled: true,
+                          })
+                        }
+                        className="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors cursor-pointer"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Nội dung chữ Watermark (hỗ trợ tiếng Việt đầy đủ)
+                  </label>
+                  <input
+                    type="text"
+                    value={watermark.text}
+                    onChange={(e) => setWatermark({ text: e.target.value })}
+                    placeholder="Ví dụ: BẢN SAO CHÍNH THỨC"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Cỡ chữ ({watermark.fontSize}px)
+                    </label>
+                    <input
+                      type="range"
+                      min={18}
+                      max={84}
+                      value={watermark.fontSize}
+                      onChange={(e) =>
+                        setWatermark({ fontSize: Number(e.target.value) })
+                      }
+                      className="w-full cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Độ mờ ({Math.round(watermark.opacity * 100)}%)
+                    </label>
+                    <input
+                      type="range"
+                      min={0.05}
+                      max={0.9}
+                      step={0.05}
+                      value={watermark.opacity}
+                      onChange={(e) =>
+                        setWatermark({ opacity: Number(e.target.value) })
+                      }
+                      className="w-full cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={watermark.diagonal}
+                      onChange={(e) =>
+                        setWatermark({ diagonal: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded text-teal-600 cursor-pointer"
+                    />
+                    <span>Xoay chéo 35° giữa trang</span>
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-600">Màu chữ:</span>
+                    <input
+                      type="color"
+                      value={watermark.color}
+                      onChange={(e) => setWatermark({ color: e.target.value })}
+                      className="w-8 h-8 rounded-lg cursor-pointer border border-slate-200"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: IMAGE WATERMARK */}
+            {watermarkTab === 'image' && (
+              <div className="space-y-3.5">
                 <input
-                  type="text"
-                  value={watermark.text}
-                  onChange={(e) => setWatermark({ text: e.target.value })}
-                  placeholder="Ví dụ: ĐỀ THI CHÍNH THỨC / CONFIDENTIAL"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  ref={watermarkImageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      const dataUrl = event.target?.result as string;
+                      setWatermark({
+                        type: 'image',
+                        imageDataUrl: dataUrl,
+                        enabled: true,
+                      });
+                      notify('Đã tải con dấu / logo Watermark thành công!');
+                    };
+                    reader.readAsDataURL(file);
+                  }}
                 />
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Cỡ chữ ({watermark.fontSize}px)
-                  </label>
-                  <input
-                    type="range"
-                    min={18}
-                    max={80}
-                    value={watermark.fontSize}
-                    onChange={(e) =>
-                      setWatermark({ fontSize: Number(e.target.value) })
-                    }
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Độ mờ ({Math.round(watermark.opacity * 100)}%)
-                  </label>
-                  <input
-                    type="range"
-                    min={0.05}
-                    max={0.9}
-                    step={0.05}
-                    value={watermark.opacity}
-                    onChange={(e) =>
-                      setWatermark({ opacity: Number(e.target.value) })
-                    }
-                    className="w-full"
-                  />
-                </div>
-              </div>
+                {watermark.imageDataUrl ? (
+                  <div className="flex items-center gap-3 p-3 bg-teal-50/70 border border-teal-200 rounded-xl">
+                    <img
+                      src={watermark.imageDataUrl}
+                      alt="Logo preview"
+                      className="w-14 h-14 object-contain bg-white rounded-lg border border-teal-100 p-1"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-teal-900 truncate">
+                        Con dấu / Logo đã tải lên
+                      </p>
+                      <p className="text-[11px] text-teal-700">Đang được áp dụng trên tất cả trang</p>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => watermarkImageInputRef.current?.click()}
+                        className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-teal-200 text-teal-700 rounded-lg hover:bg-teal-50 cursor-pointer"
+                      >
+                        Đổi ảnh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWatermark({ imageDataUrl: undefined })}
+                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                        title="Xóa logo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => watermarkImageInputRef.current?.click()}
+                    className="border-2 border-dashed border-teal-300 hover:border-teal-400 bg-teal-50/40 rounded-xl p-5 text-center cursor-pointer transition-colors"
+                  >
+                    <Upload className="w-6 h-6 text-teal-600 mx-auto mb-1.5" />
+                    <p className="text-xs font-bold text-teal-900">
+                      Nhấn để tải con dấu đỏ hoặc logo PNG/JPG
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Khuyến nghị ảnh trong suốt (PNG không nền) để có hiệu ứng đẹp nhất
+                    </p>
+                  </div>
+                )}
 
-              <div className="flex items-center justify-between">
-                <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Kích thước ({watermark.imageScale || 40}%)
+                    </label>
+                    <input
+                      type="range"
+                      min={15}
+                      max={85}
+                      value={watermark.imageScale || 40}
+                      onChange={(e) =>
+                        setWatermark({ imageScale: Number(e.target.value) })
+                      }
+                      className="w-full cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Độ mờ ({Math.round(watermark.opacity * 100)}%)
+                    </label>
+                    <input
+                      type="range"
+                      min={0.05}
+                      max={0.95}
+                      step={0.05}
+                      value={watermark.opacity}
+                      onChange={(e) =>
+                        setWatermark({ opacity: Number(e.target.value) })
+                      }
+                      className="w-full cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer pt-1">
                   <input
                     type="checkbox"
                     checked={watermark.diagonal}
                     onChange={(e) =>
                       setWatermark({ diagonal: e.target.checked })
                     }
-                    className="rounded text-teal-600"
+                    className="w-4 h-4 rounded text-teal-600 cursor-pointer"
                   />
-                  <span>Xoay chéo 35° giữa trang</span>
+                  <span>Xoay nghiêng 35° giữa trang</span>
                 </label>
+              </div>
+            )}
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-600">Màu:</span>
-                  <input
-                    type="color"
-                    value={watermark.color}
-                    onChange={(e) => setWatermark({ color: e.target.value })}
-                    className="w-7 h-7 rounded cursor-pointer border border-slate-200"
-                  />
+            {/* Live Mini Preview Box */}
+            <div className="border border-slate-200 bg-slate-50/70 rounded-xl p-3 flex flex-col items-center">
+              <span className="text-[11px] font-semibold text-slate-500 mb-1.5 self-start">
+                Xem trước hiệu ứng thực tế:
+              </span>
+              <div className="relative w-36 h-48 bg-white rounded shadow-xs border border-slate-200 flex items-center justify-center overflow-hidden p-2">
+                <div className="space-y-1 w-full opacity-25">
+                  <div className="h-1.5 bg-slate-400 rounded w-3/4"></div>
+                  <div className="h-1.5 bg-slate-300 rounded w-full"></div>
+                  <div className="h-1.5 bg-slate-300 rounded w-5/6"></div>
+                  <div className="h-1.5 bg-slate-300 rounded w-2/3"></div>
+                  <div className="h-1.5 bg-slate-300 rounded w-4/5"></div>
+                  <div className="h-1.5 bg-slate-300 rounded w-3/5"></div>
                 </div>
+
+                {watermark.enabled && (
+                  <div className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none select-none p-1">
+                    {watermark.type === 'image' && watermark.imageDataUrl ? (
+                      <img
+                        src={watermark.imageDataUrl}
+                        alt="Watermark preview"
+                        style={{
+                          maxWidth: `${watermark.imageScale || 40}%`,
+                          maxHeight: `${watermark.imageScale || 40}%`,
+                          opacity: watermark.opacity ?? 0.25,
+                          transform: watermark.diagonal ? 'rotate(-35deg)' : 'none',
+                          objectFit: 'contain',
+                        }}
+                      />
+                    ) : watermark.text?.trim() ? (
+                      <span
+                        style={{
+                          transform: watermark.diagonal ? 'rotate(-35deg)' : 'none',
+                          color: watermark.color || '#EF4444',
+                          opacity: watermark.opacity ?? 0.25,
+                          fontSize: `${Math.max(9, Math.round((watermark.fontSize || 42) * 0.32))}px`,
+                          fontWeight: 700,
+                          textAlign: 'center',
+                          lineHeight: 1.2,
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {watermark.text}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setWatermarkModalOpen(false)}
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg cursor-pointer"
-              >
-                Lưu cấu hình
-              </button>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+              {watermark.enabled ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWatermark({ enabled: false });
+                    setWatermarkModalOpen(false);
+                    notify('Đã tắt Watermark.');
+                  }}
+                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-lg cursor-pointer"
+                >
+                  Tắt Watermark
+                </button>
+              ) : (
+                <div />
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWatermarkModalOpen(false)}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWatermark({ enabled: true });
+                    setWatermarkModalOpen(false);
+                    notify('Đã áp dụng Watermark trên tất cả các trang!');
+                  }}
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg cursor-pointer shadow-xs"
+                >
+                  Bật &amp; Áp dụng Watermark
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* ====================================================================
-          MODAL 3: SPLIT / EXTRACT RANGE MODAL (Cắt / Trích xuất PDF)
+          MODAL 3: SPLIT / EXTRACT RANGE MODAL (Cắt / Trích xuất PDF Trực quan)
       ==================================================================== */}
       {splitModalOpen && (
         <div
@@ -1529,58 +2031,308 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-5 space-y-4"
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-xl w-full p-5 sm:p-6 space-y-4 max-h-[90vh] flex flex-col"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Scissors className="w-5 h-5 text-purple-600" />
-                <h3 className="font-bold text-slate-800 text-base">
-                  Cắt & Trích xuất trang PDF
-                </h3>
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                  <Scissors className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">
+                    Cắt &amp; Trích xuất trang PDF
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Đang chọn {splitModalSelectedIds.length} / {pages.length} trang
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setSplitModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Nhập các trang hoặc khoảng trang bạn muốn <strong>giữ lại</strong>{' '}
-              (tổng cộng hiện có <strong>{pages.length}</strong> trang). Các trang
-              ngoài danh sách sẽ được loại bỏ.
-            </p>
+            {/* Quick Filters */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-600 mr-1">Chọn nhanh:</span>
+              <button
+                type="button"
+                onClick={() => setSplitModalSelectedIds(pages.map((p) => p.id))}
+                className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg cursor-pointer"
+              >
+                Tất cả ({pages.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setSplitModalSelectedIds([])}
+                className="px-2.5 py-1 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg cursor-pointer"
+              >
+                Bỏ chọn
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSplitModalSelectedIds(
+                    pages.filter((_, i) => (i + 1) % 2 === 1).map((p) => p.id)
+                  )
+                }
+                className="px-2.5 py-1 text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold rounded-lg cursor-pointer"
+              >
+                Trang lẻ (1, 3, 5...)
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setSplitModalSelectedIds(
+                    pages.filter((_, i) => (i + 1) % 2 === 0).map((p) => p.id)
+                  )
+                }
+                className="px-2.5 py-1 text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold rounded-lg cursor-pointer"
+              >
+                Trang chẵn (2, 4, 6...)
+              </button>
+            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Khoảng trang cần lấy (Ví dụ: 1-3, 5, 8-10)
-              </label>
+            {/* Range Input with Apply */}
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={splitRangeInput}
                 onChange={(e) => setSplitRangeInput(e.target.value)}
-                placeholder="1-3, 5"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="Nhập dải trang (Ví dụ: 1-3, 5, 8-10)..."
+                className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
+              <button
+                type="button"
+                onClick={() => {
+                  const indices = parsePageIndicesFromInput(splitRangeInput);
+                  if (indices.size === 0) {
+                    notify('Vui lòng nhập khoảng trang hợp lệ (Ví dụ: 1-3, 5)', false);
+                    return;
+                  }
+                  const matchedIds = pages
+                    .filter((_, idx) => indices.has(idx))
+                    .map((p) => p.id);
+                  setSplitModalSelectedIds(matchedIds);
+                  notify(`Đã chọn ${matchedIds.length} trang theo dải trang đã nhập!`);
+                }}
+                className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-800 text-xs font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                Áp dụng chọn
+              </button>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            {/* Visual Thumbnail Grid for Selection */}
+            <div className="flex-1 overflow-y-auto border border-slate-200 rounded-xl p-3 bg-slate-50/50 min-h-[160px] max-h-[260px]">
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5">
+                {pages.map((p, index) => {
+                  const isSelected = splitModalSelectedIds.includes(p.id);
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        setSplitModalSelectedIds((prev) =>
+                          prev.includes(p.id)
+                            ? prev.filter((id) => id !== p.id)
+                            : [...prev, p.id]
+                        );
+                      }}
+                      className={`relative rounded-lg p-1.5 border flex flex-col items-center cursor-pointer transition-all ${
+                        isSelected
+                          ? 'border-purple-600 bg-purple-50 shadow-xs'
+                          : 'border-slate-200 bg-white hover:border-slate-300 opacity-70'
+                      }`}
+                    >
+                      <div className="absolute top-1 left-1 z-10">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}} // handled by parent onClick
+                          className="w-3.5 h-3.5 rounded text-purple-600 cursor-pointer pointer-events-none"
+                        />
+                      </div>
+                      <div className="w-12 h-16 bg-slate-100 rounded flex items-center justify-center overflow-hidden mb-1 mt-3">
+                        {p.thumbnailUrl ? (
+                          <img
+                            src={p.thumbnailUrl}
+                            alt=""
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Trang</span>
+                        )}
+                      </div>
+                      <span
+                        className={`text-[11px] font-bold ${
+                          isSelected ? 'text-purple-900' : 'text-slate-600'
+                        }`}
+                      >
+                        {index + 1}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3 Core Actions */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <button
+                type="button"
+                disabled={splitModalSelectedIds.length === 0}
+                onClick={() => {
+                  if (splitModalSelectedIds.length === 0) return;
+                  batchDeletePages(splitModalSelectedIds);
+                  setSplitModalOpen(false);
+                  notify(`Đã cắt bỏ ${splitModalSelectedIds.length} trang được chọn!`);
+                }}
+                className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+              >
+                ✂ Cắt bỏ trang chọn ({splitModalSelectedIds.length})
+              </button>
+
+              <button
+                type="button"
+                disabled={splitModalSelectedIds.length === 0}
+                onClick={() => {
+                  if (splitModalSelectedIds.length === 0) return;
+                  keepOnlyPages(splitModalSelectedIds);
+                  setSplitModalOpen(false);
+                  notify(`Đã giữ lại ${splitModalSelectedIds.length} trang, đã cắt bỏ các trang khác!`);
+                }}
+                className="px-3 py-2.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-40 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+              >
+                📑 Chỉ giữ trang chọn ({splitModalSelectedIds.length})
+              </button>
+
+              <button
+                type="button"
+                disabled={splitModalSelectedIds.length === 0 || isExporting}
+                onClick={() => {
+                  if (splitModalSelectedIds.length === 0) return;
+                  const targetPages = pages.filter((p) =>
+                    splitModalSelectedIds.includes(p.id)
+                  );
+                  handleSplitDownloadDirect(targetPages);
+                }}
+                className="px-3 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all cursor-pointer text-center shadow-xs"
+              >
+                📥 Tách &amp; Tải ngay file mới
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setSplitModalOpen(false)}
-                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer"
               >
-                Hủy
+                Đóng
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================================
+          MODAL 4: FLATTEN PDF MODAL (Làm phẳng tài liệu trực quan)
+      ==================================================================== */}
+      {flattenModalOpen && (
+        <div
+          onClick={() => setFlattenModalOpen(false)}
+          className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">
+                    Làm phẳng tài liệu (Flatten PDF)
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Khóa vĩnh viễn các trường biểu mẫu, chú thích và nội dung
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={handleApplySplitRange}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg cursor-pointer"
+                onClick={() => setFlattenModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
-                Áp dụng cắt PDF
+                <X className="w-5 h-5" />
               </button>
+            </div>
+
+            <div className="bg-rose-50/60 border border-rose-100 rounded-xl p-3.5 text-xs text-rose-800 space-y-1.5">
+              <p className="font-semibold flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-rose-600" />
+                Bảo vệ toàn vẹn tài liệu ({pages.length} trang hiện tại)
+              </p>
+              <p className="text-slate-600 leading-relaxed">
+                Khi làm phẳng, toàn bộ form nhập liệu, chữ ký, ghi chú và watermark sẽ được sáp nhập trực tiếp vào từng lớp trang PDF, ngăn chặn việc chỉnh sửa hoặc bóc tách dữ liệu trái phép.
+              </p>
+            </div>
+
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                disabled={isExporting || pages.length === 0}
+                onClick={handleFlattenAndDownload}
+                className="w-full px-4 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Đang làm phẳng ({exportProgress}%)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>Làm phẳng &amp; Tải file về máy ngay</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={isExporting || pages.length === 0}
+                onClick={handleFlattenAndApplyToWorkspace}
+                className="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-60 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Layers className="w-4 h-4 text-slate-600" />
+                <span>Làm phẳng &amp; Áp dụng trực tiếp vào không gian làm việc</span>
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={flattenOnExport}
+                  onChange={(e) => {
+                    setFlattenOnExport(e.target.checked);
+                    notify(
+                      e.target.checked
+                        ? 'Đã bật chế độ tự động làm phẳng khi bấm nút Hoàn thành.'
+                        : 'Đã tắt tự động làm phẳng.'
+                    );
+                  }}
+                  className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                />
+                <span className="text-xs text-slate-600">
+                  Tự động làm phẳng khi bấm nút <b>Hoàn thành</b> ở góc phải
+                </span>
+              </label>
             </div>
           </div>
         </div>

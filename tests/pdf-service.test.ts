@@ -62,3 +62,34 @@ test('exportEditedPdf merges multiple files, applies rotation, inserts blank pag
   assert.equal(resultDoc.getPage(3).getRotation().angle, 0);
   assert.equal(resultDoc.getPage(4).getRotation().angle, 270);
 });
+
+test('exportEditedPdf handles Vietnamese text watermark and flatten flag successfully', async () => {
+  const buf = await createSamplePdfBuffer(2, 'DocVN');
+  const files: PdfSourceFile[] = [
+    { id: 'f_vn', name: 'DocVN.pdf', size: buf.byteLength, rawData: buf, totalPages: 2, colorBadge: '#CCFBF1' },
+  ];
+  const pages: VirtualPage[] = [
+    { id: 'p_vn_1', sourceFileId: 'f_vn', originalPageIndex: 0, rotation: 0, isBlank: false },
+    { id: 'p_vn_2', sourceFileId: 'f_vn', originalPageIndex: 1, rotation: 0, isBlank: false },
+  ];
+
+  const watermark: WatermarkConfig = {
+    enabled: true,
+    type: 'text',
+    text: 'BẢN SAO CHÍNH THỨC - ĐÃ PHÊ DUYỆT',
+    opacity: 0.4,
+    fontSize: 40,
+    color: '#059669',
+    diagonal: true,
+  };
+
+  const exported = await exportEditedPdf({
+    files,
+    pages,
+    watermark,
+    flatten: true,
+  });
+
+  const doc = await PDFDocument.load(exported);
+  assert.equal(doc.getPageCount(), 2);
+});

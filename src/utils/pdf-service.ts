@@ -1,4 +1,4 @@
-import { PDFDocument, PageSizes, degrees, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, PageSizes, degrees, rgb, StandardFonts, PDFName } from 'pdf-lib';
 import type { PdfSourceFile, VirtualPage, WatermarkConfig } from '../store/usePdfEditorStore';
 
 export async function parsePdfBufferMetadata(buffer: ArrayBuffer): Promise<{ totalPages: number }> {
@@ -56,6 +56,73 @@ function removeVietnameseDiacriticsForStandardFont(str: string): string {
     .replace(/Đ/g, 'D');
 }
 
+/**
+ * Vẽ watermark chữ (tiếng Việt có dấu UTF-8) hoặc ảnh logo bằng HTML5 Canvas và xuất thành PNG buffer nhúng vào PDF
+ */
+async function renderWatermarkToPngBytes(
+  watermark: WatermarkConfig,
+  pageWidth: number,
+  pageHeight: number
+): Promise<Uint8Array | null> {
+  if (typeof document === 'undefined') return null;
+  try {
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(pageWidth * scale);
+    canvas.height = Math.round(pageHeight * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.scale(scale, scale);
+    ctx.clearRect(0, 0, pageWidth, pageHeight);
+
+    ctx.save();
+    ctx.translate(pageWidth / 2, pageHeight / 2);
+    if (watermark.diagonal) {
+      // Góc xoay chéo 35 độ
+      ctx.rotate((-35 * Math.PI) / 180);
+    }
+    ctx.globalAlpha = watermark.opacity ?? 0.25;
+
+    if (watermark.type === 'image' && watermark.imageDataUrl) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Cannot load watermark image'));
+        img.src = watermark.imageDataUrl!;
+      });
+
+      const maxDim = Math.min(pageWidth, pageHeight) * ((watermark.imageScale || 40) / 100);
+      const ratio = img.width / (img.height || 1);
+      let drawW = maxDim;
+      let drawH = maxDim / ratio;
+      if (drawH > maxDim) {
+        drawH = maxDim;
+        drawW = maxDim * ratio;
+      }
+      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+    } else if (watermark.text && watermark.text.trim()) {
+      const fontSize = watermark.fontSize || 42;
+      ctx.font = `bold ${fontSize}px "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
+      ctx.fillStyle = watermark.color || '#EF4444';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(watermark.text.trim(), 0, 0);
+    }
+
+    ctx.restore();
+
+    const dataUrl = canvas.toDataURL('image/png');
+    const res = await fetch(dataUrl);
+    const buf = await res.arrayBuffer();
+    return new Uint8Array(buf);
+  } catch (err) {
+    console.warn('Canvas watermark rendering fallback:', err);
+    return null;
+  }
+}
+
 export interface ExportPdfOptions {
   files: PdfSourceFile[];
   pages: VirtualPage[];
@@ -82,9 +149,14 @@ export async function exportEditedPdf({
   }
 
   let watermarkFont = null;
-  if (watermark?.enabled && watermark.text.trim()) {
+  if (watermark?.enabled && watermark.type !== 'image' && watermark.text?.trim()) {
     watermarkFont = await outDoc.embedFont(StandardFonts.HelveticaBold);
   }
+
+  const hasWatermark =
+    !!watermark?.enabled &&
+    ((watermark.type === 'image' && !!watermark.imageDataUrl) ||
+      (watermark.type !== 'image' && !!watermark.text?.trim()));
 
   const total = pages.length || 1;
   for (let i = 0; i < pages.length; i++) {
@@ -109,22 +181,35 @@ export async function exportEditedPdf({
       }
     }
 
-    if (watermark?.enabled && watermark.text.trim() && watermarkFont && targetPage) {
+    if (hasWatermark && targetPage) {
       const { width, height } = targetPage.getSize();
-      const safeText = removeVietnameseDiacriticsForStandardFont(watermark.text.trim());
-      const fontSize = watermark.fontSize || 40;
-      const textWidth = watermarkFont.widthOfTextAtSize(safeText, fontSize);
-      const color = hexToRgbColor(watermark.color || '#EF4444');
+      const pngBytes = await renderWatermarkToPngBytes(watermark!, width, height);
 
-      targetPage.drawText(safeText, {
-        x: Math.max(24, (width - textWidth * 0.75) / 2),
-        y: height / 2,
-        size: fontSize,
-        font: watermarkFont,
-        color,
-        opacity: watermark.opacity ?? 0.25,
-        rotate: watermark.diagonal ? degrees(35) : degrees(0),
-      });
+      if (pngBytes) {
+        const embeddedImg = await outDoc.embedPng(pngBytes);
+        targetPage.drawImage(embeddedImg, {
+          x: 0,
+          y: 0,
+          width,
+          height,
+        });
+      } else if (watermarkFont && watermark?.text?.trim()) {
+        // Fallback cho môi trường Node test
+        const safeText = removeVietnameseDiacriticsForStandardFont(watermark.text.trim());
+        const fontSize = watermark.fontSize || 40;
+        const textWidth = watermarkFont.widthOfTextAtSize(safeText, fontSize);
+        const color = hexToRgbColor(watermark.color || '#EF4444');
+
+        targetPage.drawText(safeText, {
+          x: Math.max(24, (width - textWidth) / 2),
+          y: height / 2,
+          size: fontSize,
+          font: watermarkFont,
+          color,
+          opacity: watermark.opacity ?? 0.25,
+          rotate: watermark.diagonal ? degrees(35) : degrees(0),
+        });
+      }
     }
 
     if (onProgress) {
@@ -138,6 +223,13 @@ export async function exportEditedPdf({
       form.flatten();
     } catch {
       // Ignore if document has no interactive form fields
+    }
+
+    // Khóa cứng (Lock & Flatten) toàn bộ lớp chú thích (annotations/widgets) trên tất cả các trang
+    for (const page of outDoc.getPages()) {
+      try {
+        page.node.delete(PDFName.of('Annots'));
+      } catch {}
     }
   }
 
