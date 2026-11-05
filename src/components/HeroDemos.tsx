@@ -23,7 +23,11 @@ import {
   Loader2,
   Keyboard,
   Shuffle,
-  Printer
+  Printer,
+  RotateCw,
+  Stamp,
+  Scissors,
+  Trash2
 } from "lucide-react";
 import katex from "katex";
 import { CopyMorphButton } from "./ui/CopyMorphButton";
@@ -1729,6 +1733,229 @@ export const MarkItDownMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExpl
               {current.markdown}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* =========================================================================
+   5. PDF MINI-DEMO: BIÊN TẬP & SẮP XẾP TRANG PDF
+   - Mô phỏng kéo thả, xoay trang 90°, xóa trang, đóng dấu watermark
+   - Vòng lặp chuyển động mượt mà
+   ========================================================================= */
+export const PdfMiniDemo: React.FC<{ onExplore: () => void }> = ({ onExplore }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isInView = useInView(containerRef, { amount: 0.25 });
+
+  const [activeAction, setActiveAction] = useState<"reorder" | "rotate" | "stamp">("reorder");
+  const [rotations, setRotations] = useState<number[]>([0, 0, 0, 0]);
+  const [hasStamp, setHasStamp] = useState(true);
+  const [pagesOrder, setPagesOrder] = useState<number[]>([1, 2, 3, 4]);
+  const [autoPlay, setAutoPlay] = useState(true);
+
+  // Auto rotate or shuffle demo when in view
+  useEffect(() => {
+    if (!autoPlay || !isInView) return;
+    const interval = setInterval(() => {
+      setActiveAction(prev => {
+        if (prev === "reorder") {
+          setPagesOrder([2, 1, 3, 4]);
+          return "rotate";
+        }
+        if (prev === "rotate") {
+          setRotations([0, 90, 0, 0]);
+          return "stamp";
+        }
+        setPagesOrder([1, 2, 3, 4]);
+        setRotations([0, 0, 0, 0]);
+        return "reorder";
+      });
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [autoPlay, isInView]);
+
+  const handleRotatePage = (idx: number) => {
+    setRotations(prev => {
+      const copy = [...prev];
+      copy[idx] = (copy[idx] + 90) % 360;
+      return copy;
+    });
+  };
+
+  const PAGE_DATA = [
+    { id: 1, title: "Trang 1: Bìa đề thi", subtitle: "Kỳ thi Olympic Toán học", color: "border-rose-200 bg-rose-50/40" },
+    { id: 2, title: "Trang 2: Đại số & Giải tích", subtitle: "Phương trình vi phân", color: "border-indigo-200 bg-indigo-50/40" },
+    { id: 3, title: "Trang 3: Hình học Không gian", subtitle: "Khối đa diện & Thể tích", color: "border-amber-200 bg-amber-50/40" },
+    { id: 4, title: "Trang 4: Đáp án & Thang điểm", subtitle: "Bảng ma trận đề thi", color: "border-emerald-200 bg-emerald-50/40" },
+  ];
+
+  return (
+    <div ref={containerRef} className="rounded-2xl sm:rounded-3xl border border-slate-200/80 bg-white/95 p-3.5 sm:p-8 shadow-xl backdrop-blur-xl">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 pb-3 sm:pb-6 border-b border-slate-100">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm sm:text-2xl font-black text-slate-900 tracking-tight truncate">
+            <span className="sm:hidden">Biên Tập PDF • Kéo Thả & Xoay</span>
+            <span className="hidden sm:inline">Biên Tập & Sắp Xếp Trang PDF Trực Quan</span>
+          </h3>
+          <p className="hidden sm:block text-xs sm:text-sm text-slate-500 mt-1 truncate">
+            Ghép nhiều file, xoay chiều, xóa trang rác, đóng dấu bản quyền và xuất PDF sắc nét 100% Client-side.
+          </p>
+        </div>
+
+        <button
+          onClick={onExplore}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-rose-500/20 transition-all cursor-pointer hover:scale-105 shrink-0"
+        >
+          <span className="hidden sm:inline">Mở Biên Tập PDF</span>
+          <span className="sm:hidden text-[11px]">Mở công cụ</span>
+          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+        </button>
+      </div>
+
+      {/* Action Toolbar */}
+      <div className="flex items-center justify-between gap-2 pt-3 pb-3 sm:pt-5 sm:pb-4 w-full">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="text-xs font-bold text-slate-400 hidden sm:inline shrink-0">Thao tác nhanh:</span>
+          
+          <div className="flex items-center rounded-xl bg-slate-100/90 p-0.5 sm:p-1 border border-slate-200/80 relative shrink-0 max-w-full overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveAction("reorder");
+                setPagesOrder([2, 1, 4, 3]);
+              }}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeAction === "reorder" ? "bg-white text-rose-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Shuffle className="w-3.5 h-3.5" />
+              <span>Đổi thứ tự</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveAction("rotate");
+                setRotations([0, 90, 0, 0]);
+              }}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeAction === "rotate" ? "bg-white text-rose-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+              <span>Xoay 90°</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveAction("stamp");
+                setHasStamp(!hasStamp);
+              }}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeAction === "stamp" ? "bg-white text-rose-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Stamp className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Đóng dấu Watermark</span>
+              <span className="sm:hidden">Đóng dấu</span>
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setAutoPlay(!autoPlay)}
+          className="flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-rose-600 bg-slate-100/70 hover:bg-slate-100 px-2 py-1 rounded-lg transition"
+        >
+          <RefreshCw className={`w-3 h-3 ${autoPlay ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">{autoPlay ? "Auto Demo" : "Đã dừng"}</span>
+        </button>
+      </div>
+
+      {/* Pages Canvas Grid */}
+      <div className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-3 sm:p-5 shadow-inner">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {pagesOrder.map((pageId, idx) => {
+            const page = PAGE_DATA.find(p => p.id === pageId)!;
+            const rot = rotations[pageId - 1] || 0;
+
+            return (
+              <motion.div
+                key={page.id}
+                layout
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                className="group relative bg-white rounded-xl border border-slate-200/90 shadow-sm hover:shadow-md transition-all p-3 flex flex-col justify-between overflow-hidden cursor-pointer"
+                onClick={() => handleRotatePage(pageId - 1)}
+              >
+                {/* Page Badge Top */}
+                <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 mb-2">
+                  <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-md">
+                    Trang {idx + 1}
+                  </span>
+                  <div className="flex items-center gap-1 text-slate-400 group-hover:text-rose-600 transition-colors">
+                    <RotateCw className="w-3 h-3" />
+                    <span>{rot}°</span>
+                  </div>
+                </div>
+
+                {/* Page Mockup Thumbnail */}
+                <div
+                  className="w-full h-32 sm:h-36 rounded-lg border border-slate-100 bg-slate-50/80 p-2.5 flex flex-col justify-between relative overflow-hidden transition-transform duration-300"
+                  style={{ transform: `rotate(${rot}deg)` }}
+                >
+                  {/* Watermark overlay */}
+                  {hasStamp && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-10">
+                      <span className="text-[11px] sm:text-xs font-black tracking-widest uppercase text-rose-500/25 -rotate-45 border-2 border-rose-500/20 px-2 py-0.5 rounded">
+                        WORD2LATEX
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Thumbnail skeleton lines */}
+                  <div className="space-y-1.5">
+                    <div className="w-3/4 h-2 rounded bg-slate-200" />
+                    <div className="w-full h-1.5 rounded bg-slate-200/80" />
+                    <div className="w-5/6 h-1.5 rounded bg-slate-200/80" />
+                    <div className="w-2/3 h-1.5 rounded bg-slate-200/80" />
+                  </div>
+
+                  <div className="p-1.5 rounded bg-white border border-slate-200/80 text-[10px] font-mono text-slate-600 truncate text-center">
+                    ∫ f(x)dx = F(x) + C
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="w-full h-1.5 rounded bg-slate-200/60" />
+                    <div className="w-4/5 h-1.5 rounded bg-slate-200/60" />
+                  </div>
+                </div>
+
+                {/* Page Info */}
+                <div className="mt-2 text-center">
+                  <strong className="text-xs font-bold text-slate-800 block truncate">
+                    {page.title}
+                  </strong>
+                  <span className="text-[10px] text-slate-400 block truncate">
+                    {page.subtitle}
+                  </span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Footer info bar */}
+        <div className="mt-3 pt-2.5 border-t border-slate-200/70 flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-2">
+          <span className="flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Xử lý 100% trong bộ nhớ trình duyệt • Không tải tài liệu lên máy chủ</span>
+          </span>
+          <span className="font-semibold text-slate-600">
+            Tổng cộng: <strong>4 trang</strong> • Định dạng A4 chuẩn in ấn
+          </span>
         </div>
       </div>
     </div>

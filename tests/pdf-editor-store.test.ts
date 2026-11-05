@@ -107,3 +107,78 @@ test('PdfEditorStore: removeFileSegment deletes all pages in that segment', () =
   assert.equal(usePdfEditorStore.getState().pages.length, 4);
   assert.ok(usePdfEditorStore.getState().pages.every(p => !p.isBlank));
 });
+
+test('PdfEditorStore: batch conversion gate — pages do NOT expand until ALL converting files finish', () => {
+  const store = usePdfEditorStore.getState();
+  store.reset();
+
+  // Khởi tạo 2 file đang convert
+  store.initConvertingFiles([
+    {
+      id: 'conv1',
+      name: 'Slide1.pptx',
+      size: 5000,
+      rawData: new ArrayBuffer(0),
+      totalPages: 1,
+      colorBadge: '#FEE2E2',
+      status: 'converting',
+      conversionProgress: 10,
+    },
+    {
+      id: 'conv2',
+      name: 'Doc2.docx',
+      size: 3000,
+      rawData: new ArrayBuffer(0),
+      totalPages: 1,
+      colorBadge: '#DBEAFE',
+      status: 'converting',
+      conversionProgress: 10,
+    },
+  ]);
+
+  // Trong khi cả 2 file đang convert, chỉ có 2 placeholder pages (1 cho mỗi file)
+  let state = usePdfEditorStore.getState();
+  assert.equal(state.activeTab, 'files');
+  assert.equal(state.pages.length, 2);
+
+  // Khi file 1 convert xong (có 10 trang), file 2 vẫn đang converting:
+  // YÊU CẦU: Chưa được bung 10 trang của file 1 ra state.pages để tránh kích hoạt render tab Trang sớm!
+  store.completeFileConversion('conv1', {
+    rawData: new Uint8Array([1, 2, 3, 4]).buffer,
+    totalPages: 10,
+  });
+
+  state = usePdfEditorStore.getState();
+  const f1 = state.files.find((f) => f.id === 'conv1')!;
+  const f2 = state.files.find((f) => f.id === 'conv2')!;
+  assert.equal(f1.status, 'ready');
+  assert.equal(f1.totalPages, 10);
+  assert.equal(f2.status, 'converting');
+
+  // pages vẫn giữ nguyên 2 placeholder pages khi vẫn còn file đang converting!
+  assert.equal(
+    state.pages.length,
+    2,
+    'Pages must remain locked as 1 placeholder per file while any file is still converting'
+  );
+  // Nhưng ở tab Các file, segment của conv1 vẫn hiển thị đúng totalPages = 10
+  const segsWhileConverting = store.getFileSegments();
+  assert.equal(segsWhileConverting.length, 2);
+  assert.equal(segsWhileConverting[0].totalPages, 10);
+
+  // Khi file 2 cũng hoàn tất convert (có 5 trang) -> Tất cả các file đã xong!
+  // Lúc này toàn bộ các trang thật (10 + 5 = 15 trang) mới được bung ra đồng loạt!
+  store.completeFileConversion('conv2', {
+    rawData: new Uint8Array([5, 6, 7, 8]).buffer,
+    totalPages: 5,
+  });
+
+  state = usePdfEditorStore.getState();
+  assert.equal(
+    state.pages.length,
+    15,
+    'Once all files finish converting, all 15 pages must be expanded'
+  );
+  assert.equal(state.pages.filter((p) => p.sourceFileId === 'conv1').length, 10);
+  assert.equal(state.pages.filter((p) => p.sourceFileId === 'conv2').length, 5);
+});

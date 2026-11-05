@@ -3,6 +3,7 @@ import { Loader2, Mail, RefreshCw, ShieldCheck, Smartphone, LogOut } from 'lucid
 import { authFetch } from '../utils/api-client';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
+import { PolicyTermsModal } from './modals/PolicyTermsModal';
 import { hasPhoneConfirmation, normalizeVietnamPhone, type ConfirmedPhoneProfile } from '../../shared/phone-confirmation';
 
 interface EmailVerificationGateProps {
@@ -24,6 +25,9 @@ export function EmailVerificationGate({ email, lockedPhone, onVerified }: EmailV
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [policyTab, setPolicyTab] = useState<'privacy' | 'terms'>('terms');
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -35,6 +39,10 @@ export function EmailVerificationGate({ email, lockedPhone, onVerified }: EmailV
 
   const requestCode = async () => {
     setError('');
+    if (!acceptedTerms) {
+      setError('Vui lòng đọc và đồng ý với Điều khoản dịch vụ và Chính sách bảo mật trước khi tiếp tục.');
+      return;
+    }
     if (!normalizeVietnamPhone(phoneNumber)) {
       setError('Số di động Việt Nam không hợp lệ hoặc có mẫu số không được chấp nhận.');
       return;
@@ -64,6 +72,10 @@ export function EmailVerificationGate({ email, lockedPhone, onVerified }: EmailV
 
   const verifyCode = async () => {
     setError('');
+    if (!acceptedTerms) {
+      setError('Vui lòng đọc và đồng ý với Điều khoản dịch vụ và Chính sách bảo mật trước khi tiếp tục.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const response = await authFetch('/api/email-verification?action=verify', {
@@ -97,7 +109,7 @@ export function EmailVerificationGate({ email, lockedPhone, onVerified }: EmailV
 
         {step === 'phone' ? (
           <div className="mt-7 space-y-4">
-            <label className="block text-sm font-bold text-slate-700" htmlFor="verification-phone">Số điện thoại Việt Nam</label>
+
             <div className="relative">
               <Smartphone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={19} aria-hidden="true" />
               <input
@@ -111,8 +123,46 @@ export function EmailVerificationGate({ email, lockedPhone, onVerified }: EmailV
                 className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
               />
             </div>
-            <p className="text-xs leading-5 text-slate-500">{lockedPhone ? 'Số liên hệ đã khóa; hãy xác nhận lại đúng số đã lưu.' : 'Số sẽ được lưu ở dạng +84 và khóa sau khi xác nhận. Bạn không thể tự đổi hoặc xóa số.'} Mã chỉ gửi qua email, không gửi SMS và không xác minh quyền sở hữu số điện thoại.</p>
-            <button type="button" onClick={requestCode} disabled={isSubmitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
+            <div className="flex items-start gap-2.5 pt-1 text-left">
+              <input
+                id="accept-terms-checkbox"
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(event) => {
+                  setAcceptedTerms(event.target.checked);
+                  if (error) setError('');
+                }}
+                className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+              />
+              <label htmlFor="accept-terms-checkbox" className="text-xs leading-5 text-slate-600 select-none cursor-pointer">
+                Tôi đã đọc, hiểu và đồng ý với{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPolicyTab('terms');
+                    setPolicyModalOpen(true);
+                  }}
+                  className="font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 cursor-pointer"
+                >
+                  Điều khoản dịch vụ
+                </button>{' '}
+                và{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPolicyTab('privacy');
+                    setPolicyModalOpen(true);
+                  }}
+                  className="font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 cursor-pointer"
+                >
+                  Chính sách bảo mật
+                </button>{' '}
+                của Word2LaTeX.
+              </label>
+            </div>
+            <button type="button" onClick={requestCode} disabled={isSubmitting || !acceptedTerms} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">
               {isSubmitting ? <Loader2 className="animate-spin" size={19} /> : <Mail size={19} />}
               Gửi mã qua email
             </button>
@@ -157,6 +207,11 @@ export function EmailVerificationGate({ email, lockedPhone, onVerified }: EmailV
           </button>
         </div>
       </section>
+      <PolicyTermsModal
+        isOpen={policyModalOpen}
+        initialTab={policyTab}
+        onClose={() => setPolicyModalOpen(false)}
+      />
     </main>
   );
 }

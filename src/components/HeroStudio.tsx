@@ -24,7 +24,8 @@ import {
   LatexMiniDemo, 
   ExamMiniDemo, 
   GeometryMiniDemo, 
-  MarkItDownMiniDemo 
+  MarkItDownMiniDemo,
+  PdfMiniDemo 
 } from "./HeroDemos";
 
 interface HeroStudioProps {
@@ -50,7 +51,7 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
-  const [activeDemoTab, setActiveDemoTab] = useState<"latex" | "exam" | "geometry" | "markitdown">("latex");
+  const [activeDemoTab, setActiveDemoTab] = useState<"latex" | "exam" | "geometry" | "pdf" | "markitdown">("latex");
 
   useEffect(() => {
     if (isSearchOpen) {
@@ -62,6 +63,7 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
     { id: "latex", title: "LaTeX Converter", badge: "Word → LaTeX", icon: Sparkles, color: "text-indigo-600", activeBg: "bg-indigo-600" },
     { id: "exam", title: "Soạn Đề Thi", badge: "AI Trắc Nghiệm", icon: FileText, color: "text-purple-600", activeBg: "bg-purple-600" },
     { id: "geometry", title: "Hình Vẽ AI", badge: "TikZ & SVG", icon: Compass, color: "text-amber-600", activeBg: "bg-amber-600" },
+    { id: "pdf", title: "Biên Tập PDF", badge: "Kéo Thả & Xoay", icon: Layers, color: "text-rose-600", activeBg: "bg-rose-600" },
     { id: "markitdown", title: "MarkItDown", badge: "Đa Định Dạng", icon: FileSpreadsheet, color: "text-emerald-600", activeBg: "bg-emerald-600" },
   ];
 
@@ -121,6 +123,20 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
       spotlightColor: "rgba(245, 158, 11, 0.18)", // Màu cam / vàng
       badge: "Sáng tạo",
       action: () => onNavigate("workspace")
+    },
+    {
+      id: "pdf-editor",
+      title: "Biên Tập PDF",
+      desc: "Kéo thả sắp xếp, xoay trang, gộp file, tách PDF & đóng dấu",
+      icon: Layers,
+      color: "from-rose-500 to-pink-600",
+      textColor: "text-rose-600",
+      bgLight: "bg-rose-50",
+      hoverBorder: "hover:border-rose-400",
+      hoverText: "group-hover:text-rose-600",
+      spotlightColor: "rgba(244, 63, 94, 0.16)",
+      badge: "Mới",
+      action: () => onNavigate("pdf-editor")
     },
     {
       id: "markitdown",
@@ -187,7 +203,7 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
           TOÀN BỘ HERO BANNER (BAO GỒM 4 THẺ WORKSPACE BÊN TRONG)
           CHIẾM TRỌN 1 MÀN HÌNH, ĐÁY CÁCH TRÌNH DUYỆT VÀI PIXELS
           ===================================================================== */}
-      <div className="relative overflow-hidden rounded-[24px] sm:rounded-[32px] border border-white/80 bg-gradient-to-b from-white/95 via-white/85 to-indigo-50/30 backdrop-blur-md shadow-[0_12px_40px_rgba(99,102,241,0.06)] p-3 sm:p-5 lg:p-6 min-h-0 lg:h-[calc(100dvh-4.5rem)] flex flex-col justify-between mb-3 sm:mb-5">
+      <div className="relative overflow-hidden rounded-[24px] sm:rounded-[32px] border border-white/80 bg-gradient-to-b from-white/95 via-white/85 to-indigo-50/30 backdrop-blur-md shadow-[0_12px_40px_rgba(99,102,241,0.06)] p-3 sm:p-5 lg:p-6 min-h-0 lg:min-h-[calc(100dvh-8rem)] flex flex-col justify-between mb-4 sm:mb-6 pb-6 sm:pb-8 lg:pb-12">
         {/* Nền hạt toán học tương tác */}
         <ParticleField className="opacity-40" />
 
@@ -222,10 +238,10 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
 
               {/* Tiêu đề chính: Chữ đen 1 hàng, chữ xanh tím 1 hàng trên tablet & desktop */}
               <h1
-                className="text-2xl sm:text-3xl lg:text-[27px] xl:text-[38px] font-black text-slate-900 tracking-tight leading-[1.2] sm:leading-[1.18] mb-2 sm:mb-3"
+                className="text-xl sm:text-3xl lg:text-[27px] xl:text-[38px] font-black text-slate-900 tracking-tight leading-[1.25] sm:leading-[1.18] mb-2 sm:mb-3"
               >
-                <span className="block whitespace-nowrap">Biến tài liệu khoa học thành</span>
-                <span className="block whitespace-nowrap bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
+                <span className="block sm:whitespace-nowrap">Biến tài liệu khoa học thành</span>
+                <span className="block sm:whitespace-nowrap bg-gradient-to-r from-indigo-600 via-blue-600 to-violet-600 bg-clip-text text-transparent">
                   LaTeX hoàn mỹ &amp; trực quan
                 </span>
               </h1>
@@ -276,9 +292,9 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
             </motion.div>
           </div>
 
-          {/* PHẦN DƯỚI: 4 THẺ TRUY CẬP NHANH */}
-          <div className="w-full pt-3 pb-1 border-t border-slate-200/60">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+          {/* PHẦN DƯỚI: 5 THẺ TRUY CẬP NHANH (CAROUSEL TRÊN MOBILE, GRID TRÊN DESKTOP) */}
+          <div className="w-full pt-3 pb-3 sm:pb-6 border-t border-slate-200/60">
+            <div className="flex sm:grid overflow-x-auto sm:overflow-visible no-scrollbar pb-2 -mx-3 px-3 sm:mx-0 sm:px-0 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3 snap-x">
               {quickActions.map((action) => {
                 const Icon = action.icon;
                 return (
@@ -287,25 +303,26 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
+                    className="min-w-[170px] max-w-[195px] sm:min-w-0 sm:max-w-none shrink-0 sm:shrink snap-start"
                   >
                     <SpotlightCard
-                      className={"group relative h-full flex flex-col justify-between p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/90 bg-white/95 hover:bg-white " + action.hoverBorder + " shadow-2xs sm:shadow-xs hover:shadow-md transition-all duration-300 cursor-pointer backdrop-blur-sm hover:-translate-y-1"}
+                      className={"group relative h-full flex flex-col justify-between p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/90 bg-white/95 hover:bg-white " + action.hoverBorder + " shadow-2xs sm:shadow-xs hover:shadow-md transition-all duration-300 cursor-pointer backdrop-blur-sm hover:-translate-y-1"}
                       spotlightColor={action.spotlightColor}
                     >
-                      <div onClick={action.action} className="flex items-start gap-3">
-                        <div className={"w-7.5 h-7.5 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 " + action.bgLight + " " + action.textColor + " shadow-inner group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"}>
-                          <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <div onClick={action.action} className="flex items-start gap-2.5 sm:gap-3">
+                        <div className={"w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0 " + action.bgLight + " " + action.textColor + " shadow-inner group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"}>
+                          <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-1.5 mb-0.5 sm:mb-1">
                             <h3 className={"text-xs sm:text-sm font-black text-slate-900 " + action.hoverText + " transition-colors truncate"}>
                               {action.title}
                             </h3>
-                            <span className="text-[8px] sm:text-[9px] font-extrabold uppercase px-1 py-0.2 sm:px-1.5 sm:py-0.5 rounded bg-slate-100 text-slate-600 self-start sm:self-auto shrink-0">
+                            <span className="text-[8px] sm:text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 self-start sm:self-auto shrink-0">
                               {action.badge}
                             </span>
                           </div>
-                          <p className="hidden sm:block text-[11px] sm:text-xs text-slate-500 font-medium leading-relaxed line-clamp-2">
+                          <p className="text-[11px] sm:text-xs text-slate-500 font-medium leading-relaxed line-clamp-2">
                             {action.desc}
                           </p>
                         </div>
@@ -313,7 +330,7 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
 
                       <div 
                         onClick={action.action}
-                        className={"hidden sm:flex mt-3 pt-2 border-t border-slate-100 items-center justify-between text-[11px] sm:text-xs font-bold " + action.textColor}
+                        className={"flex mt-2.5 pt-2 border-t border-slate-100 items-center justify-between text-[11px] sm:text-xs font-bold " + action.textColor}
                       >
                         <span>Khởi động</span>
                         <ArrowRight className="w-3.5 h-3.5 transform group-hover:translate-x-1.5 transition-transform duration-200" />
@@ -343,7 +360,7 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
             Trải nghiệm tương tác trực quan
           </span>
           <h2 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight mt-2">
-            Khám Phá Sức Mạnh 4 Công Cụ Cốt Lõi
+            Khám Phá Sức Mạnh 5 Công Cụ Cốt Lõi
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl sm:max-w-none sm:whitespace-nowrap mx-auto leading-relaxed">
             Mỗi công cụ được thiết kế chuyên biệt để tối ưu từng khâu trong quy trình soạn thảo khoa học.
@@ -425,6 +442,18 @@ export const HeroStudio: React.FC<HeroStudioProps> = ({
                 transition={{ duration: 0.22, ease: "easeOut" }}
               >
                 <GeometryMiniDemo onExplore={() => onNavigate("workspace")} />
+              </motion.div>
+            )}
+
+            {activeDemoTab === "pdf" && (
+              <motion.div
+                key="pdf"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+              >
+                <PdfMiniDemo onExplore={() => onNavigate("pdf-editor")} />
               </motion.div>
             )}
 

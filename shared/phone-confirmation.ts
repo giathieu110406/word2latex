@@ -45,4 +45,6 @@ export interface ConfirmedPhoneProfile {
   phoneConfirmedAt: string;
   phoneConfirmationMethod: 'email_otp';
   phoneConfirmationVersion: 1;
+  acceptedTermsAt?: string;
+  termsVersion?: string;
 }

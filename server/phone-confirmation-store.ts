@@ -79,10 +79,12 @@ export function createPhoneConfirmationStore(db: Firestore) {
           phoneNumber: phone, confirmedPhoneNumber: phone,
           emailOtpVerifiedAt: verifiedAt, phoneConfirmedAt: verifiedAt,
           phoneConfirmationMethod: 'email_otp', phoneConfirmationVersion: 1,
+          acceptedTermsAt: verifiedAt, termsVersion: '2026-11',
         };
         tx.update(userRef, { ...profile });
         tx.set(userRef.collection('phoneConfirmations').doc(String(record.challengeId)), {
           phoneNumber: phone, email, confirmedAt: verifiedAt, method: 'email_otp', version: 1,
+          acceptedTermsAt: verifiedAt, termsVersion: '2026-11',
         });
         tx.update(recordRef, { consumed: true, delivered: false, otpHash: FieldValue.delete() });
         return { profile };

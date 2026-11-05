@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+export type FileProcessingStatus = 'converting' | 'ready' | 'error';
+
 export interface PdfSourceFile {
   id: string;
   name: string;
@@ -8,6 +10,9 @@ export interface PdfSourceFile {
   totalPages: number;
   colorBadge: string;
   coverThumbnailUrl?: string;
+  status?: FileProcessingStatus;
+  conversionProgress?: number; // 0 - 100
+  errorMessage?: string;
 }
 
 export interface VirtualPage {
@@ -28,6 +33,9 @@ export interface FileSegment {
   coverThumbnailUrl?: string;
   isBlank: boolean;
   pageIds: string[];
+  status?: FileProcessingStatus;
+  conversionProgress?: number;
+  errorMessage?: string;
 }
 
 export type WatermarkType = 'text' | 'image';
@@ -64,6 +72,10 @@ interface PdfEditorState {
   setActiveTab: (tab: EditorTabMode) => void;
   setGridColumns: (cols: 4 | 6) => void;
   addFiles: (newFiles: PdfSourceFile[], insertAtFileIndex?: number, insertAtPageIndex?: number) => void;
+  initConvertingFiles: (placeholders: PdfSourceFile[]) => void;
+  updateFileProgress: (fileId: string, progress: number) => void;
+  completeFileConversion: (fileId: string, data: { rawData: ArrayBuffer; totalPages: number }) => void;
+  setFileConversionError: (fileId: string, error: string) => void;
   removeFile: (fileId: string) => void;
   renameFile: (fileId: string, newName: string) => void;
   reorderFiles: (activeId: string, overId: string) => void;
@@ -180,6 +192,9 @@ export const usePdfEditorStore = create<PdfEditorState>((set, get) => ({
           coverThumbnailUrl: page.thumbnailUrl || srcFile?.coverThumbnailUrl,
           isBlank,
           pageIds: [page.id],
+          status: srcFile?.status || 'ready',
+          conversionProgress: srcFile?.conversionProgress ?? 100,
+          errorMessage: srcFile?.errorMessage,
         };
         segments.push(currentSegment);
       } else {
@@ -187,6 +202,17 @@ export const usePdfEditorStore = create<PdfEditorState>((set, get) => ({
         currentSegment.pageIds.push(page.id);
         if (!currentSegment.coverThumbnailUrl && page.thumbnailUrl) {
           currentSegment.coverThumbnailUrl = page.thumbnailUrl;
+        }
+      }
+    }
+
+    // Nếu một segment đang giữ 1 placeholder page nhưng srcFile đã convert xong (trong khi chờ các file khác),
+    // vẫn hiển thị đúng totalPages thực tế của srcFile trên thẻ ở tab "Các file"
+    for (const seg of segments) {
+      if (!seg.isBlank && seg.pageIds.length === 1 && seg.pageIds[0].startsWith('page_ph_')) {
+        const srcFile = filesMap.get(seg.sourceFileId);
+        if (srcFile && srcFile.status === 'ready' && srcFile.totalPages > 1) {
+          seg.totalPages = srcFile.totalPages;
         }
       }
     }
@@ -237,6 +263,130 @@ export const usePdfEditorStore = create<PdfEditorState>((set, get) => ({
       return {
         files: nextFiles,
         pages: nextPages,
+      };
+    }),
+
+  initConvertingFiles: (placeholders) =>
+    set((state) => {
+      const nextFiles = [...state.files, ...placeholders];
+      // Ý tưởng cải tiến: Chỉ tạo duy nhất 1 placeholder page cho file đang chuyển đổi
+      // để tab 'Trang' đại diện gọn gàng 1 thẻ với spinner, KHÔNG sinh nhiều trang làm nghẽn PDF.js
+      const placeholderPages: VirtualPage[] = placeholders.map((f) => ({
+        id: makeUniqueId(`page_ph_${f.id}`),
+        sourceFileId: f.id,
+        originalPageIndex: 0,
+        rotation: 0,
+        isBlank: false,
+      }));
+      return {
+        files: nextFiles,
+        pages: [...state.pages, ...placeholderPages],
+        activeTab: 'files', // Ưu tiên chuyển về tab 'files' để thấy các card đang xoay tiến độ
+      };
+    }),
+
+  updateFileProgress: (fileId, progress) =>
+    set((state) => ({
+      files: state.files.map((f) =>
+        f.id === fileId ? { ...f, conversionProgress: Math.min(100, Math.max(0, progress)) } : f
+      ),
+    })),
+
+  completeFileConversion: (fileId, { rawData, totalPages }) =>
+    set((state) => {
+      const targetFile = state.files.find((f) => f.id === fileId);
+      if (!targetFile) return state;
+
+      const updatedFiles = state.files.map((f) =>
+        f.id === fileId
+          ? {
+              ...f,
+              rawData,
+              totalPages,
+              status: 'ready' as FileProcessingStatus,
+              conversionProgress: 100,
+            }
+          : f
+      );
+
+      // BATCH CONVERSION GATE: Nếu vẫn còn bất kỳ file nào đang 'converting',
+      // tuyệt đối KHÔNG bung các virtual pages ra state.pages để tránh kích hoạt tab Trang sớm!
+      const stillConverting = updatedFiles.some((f) => f.status === 'converting');
+      if (stillConverting) {
+        return {
+          files: updatedFiles,
+        };
+      }
+
+      // Khi TẤT CẢ các file đã hoàn tất chuyển đổi: bung đồng loạt toàn bộ các placeholder pages
+      const filesMap = new Map(updatedFiles.map((f) => [f.id, f]));
+      const expandedPages: VirtualPage[] = [];
+
+      for (const p of state.pages) {
+        if (p.id.startsWith('page_ph_')) {
+          const srcFile = filesMap.get(p.sourceFileId);
+          if (srcFile && srcFile.status === 'ready') {
+            for (let i = 0; i < srcFile.totalPages; i++) {
+              expandedPages.push({
+                id: makeUniqueId('page'),
+                sourceFileId: srcFile.id,
+                originalPageIndex: i,
+                rotation: p.rotation || 0,
+                isBlank: false,
+              });
+            }
+          } else {
+            expandedPages.push(p);
+          }
+        } else {
+          expandedPages.push(p);
+        }
+      }
+
+      return {
+        files: updatedFiles,
+        pages: expandedPages,
+      };
+    }),
+
+  setFileConversionError: (fileId, error) =>
+    set((state) => {
+      const updatedFiles = state.files.map((f) =>
+        f.id === fileId ? { ...f, status: 'error' as FileProcessingStatus, errorMessage: error } : f
+      );
+
+      // Nếu đây là file cuối cùng kết thúc quá trình converting, giải phóng các file ready còn lại
+      const stillConverting = updatedFiles.some((f) => f.status === 'converting');
+      if (stillConverting) {
+        return { files: updatedFiles };
+      }
+
+      const filesMap = new Map(updatedFiles.map((f) => [f.id, f]));
+      const expandedPages: VirtualPage[] = [];
+      for (const p of state.pages) {
+        if (p.id.startsWith('page_ph_')) {
+          const srcFile = filesMap.get(p.sourceFileId);
+          if (srcFile && srcFile.status === 'ready') {
+            for (let i = 0; i < srcFile.totalPages; i++) {
+              expandedPages.push({
+                id: makeUniqueId('page'),
+                sourceFileId: srcFile.id,
+                originalPageIndex: i,
+                rotation: p.rotation || 0,
+                isBlank: false,
+              });
+            }
+          } else {
+            expandedPages.push(p);
+          }
+        } else {
+          expandedPages.push(p);
+        }
+      }
+
+      return {
+        files: updatedFiles,
+        pages: expandedPages,
       };
     }),
 

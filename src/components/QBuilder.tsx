@@ -1779,23 +1779,7 @@ export const QBuilder: React.FC<QBuilderProps> = ({
                   </div>
                 </div>
 
-                {/* Visual A4 Status Bar - Tự động vừa khung, không nút zoom rườm rà */}
-                <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-slate-200/70 select-none">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-white text-indigo-700 border border-slate-200/90 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs font-black shadow-3xs">
-                      <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                      <span>Trang A4</span>
-                      {docQuestions.length > 0 && (
-                        <span className="ml-1 text-[11px] font-extrabold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-100">
-                          {a4Pages.length} trang
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-[11px] text-slate-400 font-bold bg-slate-100/80 px-2.5 py-1 rounded-lg border border-slate-200/60 shadow-3xs">
-                    Tự động vừa khung ({Math.round(a4Scale * 100)}%)
-                  </span>
-                </div>
+
 
                 {/* Shuffle confirmation row with warning details and AI toggle */}
                 {showShuffleConfirm && (

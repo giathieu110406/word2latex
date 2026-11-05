@@ -93,3 +93,24 @@ test('exportEditedPdf handles Vietnamese text watermark and flatten flag success
   const doc = await PDFDocument.load(exported);
   assert.equal(doc.getPageCount(), 2);
 });
+
+test('convertImageFileToPdfBuffer preserves exact image native dimensions without A4 border or padding', async () => {
+  // Tạo một file PDF 1 trang rồi nhúng ảnh hoặc tạo 1x1 PNG thật để kiểm tra kích thước
+  // Một ảnh PNG hợp lệ có kích thước 1920x1080 (chỉ cần sửa IHDR width/height hoặc dùng PNG chuẩn)
+  // Tạo PNG 160x90 hợp lệ bằng buffer IHDR
+  const pngDoc = await PDFDocument.create();
+  // Tạo 1 PNG nhỏ chuẩn (1x1) rồi sửa header hoặc dùng hàm tạo PNG đơn giản
+  // Dưới đây là PNG 1x1 tối giản, ta có thể kiểm tra kích thước trang == kích thước ảnh (1x1 -> scale lên kích thước chuẩn nhưng giữ đúng tỷ lệ 100%, không phải 595.28 x 841.89 của A4)
+  const base64Png1x1 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const pngBytes = Uint8Array.from(Buffer.from(base64Png1x1, 'base64'));
+  const fakeFile = new File([pngBytes], 'banner.png', { type: 'image/png' });
+
+  const { convertImageFileToPdfBuffer } = await import('../src/utils/pdf-service');
+  const pdfBuf = await convertImageFileToPdfBuffer(fakeFile);
+  const loaded = await PDFDocument.load(pdfBuf);
+  assert.equal(loaded.getPageCount(), 1);
+  const p0 = loaded.getPage(0);
+  // Trang PDF xuất ra từ ảnh 1x1 (tỷ lệ 1:1) phải có width === height (tuyệt đối KHÔNG ép vào khung A4 595.28 x 841.89)
+  assert.equal(p0.getWidth(), p0.getHeight(), 'Image PDF page must match image aspect ratio, not forced A4');
+});

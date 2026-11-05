@@ -8,20 +8,38 @@ if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
   ).toString();
 }
 
+// Cache PDFDocumentProxy instances theo ArrayBuffer để không phải parse lại toàn bộ PDF cho mỗi trang
+const pdfDocCache = new WeakMap<ArrayBuffer, Promise<pdfjsLib.PDFDocumentProxy>>();
+
+function getCachedPdfDocument(rawData: ArrayBuffer): Promise<pdfjsLib.PDFDocumentProxy> {
+  let cached = pdfDocCache.get(rawData);
+  if (!cached) {
+    const dataCopy = rawData.slice(0);
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(dataCopy) });
+    cached = loadingTask.promise.catch((err) => {
+      pdfDocCache.delete(rawData);
+      throw err;
+    });
+    pdfDocCache.set(rawData, cached);
+  }
+  return cached;
+}
+
 export async function renderPdfPageThumbnail(
   rawData: ArrayBuffer,
   pageIndex: number,
-  targetWidth = 260
+  targetWidth = 360
 ): Promise<string> {
   if (typeof document === 'undefined') return '';
   try {
-    const dataCopy = rawData.slice(0);
-    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(dataCopy) });
-    const pdf = await loadingTask.promise;
+    const pdf = await getCachedPdfDocument(rawData);
     const page = await pdf.getPage(pageIndex + 1);
 
     const unscaledViewport = page.getViewport({ scale: 1 });
-    const scale = targetWidth / unscaledViewport.width;
+    // Với trang nằm ngang (landscape), dùng cạnh lớn hơn để đảm bảo độ phân giải sắc nét tương đương Retina
+    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1.5;
+    const effectiveTarget = targetWidth * Math.max(1.25, dpr);
+    const scale = effectiveTarget / Math.max(unscaledViewport.width, 1);
     const viewport = page.getViewport({ scale });
 
     const canvas = document.createElement('canvas');
@@ -40,8 +58,8 @@ export async function renderPdfPageThumbnail(
       canvas,
     } as any).promise;
 
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-    await loadingTask.destroy();
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    page.cleanup();
     return dataUrl;
   } catch (err) {
     console.error('Error rendering PDF page thumbnail:', err);

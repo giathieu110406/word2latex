@@ -126,12 +126,13 @@ const SortableFileCard: React.FC<SortableFileCardProps> = ({
         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-white/95 border border-slate-200 rounded-lg px-1.5 py-1 shadow-xs">
           <button
             type="button"
+            disabled={segment.status === 'converting'}
             onClick={(e) => {
               e.stopPropagation();
               onSwitchToPages();
             }}
             title="Xem các trang"
-            className="p-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer"
+            className="p-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-40 disabled:pointer-events-none rounded cursor-pointer"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
@@ -163,7 +164,33 @@ const SortableFileCard: React.FC<SortableFileCardProps> = ({
           </>
         )}
         <div className="relative w-full h-full bg-white border border-slate-200/90 rounded shadow-sm overflow-hidden flex items-center justify-center p-2">
-          {segment.isBlank ? (
+          {segment.status === 'converting' ? (
+            <div className="w-full h-full flex flex-col items-center justify-center p-3.5 text-center bg-blue-50/50">
+              <div className="w-11 h-11 rounded-2xl bg-white border border-blue-200/80 shadow-xs flex items-center justify-center mb-3">
+                <FileText className="w-6 h-6 text-blue-600 stroke-[1.8]" />
+              </div>
+              <div className="w-full bg-slate-200/90 rounded-full h-2 mb-2.5 overflow-hidden">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${segment.conversionProgress || 5}%` }}
+                />
+              </div>
+              <span className="text-sm font-extrabold text-blue-700 tracking-tight">
+                {segment.conversionProgress || 5}%
+              </span>
+              <span className="text-[11px] text-slate-500 font-medium mt-0.5">
+                Đang chuyển đổi...
+              </span>
+            </div>
+          ) : segment.status === 'error' ? (
+            <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center bg-red-50/50">
+              <X className="w-8 h-8 text-red-500 mb-1" />
+              <span className="text-xs font-semibold text-red-600">Lỗi chuyển đổi</span>
+              <span className="text-[10px] text-slate-500 mt-1 line-clamp-2">
+                {segment.errorMessage || 'Không thể đọc tệp'}
+              </span>
+            </div>
+          ) : segment.isBlank ? (
             <div className="w-full h-full border border-dashed border-slate-200 rounded flex flex-col items-center justify-center text-slate-400 gap-1">
               <span className="text-xs font-medium">Trang trống</span>
             </div>
@@ -192,7 +219,9 @@ const SortableFileCard: React.FC<SortableFileCardProps> = ({
           {segment.name}
         </span>
         <span className="text-xs text-slate-500 font-medium">
-          {segment.totalPages} trang
+          {segment.status === 'converting'
+            ? `Đang xử lý (${segment.conversionProgress || 5}%)`
+            : `${segment.totalPages} trang`}
         </span>
       </div>
     </div>
@@ -327,7 +356,25 @@ const SortablePageCard: React.FC<SortablePageCardProps> = ({
         {...listeners}
         className="relative w-44 h-56 bg-white border border-slate-200/90 rounded shadow-xs flex items-center justify-center p-2 cursor-grab active:cursor-grabbing overflow-hidden"
       >
-        {page.isBlank ? (
+        {sourceFile?.status === 'converting' ? (
+          <div className="w-full h-full flex flex-col items-center justify-center p-3.5 text-center bg-blue-50/50">
+            <div className="w-11 h-11 rounded-2xl bg-white border border-blue-200/80 shadow-xs flex items-center justify-center mb-3">
+              <FileText className="w-6 h-6 text-blue-600 stroke-[1.8]" />
+            </div>
+            <div className="w-full bg-slate-200/90 rounded-full h-2 mb-2.5 overflow-hidden">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${sourceFile.conversionProgress || 5}%` }}
+              />
+            </div>
+            <span className="text-sm font-extrabold text-blue-700 tracking-tight">
+              {sourceFile.conversionProgress || 5}%
+            </span>
+            <span className="text-[11px] text-slate-500 font-medium mt-0.5">
+              Đang chuyển đổi tệp...
+            </span>
+          </div>
+        ) : page.isBlank ? (
           <div className="w-full h-full border border-dashed border-slate-200 rounded flex flex-col items-center justify-center text-slate-400 gap-1">
             <span className="text-xs font-medium">Trang trống</span>
           </div>
@@ -343,7 +390,7 @@ const SortablePageCard: React.FC<SortablePageCardProps> = ({
           />
         ) : (
           <div className="flex flex-col items-center justify-center text-slate-400 gap-1.5">
-            <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+            <Loader2 className="w-6 h-6 animate-spin text-blue-500 [will-change:transform] [transform:translateZ(0)]" />
             <span className="text-[11px]">Đang dựng trang...</span>
           </div>
         )}
@@ -489,6 +536,10 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     setActiveTab,
     setGridColumns,
     addFiles,
+    initConvertingFiles,
+    updateFileProgress,
+    completeFileConversion,
+    setFileConversionError,
     removeFile,
     reorderFiles,
     sortFilesByName,
@@ -531,6 +582,9 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     pageIndex?: number;
   } | null>(null);
 
+  // Biến kiểm tra có tệp nào đang trong quá trình chuyển đổi hay không
+  const isAnyFileConverting = files.some((f) => f.status === 'converting');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const watermarkImageInputRef = useRef<HTMLInputElement>(null);
   const sensors = useSensors(
@@ -552,32 +606,58 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     }
   }, [splitModalOpen]);
 
-  // Render thumbnails lazily when pages/files are added
+  // Tự động khóa cứng về tab 'files' khi có bất kỳ file nào đang converting
   useEffect(() => {
+    if (isAnyFileConverting && activeTab !== 'files') {
+      setActiveTab('files');
+    }
+  }, [isAnyFileConverting, activeTab, setActiveTab]);
+
+  // Render thumbnails lazily:
+  // 1. Khi vẫn còn file đang converting: TUYỆT ĐỐI KHÔNG chạy bất kỳ tác vụ sinh thumbnail nào của tab Trang
+  // 2. Chỉ sinh thumbnail các trang KHI người dùng thực sự mở tab 'pages' hoặc mở modal Cắt PDF (VÀ toàn bộ file đã convert xong)
+  useEffect(() => {
+    if (isAnyFileConverting) return;
+
     let cancelled = false;
     async function generateMissingThumbnails() {
+      // Ưu tiên 1: Ảnh bìa (cover) cho các thẻ ở tab 'Các file'
       for (const file of files) {
         if (cancelled) return;
+        if (file.status === 'converting') continue;
         if (!file.coverThumbnailUrl && file.rawData.byteLength > 0) {
-          const url = await renderPdfPageThumbnail(file.rawData, 0, 260);
+          const url = await renderPdfPageThumbnail(file.rawData, 0, 320);
           if (!cancelled && url) {
             updateFileCoverThumbnail(file.id, url);
           }
         }
       }
+
+      // Ưu tiên 2: Chỉ dựng ảnh từng trang khi đang ở tab 'pages' hoặc mở modal Cắt PDF
+      if (activeTab !== 'pages' && !splitModalOpen) {
+        return;
+      }
+
       for (const page of pages) {
         if (cancelled) return;
+        if (page.id.startsWith('page_ph_')) continue;
         if (!page.isBlank && !page.thumbnailUrl) {
           const srcFile = files.find((f) => f.id === page.sourceFileId);
-          if (srcFile && srcFile.rawData.byteLength > 0) {
-            const url = await renderPdfPageThumbnail(
-              srcFile.rawData,
-              page.originalPageIndex,
-              240
-            );
-            if (!cancelled && url) {
-              updatePageThumbnail(page.id, url);
-            }
+          if (!srcFile || srcFile.status === 'converting' || srcFile.rawData.byteLength === 0) {
+            continue;
+          }
+          // Tái sử dụng ngay ảnh bìa trang 1 nếu đã có sẵn để tiết kiệm 1 lần render PDF.js
+          if (page.originalPageIndex === 0 && srcFile.coverThumbnailUrl) {
+            updatePageThumbnail(page.id, srcFile.coverThumbnailUrl);
+            continue;
+          }
+          const url = await renderPdfPageThumbnail(
+            srcFile.rawData,
+            page.originalPageIndex,
+            320
+          );
+          if (!cancelled && url) {
+            updatePageThumbnail(page.id, url);
           }
         }
       }
@@ -586,7 +666,15 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [files, pages, updateFileCoverThumbnail, updatePageThumbnail]);
+  }, [
+    files,
+    pages,
+    activeTab,
+    splitModalOpen,
+    isAnyFileConverting,
+    updateFileCoverThumbnail,
+    updatePageThumbnail,
+  ]);
 
   // High-res preview render when previewPageId changes
   useEffect(() => {
@@ -618,7 +706,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     };
   }, [previewPageId, pages, files]);
 
-  // Process uploaded files (PDF or Image)
+  // Process uploaded files with Optimistic UI & Concurrency Limit
   const handleProcessFiles = async (
     fileList: FileList | File[],
     target?: { fileIndex?: number; pageIndex?: number } | null
@@ -626,53 +714,102 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
     const arr = Array.from(fileList);
     if (arr.length === 0) return;
 
-    const loadedFiles: PdfSourceFile[] = [];
+    // 1. Tạo danh sách placeholder files để đưa ngay vào Workspace
     let colorIdx = files.length;
-
-    for (const f of arr) {
-      try {
-        const lower = f.name.toLowerCase();
-        let buffer: ArrayBuffer;
-        if (
-          f.type.startsWith('image/') ||
-          lower.endsWith('.png') ||
-          lower.endsWith('.jpg') ||
-          lower.endsWith('.jpeg')
-        ) {
-          buffer = await convertImageFileToPdfBuffer(f);
-        } else if (isWordFile(f.name, f.type)) {
-          notify(`Đang chuyển đổi tệp Word "${f.name}" sang trang PDF...`);
-          buffer = await convertWordToPdfBuffer(f, f.name);
-        } else if (isPowerPointFile(f.name, f.type)) {
-          notify(`Đang chuyển đổi slide "${f.name}" sang trang PDF...`);
-          buffer = await convertPowerPointToPdfBuffer(f, f.name);
-        } else {
-          buffer = await f.arrayBuffer();
-        }
-
-        const meta = await parsePdfBufferMetadata(buffer);
-        loadedFiles.push({
-          id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    const placeholders: { file: File; placeholder: PdfSourceFile }[] = arr.map((f) => {
+      const pId = `file_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      return {
+        file: f,
+        placeholder: {
+          id: pId,
           name: f.name,
           size: f.size,
-          rawData: buffer,
-          totalPages: meta.totalPages,
+          rawData: new ArrayBuffer(0),
+          totalPages: 1, // Tạm thời để 1 trang cho placeholder
           colorBadge: getBadgeColor(colorIdx++),
-        });
-      } catch (err) {
-        console.error('Error loading file:', f.name, err);
-        notify(
-          `Không thể đọc tệp "${f.name}". Vui lòng kiểm tra định dạng PDF, Word, PowerPoint hoặc Ảnh.`,
-          false
-        );
-      }
-    }
+          status: 'converting',
+          conversionProgress: 5,
+        },
+      };
+    });
 
-    if (loadedFiles.length > 0) {
-      addFiles(loadedFiles, target?.fileIndex, target?.pageIndex);
-      notify(`Đã tải lên ${loadedFiles.length} tệp thành công!`);
-    }
+    // Cập nhật ngay vào Zustand Store để giao diện chuyển tức thì sang Workspace "Các file"
+    initConvertingFiles(placeholders.map((p) => p.placeholder));
     setInsertTarget(null);
+
+    // 2. Chuyển đổi và nạp file với Concurrent Pool nâng lên 4 file cùng lúc (tăng tốc độ gấp đôi)
+    const CONCURRENCY_LIMIT = 4;
+    let index = 0;
+
+    const worker = async () => {
+      while (index < placeholders.length) {
+        const currentItem = placeholders[index++];
+        if (!currentItem) break;
+
+        const { file: f, placeholder } = currentItem;
+        try {
+          updateFileProgress(placeholder.id, 10);
+          const lower = f.name.toLowerCase();
+          let buffer: ArrayBuffer;
+
+          if (
+            f.type.startsWith('image/') ||
+            lower.endsWith('.png') ||
+            lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg')
+          ) {
+            updateFileProgress(placeholder.id, 30);
+            buffer = await convertImageFileToPdfBuffer(f);
+            updateFileProgress(placeholder.id, 80);
+          } else if (isWordFile(f.name, f.type)) {
+            buffer = await convertWordToPdfBuffer(f, f.name, (pct) => {
+              updateFileProgress(placeholder.id, pct);
+            });
+          } else if (isPowerPointFile(f.name, f.type)) {
+            buffer = await convertPowerPointToPdfBuffer(f, f.name, (pct) => {
+              updateFileProgress(placeholder.id, pct);
+            });
+          } else {
+            // PDF thông thường
+            updateFileProgress(placeholder.id, 40);
+            buffer = await f.arrayBuffer();
+            updateFileProgress(placeholder.id, 85);
+          }
+
+          const meta = await parsePdfBufferMetadata(buffer);
+          updateFileProgress(placeholder.id, 100);
+
+          completeFileConversion(placeholder.id, {
+            rawData: buffer,
+            totalPages: meta.totalPages,
+          });
+
+          // Tự động sinh ngay ảnh Thumbnail trang đầu tiên chất lượng cao (320px) để hiện ảnh thật ngay lập tức
+          try {
+            const coverUrl = await renderPdfPageThumbnail(buffer, 0, 320);
+            if (coverUrl) {
+              updateFileCoverThumbnail(placeholder.id, coverUrl);
+            }
+          } catch (thumbErr) {
+            console.warn('Lỗi sinh ảnh bìa trang 1 cho tệp:', f.name, thumbErr);
+          }
+        } catch (err: any) {
+          console.error('Error loading file:', f.name, err);
+          setFileConversionError(placeholder.id, err?.message || 'Lỗi xử lý tệp');
+          notify(
+            `Không thể đọc tệp "${f.name}". Vui lòng kiểm tra định dạng PDF, Word, PowerPoint hoặc Ảnh.`,
+            false
+          );
+        }
+      }
+    };
+
+    const workers = Array.from(
+      { length: Math.min(CONCURRENCY_LIMIT, placeholders.length) },
+      () => worker()
+    );
+    await Promise.all(workers);
+    notify(`Đã xử lý xong ${placeholders.length} tệp!`);
   };
 
   const triggerDeviceFilePicker = (target?: {
@@ -1091,15 +1228,24 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('pages')}
-                  className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    activeTab === 'pages'
-                      ? 'bg-blue-50 text-blue-600 border border-blue-200 shadow-2xs'
-                      : 'text-slate-700 hover:text-slate-900'
+                  disabled={isAnyFileConverting}
+                  onClick={() => !isAnyFileConverting && setActiveTab('pages')}
+                  title={isAnyFileConverting ? 'Đang chuyển đổi tệp, vui lòng chờ...' : 'Chuyển sang chế độ xem từng trang'}
+                  className={`px-3 py-1.5 rounded-md text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all ${
+                    isAnyFileConverting
+                      ? 'opacity-40 cursor-not-allowed text-slate-400'
+                      : activeTab === 'pages'
+                      ? 'bg-blue-50 text-blue-600 border border-blue-200 shadow-2xs cursor-pointer'
+                      : 'text-slate-700 hover:text-slate-900 cursor-pointer'
                   }`}
                 >
                   <LayoutGrid className="w-4 h-4" />
                   <span>Trang</span>
+                  {isAnyFileConverting && (
+                    <span className="text-[10px] ml-0.5 px-1.5 py-0.2 bg-amber-100 text-amber-800 font-medium rounded-full">
+                      Đang xử lý
+                    </span>
+                  )}
                 </button>
               </div>
 
@@ -1206,8 +1352,9 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
               {/* Extra Tools: Cắt PDF, Watermark, Làm phẳng */}
               <button
                 type="button"
-                onClick={() => setSplitModalOpen(true)}
-                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+                disabled={isAnyFileConverting}
+                onClick={() => !isAnyFileConverting && setSplitModalOpen(true)}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer"
                 title="Cắt / Trích xuất khoảng trang PDF"
               >
                 <Scissors className="w-3.5 h-3.5 text-purple-600" />
@@ -1216,8 +1363,9 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
 
               <button
                 type="button"
-                onClick={() => setWatermarkModalOpen(true)}
-                className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                disabled={isAnyFileConverting}
+                onClick={() => !isAnyFileConverting && setWatermarkModalOpen(true)}
+                className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none transition-colors ${
                   watermark.enabled
                     ? 'bg-teal-50 border-teal-300 text-teal-800'
                     : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
@@ -1233,8 +1381,9 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
 
               <button
                 type="button"
-                onClick={() => setFlattenModalOpen(true)}
-                className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                disabled={isAnyFileConverting}
+                onClick={() => !isAnyFileConverting && setFlattenModalOpen(true)}
+                className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none transition-colors ${
                   flattenOnExport
                     ? 'bg-rose-50 border-rose-300 text-rose-700 shadow-2xs'
                     : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
@@ -1250,9 +1399,9 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
             {/* Primary "Hoàn thành ->" Button */}
             <button
               type="button"
-              disabled={isExporting}
+              disabled={isExporting || isAnyFileConverting}
               onClick={handleExportPdf}
-              className="px-5 py-2 bg-[#0055FF] hover:bg-blue-700 disabled:opacity-60 text-white font-bold text-xs sm:text-sm rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer"
+              className="px-5 py-2 bg-[#0055FF] hover:bg-blue-700 disabled:opacity-60 disabled:pointer-events-none text-white font-bold text-xs sm:text-sm rounded-lg shadow-sm flex items-center gap-2 transition-all cursor-pointer"
             >
               {isExporting ? (
                 <>
@@ -1394,7 +1543,11 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
                               isSelected={selectedFileIds.includes(segment.id) || selectedFileIds.includes(segment.sourceFileId)}
                               onToggleSelect={() => toggleSelectFile(segment.id)}
                               onRemove={() => removeFileSegment(segment.id)}
-                              onSwitchToPages={() => setActiveTab('pages')}
+                              onSwitchToPages={() => {
+                                if (!isAnyFileConverting) {
+                                  setActiveTab('pages');
+                                }
+                              }}
                             />
                             <InterstitialAddButton
                               onInsertFiles={() =>

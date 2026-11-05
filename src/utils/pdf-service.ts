@@ -14,22 +14,28 @@ export async function convertImageFileToPdfBuffer(file: File): Promise<ArrayBuff
   const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
   const embeddedImg = isPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
 
-  const pageWidth = PageSizes.A4[0];
-  const pageHeight = PageSizes.A4[1];
+  // Giữ nguyên đúng 100% tỷ lệ và khung hình (aspect ratio) gốc của ảnh tải lên
+  // Chuẩn hóa kích thước trang về dải PDF tiêu chuẩn (cạnh lớn nhất ~ 842pt nếu ảnh quá nhỏ/quá lớn) nhưng giữ đúng tỷ lệ 1:1 với ảnh, không viền trắng A4
+  let pageWidth = embeddedImg.width;
+  let pageHeight = embeddedImg.height;
+  const maxDim = Math.max(pageWidth, pageHeight);
+  if (maxDim > 1440) {
+    const downScale = 1440 / maxDim;
+    pageWidth = Math.round(pageWidth * downScale * 100) / 100;
+    pageHeight = Math.round(pageHeight * downScale * 100) / 100;
+  } else if (maxDim < 200 && maxDim > 0) {
+    const upScale = 600 / maxDim;
+    pageWidth = Math.round(pageWidth * upScale * 100) / 100;
+    pageHeight = Math.round(pageHeight * upScale * 100) / 100;
+  }
+
   const page = pdfDoc.addPage([pageWidth, pageHeight]);
 
-  const margin = 24;
-  const maxW = pageWidth - margin * 2;
-  const maxH = pageHeight - margin * 2;
-  const scale = Math.min(maxW / embeddedImg.width, maxH / embeddedImg.height, 1);
-  const drawW = embeddedImg.width * scale;
-  const drawH = embeddedImg.height * scale;
-
   page.drawImage(embeddedImg, {
-    x: (pageWidth - drawW) / 2,
-    y: (pageHeight - drawH) / 2,
-    width: drawW,
-    height: drawH,
+    x: 0,
+    y: 0,
+    width: pageWidth,
+    height: pageHeight,
   });
 
   const saved = await pdfDoc.save();
