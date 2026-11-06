@@ -1,0 +1,16 @@
+node_modules
+dist
+.git
+.gitignore
+.env
+.env.*
+*.log
+tests
+test
+scratch
+docs
+.playwright-cli
+.agents
+.superpowers
+README.md
+PROJECT.md
