@@ -24,6 +24,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=8080
+ENV GOTENBERG_URL=http://gotenberg:3000
 
 # Install only production dependencies
 COPY package*.json ./

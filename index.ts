@@ -18,11 +18,24 @@ import payosCheckHandler from "./api/payos-check";
 import approveUserHandler from "./api/approve-user";
 import adminPaymentsHandler from "./api/admin/payments";
 import userPaymentsHandler from "./api/user-payments";
+import convertOfficeToPdfHandler from "./api/convert-office-to-pdf";
 import { getFirebaseAdmin } from "./server/firebase-admin.js";
 
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+// CORS Middleware hỗ trợ Vercel Edge Proxy và Direct API calls
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Activity-Id, X-Requested-With, Range");
+  res.header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Content-Disposition");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -61,6 +74,7 @@ app.get("/api/admin/payments", wrap(adminPaymentsHandler));
 app.get("/api/user-payments", wrap(userPaymentsHandler));
 app.delete("/api/admin/payments", wrap(adminPaymentsHandler));
 app.post('/api/admin/grant-plan', wrap(grantPlanHandler));
+app.post('/api/convert-office-to-pdf', wrap(convertOfficeToPdfHandler));
 
 app.post("/api/user/update-phone", async (req, res) => {
   try {

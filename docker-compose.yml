@@ -1,0 +1,64 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: word2latex-app:latest
+    container_name: word2latex-app
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - GOTENBERG_URL=http://gotenberg:3000
+      - XIAOMI_OCR_URL=http://xiaomi-ocr:8000
+    env_file:
+      - .env
+    depends_on:
+      gotenberg:
+        condition: service_healthy
+    networks:
+      - word2latex-net
+
+  xiaomi-ocr:
+    build:
+      context: ./server/xiaomi-ocr
+      dockerfile: Dockerfile
+    image: word2latex-xiaomi-ocr:latest
+    container_name: word2latex-xiaomi-ocr
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - word2latex-net
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: word2latex-gotenberg
+    restart: unless-stopped
+    command:
+      - "gotenberg"
+      - "--api-timeout=120s"
+      - "--libreoffice-auto-restart=true"
+      - "--log-level=info"
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - word2latex-net
+
+networks:
+  word2latex-net:
+    driver: bridge

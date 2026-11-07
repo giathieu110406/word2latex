@@ -25,8 +25,19 @@ export function isPowerPointFile(fileName: string, mimeType?: string): boolean {
   );
 }
 
+export function isExcelFile(fileName: string, mimeType?: string): boolean {
+  const lowerName = (fileName || '').toLowerCase();
+  const lowerMime = (mimeType || '').toLowerCase();
+  return (
+    lowerName.endsWith('.xlsx') ||
+    lowerName.endsWith('.xls') ||
+    lowerMime.includes('spreadsheetml') ||
+    lowerMime.includes('excel')
+  );
+}
+
 export function isOfficeFile(fileName: string, mimeType?: string): boolean {
-  return isWordFile(fileName, mimeType) || isPowerPointFile(fileName, mimeType);
+  return isWordFile(fileName, mimeType) || isPowerPointFile(fileName, mimeType) || isExcelFile(fileName, mimeType);
 }
 
 /**
@@ -191,6 +202,89 @@ async function extractWordPageSetup(arrayBuffer: ArrayBuffer): Promise<WordPageS
   return defaultSetup;
 }
 
+/**
+ * Chuyển đổi ArrayBuffer sang chuỗi Base64 an toàn không gây tràn call stack
+ */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  const chunkSize = 0x8000;
+  for (let i = 0; i < len; i += chunkSize) {
+    binary += String.fromCharCode.apply(
+      null,
+      bytes.subarray(i, Math.min(i + chunkSize, len)) as unknown as number[]
+    );
+  }
+  return btoa(binary);
+}
+
+/**
+ * Thử biên dịch sang PDF vector chất lượng cao (100% sắc nét chuẩn in ấn)
+ * thông qua Gotenberg LibreOffice Engine trên Backend / VPS
+ */
+async function tryConvertViaBackend(
+  arrayBuffer: ArrayBuffer,
+  fileName: string,
+  onProgress?: (percent: number) => void
+): Promise<ArrayBuffer | null> {
+  // Bỏ qua nếu chạy trong môi trường không có window/fetch (như Node.js test runner)
+  if (typeof window === 'undefined' || typeof fetch === 'undefined') {
+    return null;
+  }
+
+  try {
+    onProgress?.(25);
+    const base64 = arrayBufferToBase64(arrayBuffer);
+    onProgress?.(45);
+
+    // Sử dụng authFetch an toàn nếu có
+    let fetchFn: typeof fetch = fetch;
+    try {
+      const apiModule = await import('./api-client');
+      if (apiModule?.authFetch) {
+        fetchFn = apiModule.authFetch;
+      }
+    } catch {
+      // Fallback sang native fetch nếu không load được api-client
+    }
+
+    const apiBase =
+      typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_VPS_API_URL
+        ? (import.meta as any).env.VITE_VPS_API_URL.replace(/\/+$/, '')
+        : '';
+    const endpoint = `${apiBase}/api/convert-office-to-pdf`;
+
+    onProgress?.(60);
+    const res = await fetchFn(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fileName,
+        fileBase64: base64,
+      }),
+    });
+
+    if (res.ok) {
+      onProgress?.(90);
+      const pdfBuffer = await res.arrayBuffer();
+      if (pdfBuffer && pdfBuffer.byteLength > 0) {
+        console.log(`[Office-to-PDF] Biên dịch thành công PDF vector chất lượng cao cho ${fileName} qua Gotenberg Backend.`);
+        onProgress?.(100);
+        return pdfBuffer;
+      }
+    } else {
+      console.warn(`[Office-to-PDF] Backend trả về mã lỗi ${res.status}, chuyển sang fallback client-side.`);
+    }
+  } catch (err) {
+    console.warn('[Office-to-PDF] Không thể kết nối tới Gotenberg Backend, chuyển sang fallback client-side:', err);
+  }
+
+  return null;
+}
+
 export async function convertWordToPdfBuffer(
   fileOrBuffer: File | ArrayBuffer,
   fileName: string,
@@ -200,6 +294,12 @@ export async function convertWordToPdfBuffer(
   const arrayBuffer =
     fileOrBuffer instanceof File ? await fileOrBuffer.arrayBuffer() : fileOrBuffer;
   onProgress?.(15);
+
+  // 1. Thử biên dịch qua Gotenberg Backend (Vector PDF 100% chuẩn in ấn sắc nét)
+  const backendPdf = await tryConvertViaBackend(arrayBuffer, fileName, onProgress);
+  if (backendPdf) {
+    return backendPdf;
+  }
 
   const isDocx = fileName.toLowerCase().endsWith('.docx');
   const pageSetup = isDocx
@@ -567,6 +667,12 @@ export async function convertPowerPointToPdfBuffer(
   const arrayBuffer =
     fileOrBuffer instanceof File ? await fileOrBuffer.arrayBuffer() : fileOrBuffer;
   onProgress?.(15);
+
+  // 1. Thử biên dịch qua Gotenberg Backend (Vector PDF 100% chuẩn in ấn sắc nét)
+  const backendPdf = await tryConvertViaBackend(arrayBuffer, fileName, onProgress);
+  if (backendPdf) {
+    return backendPdf;
+  }
 
   const isPptx = fileName.toLowerCase().endsWith('.pptx');
   const slides: SlideParsedData[] = [];
@@ -1384,3 +1490,42 @@ function unescapeXml(str: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'");
 }
+
+export async function convertExcelToPdfBuffer(
+  fileOrBuffer: File | ArrayBuffer,
+  fileName: string,
+  onProgress?: (percent: number) => void
+): Promise<ArrayBuffer> {
+  onProgress?.(5);
+  const arrayBuffer =
+    fileOrBuffer instanceof File ? await fileOrBuffer.arrayBuffer() : fileOrBuffer;
+  onProgress?.(15);
+
+  const backendPdf = await tryConvertViaBackend(arrayBuffer, fileName, onProgress);
+  if (backendPdf) {
+    return backendPdf;
+  }
+
+  const fallbackPages = [
+    [
+      `Bảng tính Excel: ${fileName}`,
+      '(Vui lòng kết nối máy chủ Gotenberg VPS để hiển thị đầy đủ bảng tính, công thức và biểu đồ dưới dạng PDF vector.)',
+    ],
+  ];
+  return createFallbackPdf(fallbackPages);
+}
+
+export async function convertOfficeDocumentToPdfBuffer(
+  fileOrBuffer: File | ArrayBuffer,
+  fileName: string,
+  onProgress?: (percent: number) => void
+): Promise<ArrayBuffer> {
+  if (isPowerPointFile(fileName)) {
+    return convertPowerPointToPdfBuffer(fileOrBuffer, fileName, onProgress);
+  }
+  if (isExcelFile(fileName)) {
+    return convertExcelToPdfBuffer(fileOrBuffer, fileName, onProgress);
+  }
+  return convertWordToPdfBuffer(fileOrBuffer, fileName, onProgress);
+}
+

@@ -2,56 +2,14 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "functions": {
-    "api/ve-hinh.ts": {
-      "memory": 512,
-      "maxDuration": 60
-    },
-    "api/ai.ts": {
-      "memory": 1024,
-      "maxDuration": 60
-    },
-    "api/markitdown.ts": {
-      "memory": 1024,
-      "maxDuration": 60
-    },
-    "api/approve-user.ts": {
-      "memory": 1024,
-      "maxDuration": 10
-    },
-    "api/email-verification.ts": {
-      "memory": 1024,
-      "maxDuration": 10
-    },
-    "api/payos-create.ts": {
-      "memory": 512,
-      "maxDuration": 30
-    },
-    "api/payos-webhook.ts": {
-      "memory": 512,
-      "maxDuration": 30
-    },
-    "api/payos-check.ts": {
-      "memory": 512,
-      "maxDuration": 30
-    },
-    "api/admin/payments.ts": {
-      "memory": 512,
-      "maxDuration": 10
-    },
-    "api/admin/grant-plan.ts": {
-      "memory": 512,
-      "maxDuration": 10
-    },
-    "api/activity.ts": {
-      "memory": 1024,
-      "maxDuration": 30
-    }
-  },
   "rewrites": [
     {
       "source": "/api/webhook/payos",
-      "destination": "/api/payos-webhook"
+      "destination": "https://word2latexbackend-341505323323.asia-southeast1.run.app/api/payos-webhook"
+    },
+    {
+      "source": "/api/:match*",
+      "destination": "https://word2latexbackend-341505323323.asia-southeast1.run.app/api/:match*"
     },
     {
       "source": "/((?!api/).*)",

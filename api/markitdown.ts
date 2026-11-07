@@ -4,6 +4,8 @@ import { parseFile, parseUrl } from "../markitdown.js";
 import { verifyAuthAndApproval } from '../server/auth-guard.js';
 import { normalizeMarkdownMath } from '../src/utils/markdown-math.js';
 import { loadGenAISDK, generateContentWithRetry } from '../server/gemini-client.js';
+import { inspectDocumentMedia } from '../server/document-inspector.js';
+import { callXiaomiOcr } from '../server/xiaomi-ocr-client.js';
 
 const MIME_BY_EXT: Record<string, string> = {
   pdf: "application/pdf",
@@ -95,31 +97,52 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } else if (type === "file" && base64Data) {
       const safeMime = resolveSafeMimeType(resolvedFileName, mimeType);
-      const extracted = await parseFile(base64Data, safeMime, resolvedFileName, conversionMode);
-      
-      // CHẾ ĐỘ SIÊU TỐC (FAST MODE)
-      if (conversionMode === "fast") {
+      const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+      const fileBuffer = Buffer.from(cleanBase64, 'base64');
+
+      // 1. Quét nhanh cấu trúc tệp (< 5ms)
+      const inspection = await inspectDocumentMedia(fileBuffer, safeMime, resolvedFileName);
+
+      // Nhánh 1: Tệp thuần text (Không có ảnh, không có scan)
+      // Tự động phân loại vào Siêu tốc với AnyDoc (0 token, 0 GPU, phản hồi ngay lập tức)
+      if (!inspection.hasImagesOrScan) {
+        const extracted = await parseFile(base64Data, safeMime, resolvedFileName, "fast");
         if (extracted && extracted.trim().length > 0) {
-          // Trả về ngay lập tức, 0 AI token, phản hồi tức thì
-          return res.json({ success: true, markdown: extracted });
-        } else {
-          // Trường hợp tệp hình ảnh, âm thanh, video hoặc PDF scan cần AI
-          return res.status(400).json({ 
-            error: "Không thể trích xuất văn bản ở chế độ Siêu tốc (tệp đa phương tiện hoặc PDF scan cần AI nhận diện). Vui lòng chuyển sang chế độ 'AI Math Polish' để xử lý." 
+          return res.json({
+            success: true,
+            markdown: extracted,
+            routedTo: 'anydoc_fast_pure_text',
+            reason: inspection.reason,
           });
         }
       }
 
-      // CHẾ ĐỘ AI MATH POLISH (MẶC ĐỊNH)
-      if (extracted) {
-        rawText = extracted;
+      // Nhánh 2: Tệp có hình ảnh, đồ thị, sơ đồ hoặc là scan
+      // Phân loại vào AI Math Polish:
+      // Tầng 1: Đưa sang Xiaomi-OCR-0 trên VPS bóc tách thị giác
+      let xiaomiRawText: string | null = null;
+      try {
+        xiaomiRawText = await callXiaomiOcr(fileBuffer, resolvedFileName, safeMime);
+      } catch (ocrErr) {
+        console.warn('[MarkItDown] Xiaomi-OCR VPS gặp sự cố, kích hoạt fallback sang Gemini:', ocrErr);
+      }
+
+      if (xiaomiRawText) {
+        // Xiaomi-OCR-0 đã bóc tách xong thị giác, đưa rawText sang Gemini 3.5 Flash-Lite để chuẩn hóa LaTeX
+        rawText = xiaomiRawText;
       } else {
-        inlineParts = [{
-          inlineData: {
-            mimeType: safeMime,
-            data: base64Data
-          }
-        }];
+        // Fallback an toàn: nếu Xiaomi-OCR trên VPS không khả dụng, gửi trực tiếp sang Gemini Multimodal
+        const extracted = await parseFile(base64Data, safeMime, resolvedFileName, conversionMode);
+        if (extracted) {
+          rawText = extracted;
+        } else {
+          inlineParts = [{
+            inlineData: {
+              mimeType: safeMime,
+              data: cleanBase64,
+            },
+          }];
+        }
       }
     } else {
       return res.status(400).json({ error: "Tham số yêu cầu không hợp lệ" });

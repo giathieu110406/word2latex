@@ -59,8 +59,10 @@ import { renderPdfPageThumbnail } from '../utils/pdf-thumbnail';
 import {
   isWordFile,
   isPowerPointFile,
+  isExcelFile,
   convertWordToPdfBuffer,
   convertPowerPointToPdfBuffer,
+  convertExcelToPdfBuffer,
 } from '../utils/office-to-pdf';
 
 export interface PdfEditorWorkspaceProps {
@@ -769,6 +771,10 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
             buffer = await convertPowerPointToPdfBuffer(f, f.name, (pct) => {
               updateFileProgress(placeholder.id, pct);
             });
+          } else if (isExcelFile(f.name, f.type)) {
+            buffer = await convertExcelToPdfBuffer(f, f.name, (pct) => {
+              updateFileProgress(placeholder.id, pct);
+            });
           } else {
             // PDF thông thường
             updateFileProgress(placeholder.id, 40);
@@ -1073,7 +1079,7 @@ export const PdfEditorWorkspace: React.FC<PdfEditorWorkspaceProps> = ({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".pdf,application/pdf,image/png,image/jpeg,.jpg,.jpeg,.png,.docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,.pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint"
+        accept=".pdf,application/pdf,image/png,image/jpeg,.jpg,.jpeg,.png,.docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,.pptx,.ppt,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
         className="hidden"
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {

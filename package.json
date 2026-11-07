@@ -12,7 +12,10 @@
     "lint": "tsc --noEmit",
     "test:parser": "node --import tsx --test tests/markitdown-parser.test.ts",
     "test:word": "node --import tsx --test tests/word-export.test.ts",
-    "test:latex": "node --import tsx --test tests/latex-content.test.ts"
+    "test:latex": "node --import tsx --test tests/latex-content.test.ts",
+    "test:office-pdf": "node --import tsx --test tests/office-pdf-conversion.test.ts",
+    "test:inspector": "node --import tsx --test tests/document-inspector.test.ts",
+    "test:xiaomi": "node --import tsx --test tests/xiaomi-ocr-client.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
